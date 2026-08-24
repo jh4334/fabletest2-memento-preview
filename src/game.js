@@ -7181,6 +7181,14 @@
     return { label: '[확인된 사실]', text: '영이가 코어를 망가뜨렸다.' };
   }
 
+  function journalRecordItems(flags) {
+    flags = flags || {};
+    const ids = Array.isArray(flags.damagedRecords) ? flags.damagedRecords : [];
+    const items = ids.map((id) => ({ id, data: recordById(id, false), restored: false }));
+    if (flags.timelineRestored) items.push({ id: 'restored', data: null, restored: true });
+    return items;
+  }
+
   // ---------- 수호자 일지 (학습 진척도) ----------
   function openJournal(ret) {
     game.journal.ret = ret;
@@ -7208,9 +7216,7 @@
       return `모험 일지, ${name}. 진척도 탭. 푼 문제 ${s.attempted}개, 정답 ${s.correct}개.`;
     }
     const flags = slotFlags(j.slot) || {};
-    const ids = Array.isArray(flags.damagedRecords) ? flags.damagedRecords : [];
-    const items = ids.map((id) => ({ id, data: recordById(id, false), restored: false }));
-    if (flags.timelineRestored) items.push({ id: 'restored', data: null, restored: true });
+    const items = journalRecordItems(flags);
     const stage = journalRecordStage(flags);
     if (!items.length) {
       return `모험 일지, ${name}. 손상된 기록 탭. 해금된 기록 0개. ${stage.label}. ${stage.text}`;
@@ -7285,8 +7291,8 @@
     }
     if (j.tab === 'records') {
       const flags = slotFlags(j.slot) || {};
-      const ids = Array.isArray(flags.damagedRecords) ? flags.damagedRecords : [];
-      const count = ids.length + (flags.timelineRestored ? 1 : 0);
+      const items = journalRecordItems(flags);
+      const count = items.length;
       if (justPressed('up') && count) {
         j.recordCursor = (j.recordCursor + count - 1) % count;
         Sound.blip();
@@ -7303,10 +7309,11 @@
           Sound.wrong();
           return;
         }
-        if (j.recordCursor === ids.length) {
+        const item = items[j.recordCursor];
+        if (item && item.restored) {
           startTimelineRestoration({ ret: 'journal', replay: true });
-        } else {
-          startDamagedRecord(ids[j.recordCursor], { ret: 'journal', replay: true });
+        } else if (item) {
+          startDamagedRecord(item.id, { ret: 'journal', replay: true });
         }
         return;
       }
@@ -7337,7 +7344,7 @@
   function drawJournalRecords(slot) {
     const j = game.journal;
     const flags = slotFlags(slot) || {};
-    const ids = Array.isArray(flags.damagedRecords) ? flags.damagedRecords : [];
+    const items = journalRecordItems(flags);
     const stage = journalRecordStage(flags);
     ctx.fillStyle = '#8ea8d8';
     ctx.font = fs(15, true);
@@ -7351,14 +7358,12 @@
     ctx.moveTo(24, 170);
     ctx.lineTo(LW - 24, 170);
     ctx.stroke();
-    if (!ids.length) {
+    if (!items.length) {
       ctx.fillStyle = '#888';
       ctx.font = fs(15);
       ctx.fillText('아직 복원한 기록이 없다. 거리의 마음을 먼저 만나 보자.', 24, 214);
     } else {
       const rowH = game.largeText ? 48 : 44;
-      const items = ids.map((id) => ({ id, data: recordById(id, false), restored: false }));
-      if (flags.timelineRestored) items.push({ id: 'restored', data: null, restored: true });
       if (j.recordCursor >= items.length) j.recordCursor = Math.max(0, items.length - 1);
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
@@ -12463,7 +12468,7 @@
     // X라운드 신규 — 재대결(기억의 방)·수업 배너·반응 선택 검증용
     newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
     recordForChapter, unlockDamagedRecord, startDamagedRecord, startTimelineRestoration,
-    journalRecordStage, journalAnnouncement, announceJournal, finishRecord, revealBandiAtShrine,
+    journalRecordStage, journalRecordItems, journalAnnouncement, announceJournal, finishRecord, revealBandiAtShrine,
     endingScene, endingAnnouncement, announceEnding,
     objectiveBannerPrefix, bossWasSpared, bossClearedInSlot,
   };

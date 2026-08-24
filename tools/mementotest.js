@@ -128,6 +128,8 @@ if (has('migrateSlotV9')) {
   const completed = T.migrateSlotV9({ v: 8, flags: { shrineDone: true, defeated: { yeongi: true } } });
   check('이미 코어를 끝낸 구세이브는 새 파이널을 강제로 반복하지 않음',
     completed.flags.timelineMerged === true && completed.flags.timelineRestored === true);
+  check('완료된 구세이브는 기록이 비어 있어도 복원된 시간순 다시보기가 보임',
+    has('journalRecordItems') && T.journalRecordItems(completed.flags).map((item) => item.id).join(',') === 'restored');
 }
 const fresh = has('newFlags') ? T.newFlags() : {};
 check('신규 세이브의 기록 상태 기본값', Array.isArray(fresh.damagedRecords) && fresh.damagedRecords.length === 0 &&
