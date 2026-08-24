@@ -232,8 +232,8 @@
   // v3→v4: introlab 플래그 기본값. 이미 숲 이상을 진행한 세이브라면 문을 열고 지난 것으로 본다.
   function migrateSlotV4(data) {
     if (!data || !data.flags) return data;
+    if ((Number(data.v) || 0) >= 4) return data;
     const f = data.flags;
-    if (f.introClue1 !== undefined) return data; // 이미 v4 이상
     f.introClue1 = !!f.talkedProf;
     f.introClue2 = !!f.talkedProf;
     f.introClue3 = !!f.talkedProf;
@@ -246,6 +246,7 @@
   // v4→v5: 실험실 탈출 직후 숲 흔적 플래그. 기존 진행 세이브는 이미 본 것으로 승계한다.
   function migrateSlotV5(data) {
     if (!data || !data.flags) return data;
+    if ((Number(data.v) || 0) >= 5) return data;
     if (data.flags.introForestTrace === undefined) {
       data.flags.introForestTrace = !!data.flags.talkedProf || !!(data.flags.defeated && data.flags.defeated.bekkyeomon);
     }
@@ -256,6 +257,7 @@
   // v5→v6: 따라 첫 조우 전용 연출 플래그. 이미 따라를 되돌렸거나 마을까지 진행한 세이브는 본 것으로 승계한다.
   function migrateSlotV6(data) {
     if (!data || !data.flags) return data;
+    if ((Number(data.v) || 0) >= 6) return data;
     if (data.flags.ttaraFirstEncounter === undefined) {
       data.flags.ttaraFirstEncounter = !!(data.flags.defeated && data.flags.defeated.bekkyeomon);
     }
@@ -266,6 +268,7 @@
   // v6→v7: 개인정보 그림자 접촉 페널티(노출도) 기본값. 기존 세이브는 안전 상태에서 시작한다.
   function migrateSlotV7(data) {
     if (!data || !data.flags) return data;
+    if ((Number(data.v) || 0) >= 7) return data;
     const f = data.flags;
     if (f.privacyLeak === undefined) f.privacyLeak = 0;
     if (f.privacyRecovery === undefined) f.privacyRecovery = 0;
@@ -277,6 +280,7 @@
   // v7→v8: 프롤로그 마무리/숲 안쪽 조사 표식 기본값. 이미 따라를 되돌린 세이브는 1장 진입 흐름을 본 것으로 승계한다.
   function migrateSlotV8(data) {
     if (!data || !data.flags) return data;
+    if ((Number(data.v) || 0) >= 8) return data;
     const f = data.flags;
     if (f.prologueClosed === undefined) f.prologueClosed = !!(f.defeated && f.defeated.bekkyeomon);
     if (f.forestClearingRead === undefined) f.forestClearingRead = false;
@@ -1255,6 +1259,29 @@
 
   // 터치 컨트롤
   let isTouchDevice = false;
+
+  function syncTouchControlLabels() {
+    if (!isTouchDevice) return;
+    const action = document.getElementById('t-a');
+    const cancel = document.getElementById('t-pause');
+    if (!action || !cancel) return;
+    if (game.mode === 'record') {
+      action.setAttribute('aria-label', '기록 다음 내용');
+      cancel.setAttribute('aria-label', '기록 건너뛰기');
+      cancel.textContent = '건너뜀';
+      return;
+    }
+    if (game.mode === 'journal') {
+      action.setAttribute('aria-label', game.journal.tab === 'records' ? '선택한 기록 다시보기' : '선택');
+      cancel.setAttribute('aria-label', '모험 일지 닫기');
+      cancel.textContent = '닫기';
+      return;
+    }
+    action.setAttribute('aria-label', '결정·대화');
+    cancel.setAttribute('aria-label', '메뉴 열기');
+    cancel.textContent = '메뉴';
+  }
+
   if ('ontouchstart' in window) {
     isTouchDevice = true;
     document.body.classList.add('touch');
@@ -7078,10 +7105,12 @@
   function finishRecord(skipped) {
     const r = game.record;
     if (!r || !game.flags) return;
+    let recordId = null;
     if (r.restored) {
       if (!r.replay) game.flags.timelineRestored = true;
     } else {
       const id = r.ids[0];
+      recordId = id;
       if (!r.replay) {
         game.flags.viewedRecords[id] = true;
         game.flags.skippedRecords[id] = !!skipped;
@@ -7094,12 +7123,20 @@
     save();
     const ret = r.ret || 'world';
     const onEnd = r.onEnd;
+    const postLine = !skipped && !r.replay && !r.restored ? MEMENTO_POST_RECORD_LINES[recordId] : null;
     game.record = null;
-    game.mode = ret;
     Speech.stop();
-    if (ret === 'journal') announceJournal();
     Sound.select();
-    if (onEnd) onEnd();
+    const resume = () => {
+      game.mode = ret;
+      if (ret === 'journal') announceJournal();
+      if (onEnd) onEnd();
+    };
+    if (postLine) {
+      startDialog([postLine], '반디', resume);
+      return;
+    }
+    resume();
   }
 
   function updateRecord() {
@@ -7162,7 +7199,7 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#888';
     ctx.font = fs(13);
-    ctx.fillText('Z·Enter 다음  ·  X·Esc 건너뛰기', LW / 2, 486);
+    ctx.fillText(isTouchDevice ? 'Ⓐ 다음  ·  [건너뜀] 기록 건너뛰기' : 'Z·Enter 다음  ·  X·Esc 건너뛰기', LW / 2, 486);
     ctx.textAlign = 'left';
   }
 
@@ -7400,7 +7437,7 @@
     ctx.fillStyle = '#777';
     ctx.font = fs(13);
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ 선택 · Z 다시보기 · ←→ 탭 · X 닫기', LW / 2, 512);
+    ctx.fillText(isTouchDevice ? '스틱 선택·탭 이동 · Ⓐ 다시보기 · [닫기]' : '↑↓ 선택 · Z 다시보기 · ←→ 탭 · X 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -12314,6 +12351,7 @@
     }
 
       syncSrLive(); // 낭독기 미러 — 이번 프레임의 알림·대사를 반영
+      syncTouchControlLabels();
 
       // 방탈출 중에는 터치 기기에도 힌트 버튼을 보여 준다 (H키의 터치 대응).
       // (배틀 중 50:50 힌트는 v3에서 퀴즈 배틀과 함께 폐지됨)

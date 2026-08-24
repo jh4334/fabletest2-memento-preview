@@ -77,6 +77,7 @@ function advanceRecord(max = 100) {
     dialogTaps += 1;
   }
   if (g.mode === 'record') throw new Error('기록이 끝나지 않음');
+  if (g.mode === 'dialog') advanceDialog();
 }
 function pickChoice(idx) {
   if (g.mode !== 'choice') throw new Error('선택 모드가 아님: ' + g.mode);

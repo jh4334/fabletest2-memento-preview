@@ -1,7 +1,7 @@
 // AI 윤리 어드벤처 — 오프라인 서비스워커
 // 모든 정적 자원을 처음 방문 때 캐시해, 이후 네트워크 없이도 실행되게 한다.
 // 게임 코드/콘텐츠가 바뀌면 CACHE 버전을 올리면 된다.
-const CACHE = 'ai-ethics-adventure-c0ab14f4';
+const CACHE = 'ai-ethics-adventure-aa0512ec';
 const ASSETS = [
   './',
   './index.html',
@@ -25,34 +25,50 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+  e.waitUntil(caches.keys().then((keys) => {
+    const replacingBaseline = keys.some((key) => key.startsWith('shadow-school-'));
+    return Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))
       .then(() => self.clients.claim())
-  );
+      .then(() => replacingBaseline ? self.clients.matchAll({ type: 'window', includeUncontrolled: true }) : [])
+      .then((clients) => {
+        clients.forEach((client) => { client.navigate(client.url).catch(() => {}); });
+      });
+  }));
 });
 
-// 캐시 우선(cache-first): 빠르고 오프라인에서도 동작. 없으면 네트워크에서 받아 캐시.
+function remember(request, response) {
+  if (!response || response.status !== 200 || response.type !== 'basic') return response;
+  const copy = response.clone();
+  caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
+  return response;
+}
+
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
-  // 페이지 진입(navigate)은 ?utm=… 같은 쿼리가 붙어도 같은 문서다 — 쿼리 무시 매치.
   const isNav = e.request.mode === 'navigate';
+  const url = new URL(e.request.url);
+  const isLocal = url.origin === self.location.origin;
+  const isCore = isLocal && (
+    isNav ||
+    url.pathname.endsWith('/index.html') ||
+    /\/src\/[^/]+\.js$/.test(url.pathname) ||
+    url.pathname.endsWith('/manifest.webmanifest')
+  );
+
+  if (isCore) {
+    e.respondWith(
+      fetch(e.request, { cache: 'no-store' })
+        .then((response) => remember(e.request, response))
+        .catch(() => caches.match(e.request, { ignoreSearch: true })
+          .then((hit) => hit || (isNav ? caches.match('./index.html') : undefined)))
+    );
+    return;
+  }
+
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: isNav }).then((hit) => {
+    caches.match(e.request).then((hit) => {
       if (hit) return hit;
-      return fetch(e.request).then((res) => {
-        if (res && res.status === 200 && res.type === 'basic') {
-          const copy = res.clone();
-          // 캐시 실패(쿼터 초과 등)는 응답과 무관 — 조용히 무시
-          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
-        }
-        return res;
-      }).catch(() => {
-        // 오프라인 + 캐시 미스: 진입 요청이면 프리캐시된 본문으로라도 연다.
-        // (여기서 undefined를 돌려주면 전체 캐시가 있어도 네트워크 오류 화면이 뜬다)
-        if (isNav) return caches.match('./index.html');
-        return undefined;
-      });
+      return fetch(e.request).then((response) => remember(e.request, response)).catch(() => undefined);
     })
   );
 });

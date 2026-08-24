@@ -207,6 +207,16 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8→v
   const s9b = T.loadSlot(0);
   check('W-1 v9 roundtrip — 미래 필드가 사라지지 않음', s9b.futureTop === 'KEEP_ME' && s9b.flags.futureFlag === 42);
 
+  put(1, { v: 9, name: '복원중', map: 'coreroom', x: 14, y: 12,
+    flags: { talkedProf: true, defeated: {}, mercy: 7, visited: {}, shrineDone: true,
+      introClue1: true, introForestTrace: true, ttaraFirstEncounter: true,
+      privacyLeak: 0, prologueClosed: true, damagedRecords: ['reset_after'],
+      viewedRecords: { reset_after: true }, skippedRecords: {}, pendingRecord: null,
+      timelineMerged: true, timelineRestored: false } });
+  const interrupted = T.loadSlot(1);
+  check('W-1 V9 복원 중 새로고침 — timelineRestored=false 보존',
+    interrupted.v === 9 && interrupted.flags.timelineMerged === true && interrupted.flags.timelineRestored === false);
+
   // 정리 — 다음 블록(U-5)이 슬롯을 재사용하므로 비운다
   storage.delete('ai-ethics-adventure-slot-0');
   storage.delete('ai-ethics-adventure-slot-1');

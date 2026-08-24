@@ -86,6 +86,13 @@ if (has('startDamagedRecord') && has('unlockDamagedRecord')) {
   check('재열람 건너뛰기는 최초 건너뜀 표식을 새로 만들지 않음', g.flags.skippedRecords.reset_after === false);
   check('재열람은 기록을 중복 해금하지 않음',
     g.flags.damagedRecords.join(',') === before.join(','));
+
+  g.flags = T.newFlags();
+  T.unlockDamagedRecord(1);
+  T.startDamagedRecord('reset_after', { ret: 'world' });
+  for (let i = 0; i < 4; i++) env.tap('z');
+  check('첫 기록을 읽으면 입력자 공백을 짚는 반디 복선이 실제 대화로 이어짐',
+    g.mode === 'dialog' && g.dialog && /누가 쓴 문장인지는 아직 몰라/.test(g.dialog.lines[0]));
 }
 
 console.log('[M-4] 마음 일지는 사실의 신뢰도가 단계적으로 변한다');
@@ -160,9 +167,19 @@ if (has('endingScene')) {
 console.log('[M-8] 공정한 복선·금지 문구·기존 본편 순서를 지킨다');
 const clues = data('typeof MEMENTO_CLUES === "undefined" ? null : MEMENTO_CLUES', []) || [];
 check('반전 전에 재해석 가능한 복선 최소 3개', clues.length >= 3 && clues.every((c) => c.beforeFinal === true));
+const liveClues = data(`({
+  prologue: BANDI_BOSS_LINES.prologue,
+  afterFirstRecord: MEMENTO_POST_RECORD_LINES.reset_after,
+  quietYard: COMPANION_LINES.quietyard,
+  warningRecord: MEMENTO_RECORDS.find((record) => record.id === 'city_failure').pages.join('\\n')
+})`, {}) || {};
+check('프롤로그 결정권·첫 기록 입력자·고요 비상 정지 복선이 실제 대사에 배치됨',
+  /어느 길로 갈지는 네가 정해/.test(liveClues.prologue.mercy) &&
+  /누가 쓴 문장인지는 아직 몰라/.test(liveClues.afterFirstRecord) &&
+  /비상 정지/.test(liveClues.quietYard) && /비상 정지/.test(liveClues.warningRecord));
 const endingScenes = has('endingScene')
   ? ['home', 'silent', 'dawn', 'farewell'].map((id) => T.endingScene(id)) : [];
-const screenText = JSON.stringify({ records, restored, endingThemes, endingScenes, clues });
+const screenText = JSON.stringify({ records, restored, endingThemes, endingScenes, clues, liveClues });
 check('새 화면 문구에 금지 어휘·-몬식 이름 없음', !/(몬스터|도감|증표|[가-힣]+몬)/.test(screenText));
 const maps = data('Object.keys(MAPS)', []);
 check('프롤로그→다섯 거리→고요의 뜰→코어 맵이 모두 보존',

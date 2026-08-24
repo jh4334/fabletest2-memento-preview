@@ -1,6 +1,6 @@
 name: GitHub Pages 배포
 
-# main 브랜치에 올라오면 검증(validate·smoke·slot) 통과 후 정적 사이트를 배포한다.
+# main 브랜치에 올라오면 전체 로직·브라우저·패키지 검증 통과 후 정적 사이트를 배포한다.
 # PR에서도 검증을 돌려, 깨진 코드가 main에 머지되는 것을 막는다.
 # (저장소 Settings → Pages → Source를 "GitHub Actions"로 한 번 설정해 두어야 한다.)
 on:
@@ -12,42 +12,55 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  # 1) 데이터·플레이 경로·세이브 검증 (런타임 의존성 없음 → 설치 불필요)
+  # 1) 데이터·플레이 경로·세이브·브라우저·오프라인 배포본 검증
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20'
+          cache: npm
+      - run: npm ci
       - name: 데이터 검증
-        run: node tools/validate.js
-      - name: 스모크 테스트
-        run: node tools/smoketest.js
-      - name: 슬롯 테스트
-        run: node tools/slottest.js
+        run: npm run validate
+      - name: 로직·슬롯·메멘토 테스트
+        run: npm test
+      - name: 플레이봇 완주
+        run: npm run playtest
+      - name: Chromium 설치
+        run: npx playwright install --with-deps chromium
+      - name: 브라우저 스모크
+        run: npm run test:browser
+      - name: 오프라인 ZIP 검증
+        run: |
+          npm run pack
+          unzip -tq ai-ethics-adventure-offline.zip
+          rm -f ai-ethics-adventure-offline.zip
 
   # 2) 검증 통과 시에만 배포 (PR에서는 배포하지 않음)
   deploy:
     needs: verify
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
         with:
           path: '.'
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e

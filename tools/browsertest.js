@@ -239,6 +239,15 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     await page.waitForTimeout(250);
     check(`${vp.name}: 손상 기록 화면 진입`, started.mode === 'record' && started.id === 'reset_after');
     check(`${vp.name}: 기록이 aria-live에 연결됨`, /손상된 기록/.test(await page.evaluate(() => window.__test.srLiveText() || '')));
+    if (vp.mobile) {
+      const recordControls = await page.evaluate(() => ({
+        action: document.getElementById('t-a').getAttribute('aria-label'),
+        cancel: document.getElementById('t-pause').getAttribute('aria-label'),
+        cancelText: document.getElementById('t-pause').textContent,
+      }));
+      check(`${vp.name}: 기록 터치 조작명이 다음·건너뛰기로 바뀜`,
+        recordControls.action === '기록 다음 내용' && recordControls.cancel === '기록 건너뛰기' && recordControls.cancelText === '건너뜀');
+    }
     await page.screenshot({ path: path.join(mementoShotsDir, `record-${vp.name}.png`) });
     if (vp.name === 'desktop') {
       await page.evaluate(() => { window.__game.largeText = true; });
@@ -291,6 +300,15 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
       /손상된 기록 탭/.test(journalA11y.live) && /1개 중 1번째/.test(journalA11y.live));
     check(`${vp.name}: 일지 선택이 TTS에 연결됨`,
       /손상된 기록 탭/.test(journalA11y.spoken) && /1개 중 1번째/.test(journalA11y.spoken));
+    if (vp.mobile) {
+      const journalControls = await page.evaluate(() => ({
+        action: document.getElementById('t-a').getAttribute('aria-label'),
+        cancel: document.getElementById('t-pause').getAttribute('aria-label'),
+        cancelText: document.getElementById('t-pause').textContent,
+      }));
+      check(`${vp.name}: 일지 터치 조작명이 다시보기·닫기로 바뀜`,
+        journalControls.action === '선택한 기록 다시보기' && journalControls.cancel === '모험 일지 닫기' && journalControls.cancelText === '닫기');
+    }
     await page.screenshot({ path: path.join(mementoShotsDir, `journal-${vp.name}.png`) });
 
     if (vp.mobile) await page.tap('#t-a');
@@ -358,7 +376,11 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
       }));
       check(`${id}: 엔딩 문구가 aria-live에 연결됨`, endingA11y.live.includes(state.title));
       check(`${id}: 엔딩 문구가 TTS에 연결됨`, endingA11y.spoken.includes(state.title));
-      await page.evaluate(() => { window.requestAnimationFrame = () => 0; });
+      await page.evaluate(() => {
+        window.__game.reduceFx = true;
+        window.__game.endingT = 600;
+        window.requestAnimationFrame = () => 0;
+      });
       await page.waitForTimeout(100);
       check(`${id}: 기존 엔딩 화면 ID 렌더`, state.mode === 'ending' && !!state.title);
       check(`${id}: 결과·통계 문구가 화면 높이에 들어감`, state.lines <= 11);
@@ -452,6 +474,42 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     check('스틱: 방향 입력 인식', r.stickRight === true);
     check('스틱: 둘째 손가락 탈취에도 이동 유지', r.stickSurvivesSteal === true);
     check('스틱: 원래 손가락 떼면 정지', r.stickReleased === true);
+    await ctx.close();
+  }
+
+  {
+    console.log('[service-worker-upgrade] 기준 버전 캐시에서 최신 게임으로 자동 전환');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await ctx.addInitScript(() => {
+      const key = '__mementoUpgradeNavigations';
+      localStorage.setItem(key, String((Number(localStorage.getItem(key)) || 0) + 1));
+    });
+    let page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller, { timeout: 8000 }).catch(() => {});
+    await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) await registration.unregister();
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+      const oldCache = await caches.open('shadow-school-browser-fixture');
+      await oldCache.put('./index.html', new Response('<title>방과 후: 그림자 학교</title>', {
+        headers: { 'Content-Type': 'text/html' },
+      }));
+    });
+    await page.close();
+    page = await ctx.newPage();
+    await page.goto(base + '?v=upgrade-fixture', { waitUntil: 'load' });
+    await page.waitForFunction(() => Number(localStorage.getItem('__mementoUpgradeNavigations')) >= 3, { timeout: 8000 });
+    const upgraded = await page.evaluate(async () => ({
+      title: document.title,
+      navigations: Number(localStorage.getItem('__mementoUpgradeNavigations')),
+      caches: await caches.keys(),
+      controlled: !!navigator.serviceWorker.controller,
+    }));
+    check('기준 버전 캐시를 발견하면 열린 탭을 한 번 다시 탐색', upgraded.navigations >= 3);
+    check('업그레이드 뒤 마음의 문 문서와 새 서비스워커가 활성',
+      /마음의 문/.test(upgraded.title) && upgraded.controlled && !upgraded.caches.some((key) => key.startsWith('shadow-school-')));
     await ctx.close();
   }
 
