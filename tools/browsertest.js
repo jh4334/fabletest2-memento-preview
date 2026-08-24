@@ -61,6 +61,22 @@ function resolveChromium() {
   return undefined;
 }
 
+async function installSpeechRecorder(ctx) {
+  await ctx.addInitScript(() => {
+    window.__spoken = [];
+    window.SpeechSynthesisUtterance = function SpeechSynthesisUtterance(text) { this.text = text; };
+    Object.defineProperty(window, 'speechSynthesis', {
+      configurable: true,
+      value: {
+        getVoices: () => [{ lang: 'ko-KR', name: '테스트 한국어', localService: true }],
+        addEventListener() {},
+        cancel() {},
+        speak(utterance) { window.__spoken.push(utterance.text); },
+      },
+    });
+  });
+}
+
 const VIEWPORTS = [
   { name: 'desktop', width: 1280, height: 800, mobile: false },
   { name: 'mobile-portrait', width: 390, height: 844, mobile: true },
@@ -76,6 +92,10 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
   const base = `http://127.0.0.1:${port}/index.html`;
   const shotsDir = path.join(ROOT, 'shots');
   if (!fs.existsSync(shotsDir)) fs.mkdirSync(shotsDir);
+  const mementoShotsDir = path.join(ROOT, '.orchestration', 'evidence', 'final-browser', 'dual-timeline');
+  if (!fs.existsSync(mementoShotsDir)) fs.mkdirSync(mementoShotsDir, { recursive: true });
+  const endingShotsDir = path.join(ROOT, '.orchestration', 'evidence', 'final-browser', 'endings');
+  if (!fs.existsSync(endingShotsDir)) fs.mkdirSync(endingShotsDir, { recursive: true });
 
   const browser = await chromium.launch({ executablePath: resolveChromium() });
   for (const vp of VIEWPORTS) {
@@ -183,6 +203,170 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     if (ov.overCount) ov.over.forEach((o) => console.log(`     · 넘침(${o.w}px): ${o.line}`));
 
     await page.screenshot({ path: path.join(shotsDir, 'browser-largetext.png') });
+    await ctx.close();
+  }
+
+  for (const vp of VIEWPORTS) {
+    console.log(`[memento-${vp.name}] 기록·일지·복원 렌더`);
+    const ctx = await browser.newContext({
+      viewport: { width: vp.width, height: vp.height },
+      hasTouch: vp.mobile, isMobile: vp.mobile,
+      deviceScaleFactor: vp.mobile ? 2 : 1,
+    });
+    await installSpeechRecorder(ctx);
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console.error: ' + m.text());
+    });
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    if (vp.name === 'mobile-portrait') await page.click('#rotate-dismiss');
+    const started = await page.evaluate(() => {
+      const g = window.__game, T = window.__test;
+      g.currentSlot = 0;
+      g.flags = T.newFlags();
+      g.tts = true;
+      T.unlockDamagedRecord(1);
+      T.startDamagedRecord('reset_after', { ret: 'world' });
+      return {
+        mode: g.mode,
+        id: g.record && g.record.ids[0],
+        live: T.srLiveText(),
+      };
+    });
+    await page.waitForTimeout(250);
+    check(`${vp.name}: 손상 기록 화면 진입`, started.mode === 'record' && started.id === 'reset_after');
+    check(`${vp.name}: 기록이 aria-live에 연결됨`, /손상된 기록/.test(await page.evaluate(() => window.__test.srLiveText() || '')));
+    await page.screenshot({ path: path.join(mementoShotsDir, `record-${vp.name}.png`) });
+    if (vp.name === 'desktop') {
+      await page.evaluate(() => { window.__game.largeText = true; });
+      await page.waitForTimeout(100);
+      check('desktop: 큰 글씨 기록 화면 유지', (await page.evaluate(() => window.__game.mode)) === 'record');
+      await page.screenshot({ path: path.join(mementoShotsDir, 'record-large-text.png') });
+      await page.evaluate(() => { window.__game.largeText = false; });
+    }
+
+    if (vp.mobile) await page.tap('#t-pause');
+    else await page.keyboard.press('Escape');
+    await page.waitForFunction(() => window.__game.mode === 'world', { timeout: 1000 });
+    const skipped = await page.evaluate(() => ({
+      mode: window.__game.mode,
+      skipped: window.__game.flags.skippedRecords.reset_after,
+      pending: window.__game.flags.pendingRecord,
+    }));
+    check(`${vp.name}: 기록 건너뛰기 저장`, skipped.mode === 'world' && skipped.skipped === true && skipped.pending === null);
+    if (vp.mobile) {
+      await page.tap('#t-pause');
+      await page.waitForFunction(() => window.__game.mode === 'pause', { timeout: 1000 });
+      await page.tap('#t-a');
+      await page.waitForFunction(() => window.__game.mode === 'memoryroom', { timeout: 1000 });
+      await page.tap('#t-a');
+    } else {
+      await page.keyboard.press('j');
+    }
+    await page.waitForFunction(() => window.__game.mode === 'journal', { timeout: 1000 });
+    if (vp.mobile) {
+      await page.evaluate(() => {
+        const el = document.getElementById('t-stick');
+        const b = el.getBoundingClientRect();
+        const x = b.left + b.width * 0.85, y = b.top + b.height / 2;
+        const touch = new Touch({ identifier: 77, target: el, clientX: x, clientY: y });
+        el.dispatchEvent(new TouchEvent('touchstart', { changedTouches: [touch], bubbles: true, cancelable: true }));
+        el.dispatchEvent(new TouchEvent('touchend', { changedTouches: [touch], bubbles: true, cancelable: true }));
+      });
+    } else {
+      await page.keyboard.press('ArrowRight');
+    }
+    await page.waitForFunction(() => window.__game.journal.tab === 'records', { timeout: 1000 });
+    const journal = await page.evaluate(() => ({ mode: window.__game.mode, tab: window.__game.journal.tab }));
+    check(`${vp.name}: 일지 기록 탭 진입`, journal.mode === 'journal' && journal.tab === 'records');
+    await page.waitForTimeout(200);
+    const journalA11y = await page.evaluate(() => ({
+      live: window.__test.srLiveText() || '',
+      spoken: window.__spoken[window.__spoken.length - 1] || '',
+    }));
+    check(`${vp.name}: 일지 선택이 aria-live에 연결됨`,
+      /손상된 기록 탭/.test(journalA11y.live) && /1개 중 1번째/.test(journalA11y.live));
+    check(`${vp.name}: 일지 선택이 TTS에 연결됨`,
+      /손상된 기록 탭/.test(journalA11y.spoken) && /1개 중 1번째/.test(journalA11y.spoken));
+    await page.screenshot({ path: path.join(mementoShotsDir, `journal-${vp.name}.png`) });
+
+    if (vp.mobile) await page.tap('#t-a');
+    else await page.keyboard.press('z');
+    await page.waitForFunction(() => window.__game.mode === 'record', { timeout: 1000 });
+    check(`${vp.name}: 일지에서 기록 다시보기`, (await page.evaluate(() => window.__game.mode)) === 'record');
+    if (vp.mobile) await page.tap('#t-pause');
+    else await page.keyboard.press('Escape');
+    await page.waitForFunction(() => window.__game.mode === 'journal', { timeout: 1000 });
+    check(`${vp.name}: 다시보기 뒤 일지 복귀`, (await page.evaluate(() => window.__game.mode)) === 'journal');
+
+    const restoredMode = await page.evaluate(() => {
+      const g = window.__game, T = window.__test;
+      g.mode = 'world';
+      g.flags.damagedRecords = ['reset_after', 'reset_before', 'city_failure', 'yeongi_warning', 'first_approval'];
+      T.startTimelineRestoration({ ret: 'world' });
+      return { mode: g.mode, ids: g.record.ids.slice(), restored: g.record.restored };
+    });
+    await page.waitForTimeout(250);
+    check(`${vp.name}: 실제 시간순 복원 화면 진입`, restoredMode.mode === 'record' && restoredMode.restored === true &&
+      restoredMode.ids.join(',') === 'first_approval,yeongi_warning,city_failure,reset_before,reset_after');
+    await page.screenshot({ path: path.join(mementoShotsDir, `restoration-${vp.name}.png`) });
+    check(`${vp.name}: 기록 화면 콘솔/페이지 에러 없음`, errors.length === 0);
+    errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
+    await ctx.close();
+  }
+
+  {
+    console.log('[memento-endings] 네 엔딩 결과 장면 렌더');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await installSpeechRecorder(ctx);
+    const errors = [];
+    for (const id of ['home', 'silent', 'dawn', 'farewell']) {
+      const page = await ctx.newPage();
+      page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+      page.on('console', (m) => {
+        if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console.error: ' + m.text());
+      });
+      await page.goto(base, { waitUntil: 'load' });
+      await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+      const state = await page.evaluate((endingId) => {
+        const g = window.__game, T = window.__test;
+        g.flags = T.newFlags();
+        g.flags.endingId = endingId;
+        g.mode = 'ending';
+        g.endingType = 'true';
+        g.endingT = 0;
+        g.tts = true;
+        const scene = T.endingScene(endingId);
+        T.announceEnding(endingId);
+        return { mode: g.mode, title: scene.title, lines: scene.lines.length };
+      }, id);
+      await page.waitForTimeout(100);
+      if (id === 'home') {
+        await page.evaluate(() => { window.__game.reduceFx = true; });
+        await page.waitForTimeout(100);
+        const stillA = await page.evaluate(() => document.getElementById('game').toDataURL());
+        await page.waitForTimeout(100);
+        const stillB = await page.evaluate(() => document.getElementById('game').toDataURL());
+        check('home: 동작 줄이기에서 별빛·캐릭터가 정지함', stillA === stillB);
+      }
+      const endingA11y = await page.evaluate(() => ({
+        live: window.__test.srLiveText() || '',
+        spoken: window.__spoken[window.__spoken.length - 1] || '',
+      }));
+      check(`${id}: 엔딩 문구가 aria-live에 연결됨`, endingA11y.live.includes(state.title));
+      check(`${id}: 엔딩 문구가 TTS에 연결됨`, endingA11y.spoken.includes(state.title));
+      await page.evaluate(() => { window.requestAnimationFrame = () => 0; });
+      await page.waitForTimeout(100);
+      check(`${id}: 기존 엔딩 화면 ID 렌더`, state.mode === 'ending' && !!state.title);
+      check(`${id}: 결과·통계 문구가 화면 높이에 들어감`, state.lines <= 11);
+      await page.screenshot({ path: path.join(endingShotsDir, `${id}.png`) });
+      await page.close();
+    }
+    check('네 엔딩 화면 콘솔/페이지 에러 없음', errors.length === 0);
+    errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
     await ctx.close();
   }
 
