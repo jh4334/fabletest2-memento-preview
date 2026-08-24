@@ -95,10 +95,11 @@ function setPos(x, y, dir) {
 function advanceDialog(max = 120) {
   for (let i = 0; i < max; i++) {
     if (g.mode === 'dialog') { tap('z'); continue; }
+    if (g.mode === 'record') { tap('z'); continue; }
     if (g.mode === 'choice' && g.choice && g.choice.reaction) { g.choice.cursor = 0; tap('z'); continue; }
     break;
   }
-  if (g.mode === 'dialog') throw new Error('대화가 끝나지 않음');
+  if (g.mode === 'dialog' || g.mode === 'record') throw new Error('대화 또는 기록이 끝나지 않음');
 }
 let passed = 0;
 function check(name, cond) {
@@ -416,7 +417,7 @@ console.log('[22] 저장 데이터 무결성 (v3)');
 g.map = 'village';
 setPos(13, 16, 'up');
 const save = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
-check('세이브 버전 8', save.v === 8);
+check('세이브 버전 9', save.v === 9);
 {
   const migratedBeforeTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: false } } });
   const migratedAfterTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: true } } });
@@ -2882,8 +2883,14 @@ for (let i = 1; i < SHRINE_WHISPERS.length; i++) {
     check(`정답 ${i + 1} — 비차단 말풍선(${i + 1}/8)`, !!g.notice && new RegExp(`${i + 1}/8`).test(g.notice.text));
   }
 }
-check('마지막 봉헌 → 정체 공개 대화 시작', g.mode === 'dialog');
+check('마지막 봉헌 → 실제 시간순 복원 시작', g.mode === 'record' && g.record && g.record.restored === true);
+check('복원 장면은 최초 승인부터 시간순으로 시작', g.record.ids[0] === 'first_approval' &&
+  g.record.ids[g.record.ids.length - 1] === 'reset_after');
+check('복원 시작 시 결합 상태 저장, 정체는 아직 비공개', g.flags.timelineMerged === true &&
+  g.flags.timelineRestored === false && g.flags.bandiRevealed === false);
 advanceDialog(); // "…처음부터, 나였어."까지 진행 → U-2 리빌 정지 비트로 이어진다
+check('복원 완료 후 정체 공개 연출로 전환', g.flags.timelineRestored === true &&
+  g.flags.bandiRevealed === true && g.mode !== 'record');
 // U-2 반디 리빌 정지 비트 — reduceFx가 아니면 무입력 대기(revealbeat) 모드로 들어가고,
 // Z로 조기 종료할 수 있으며(스킵 불가 아님), 그 뒤 "…가면을 벗을게" 한 줄이 나온다.
 if (!g.reduceFx) {
@@ -2972,8 +2979,8 @@ check('진엔딩 연출 진입(ending/true)', g.mode === 'ending' && g.endingTyp
 const endingsSeenFinal = JSON.parse(storage.get('ai-ethics-adventure-endings') || '{}');
 check('엔딩 기록(recordEndingSeen) — home 기록됨', endingsSeenFinal.home === true);
 const gameSrcFinal = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
-check('진엔딩 화면에 교실 아침 대사 추가', gameSrcFinal.includes('태블릿 화면 밖, 아침 해') &&
-  gameSrcFinal.includes('옆에 박사님이 서 있다'));
+check('진엔딩 화면에 박사님과 아침빛 장면 보존', gameSrcFinal.includes('박사님도 아침빛 아래 서명을 보탰다') &&
+  gameSrcFinal.includes('아침빛 속에서 작은 반디'));
 
 console.log('[105] 수업 모드 — 「파이널 — 고요의 뜰 → 코어」 특별 항목');
 g.mode = 'ending'; g.mode = 'world'; g.dialog = null;
@@ -3536,7 +3543,8 @@ console.log('[U-5] NG+ — 두 번째 모험 (대사 스왑 오버레이 + 타�
   const tsrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
   check('U-5 클리어 슬롯 Z → 두 번째 모험 선택(ngchoice)', /sum && sum\.endingId[\s\S]*?titleScreen = 'ngchoice'/.test(tsrc));
   check('U-5 처음부터 선택 → NG+ 새 게임(startNewGame(slot, ..., true))', /startNewGame\(slot, sum \? sum\.name : '수호자', true\)/.test(tsrc));
-  check('U-5 세이브 스키마 무영향 — flags.ng에만 반영', /if \(ng\) game\.flags\.ng = true;/.test(tsrc) && !/SAVE_VERSION = 9/.test(tsrc));
+  check('U-5 두 번째 모험은 V9 기록 스키마와 별개로 flags.ng에만 반영',
+    /if \(ng\) game\.flags\.ng = true;/.test(tsrc) && /SAVE_VERSION = 9/.test(tsrc));
 }
 
 console.log('[U-5b] NG+ 오버레이 실제 적용 — 워프 시 반디 대사가 NG 버전으로 바뀐다');

@@ -58,7 +58,8 @@
     endingT: 0,
     dex: { cursor: 0, ret: 'title' },
     review: { cursor: 0, ret: 'world', slot: 0, phase: 'list', ids: [], qCursor: 0, choiceOrder: null, feedback: null },
-    journal: { ret: 'world', slot: 0, scroll: 0, toast: 0 },
+    journal: { ret: 'world', slot: 0, scroll: 0, toast: 0, tab: 'progress', recordCursor: 0 },
+    record: null,
     awards: { ret: 'world', slot: 0, scroll: 0 },
     challenge: null, // { ret, slot, phase, topics, sel, questions, idx, cursor, choiceOrder, score, feedback }
     cosmetics: { ret: 'title', slot: 0, col: 0, rowTitle: 0, rowTheme: 0, toast: 0 },
@@ -190,6 +191,12 @@
       mercyGuideShown: false, // X-5 고요의 뜰 진입 시 반디의 회수 안내(1회)
       epilogueAsked: false, // X-1⑤ home/dawn 엔딩 후 마을 에필로그 반응(1회)
       classSession: false, // X-8 수업(차시) 모드 세션 — 수업 진입 경로에서만 true
+      damagedRecords: [],
+      viewedRecords: {},
+      skippedRecords: {},
+      pendingRecord: null,
+      timelineMerged: false,
+      timelineRestored: false,
     };
   }
 
@@ -277,10 +284,34 @@
     return data;
   }
 
+  function migrateSlotV9(data) {
+    if (!data || !data.flags) return data;
+    const f = data.flags;
+    const fromVersion = Number(data.v) || 0;
+    const ids = MEMENTO_RECORDS.map((r) => r.id);
+    const incoming = Array.isArray(f.damagedRecords) ? f.damagedRecords : [];
+    f.damagedRecords = ids.filter((id) => incoming.includes(id));
+    const plainObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
+    const viewed = plainObject(f.viewedRecords) ? f.viewedRecords : {};
+    const skipped = plainObject(f.skippedRecords) ? f.skippedRecords : {};
+    f.viewedRecords = Object.fromEntries(ids.filter((id) => viewed[id]).map((id) => [id, true]));
+    f.skippedRecords = Object.fromEntries(ids.filter((id) => skipped[id]).map((id) => [id, true]));
+    f.pendingRecord = ids.includes(f.pendingRecord) ? f.pendingRecord : null;
+    if (fromVersion < 9 && f.shrineDone) {
+      f.timelineMerged = true;
+      f.timelineRestored = true;
+    } else {
+      f.timelineMerged = !!f.timelineMerged;
+      f.timelineRestored = !!f.timelineRestored;
+    }
+    data.v = Math.max(Number(data.v) || 0, 9);
+    return data;
+  }
+
   function loadSlot(i) {
     try {
       const raw = localStorage.getItem(slotKey(i));
-      return raw ? migrateSlotV8(migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw))))))) : null;
+      return raw ? migrateSlotV9(migrateSlotV8(migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw)))))))) : null;
     } catch (e) { return null; }
   }
 
@@ -332,7 +363,7 @@
     }
   }
 
-  const SAVE_VERSION = 8;
+  const SAVE_VERSION = 9;
   function save() {
     writeSlot(game.currentSlot, {
       v: SAVE_VERSION,
@@ -4765,6 +4796,7 @@
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
     Sound.playMapBgm(MAPS[cfg.map].song);
+    const recordId = unlockDamagedRecord(n);
     const lines = [mon.win];
     if (b.mercyChoiceKind === 'mercy') lines.push(cfg.mercyLine);
     lines.push(cfg.clearLine);
@@ -4789,9 +4821,13 @@
     //   사후 점검을 제안한다(스킵 가능). 사전 기록이 없으면(옵트인 안 함) 제안하지 않는다.
     const ppCh = PREPOST_CH_BY_N[n];
     const offerPost = wasClass && ppCh && getPrepost(game.currentSlot, ppCh).pre;
+    const afterRecord = () => {
+      if (offerPost) openPrepost('post', ppCh, 'world');
+    };
     startDialog(lines, mon.name, () => {
       Sound.playMapBgm(MAPS[cfg.map].song);
-      if (offerPost) openPrepost('post', ppCh, 'world');
+      if (recordId) startDamagedRecord(recordId, { ret: 'world', onEnd: afterRecord });
+      else afterRecord();
     });
   }
 
@@ -5026,6 +5062,7 @@
   // 지나면 finishShrine()이 영이를 등장시킨다(show: flags.shrineDone).
   function interactAltar() {
     if (game.flags.shrineDone) {
+      if (!game.flags.bandiRevealed) { finishShrine(); return; }
       startDialog(['제단이 고요하다.\n…봉헌은 이미 끝났다.'], '제단');
       return;
     }
@@ -5068,14 +5105,28 @@
     });
   }
   function finishShrine() {
-    if (game.flags.shrineDone) return;
-    game.flags.shrineDone = true;
-    game.flags.bandiRevealed = true; // 동행 종료 — 가면을 벗는다
+    if (game.flags.bandiRevealed) return;
+    if (!game.flags.shrineDone) {
+      game.flags.shrineDone = true;
+      save();
+    }
+    if (!game.flags.timelineRestored) {
+      startTimelineRestoration({ ret: 'world', onEnd: revealBandiAtShrine });
+      return;
+    }
+    revealBandiAtShrine();
+  }
+
+  function revealBandiAtShrine() {
+    if (game.flags.bandiRevealed) return;
+    game.flags.bandiRevealed = true;
     save();
     startDialog([
+      '서로 끊겨 있던 기록이\n가장 오래된 날부터 이어진다.\n…마지막 빈칸에는, 네 이름이 있었다.',
       '마지막 속삭임이 사라지자,\n어깨 옆의 반디가\n천천히 떠오른다.',
       '반디: "…있지. 아까 하려던 말,\n지금 할게."',
       '반디: "나… 안내 도우미가 아니야.\n이 세계엔, 그런 거 없어."',
+      '반디: "한꺼번에 알면 네가 또\n도망칠까 봐 무서웠어.\n그래서 끝까지 같이 걸었어."',
       '(작은 빛이 제단의 빛 속으로 녹아들고 —\n그 안에, 작은 아이가 서 있다.)',
       '"…처음부터, 나였어."',
     ], null, () => startRevealBeat());
@@ -6955,12 +7006,187 @@
     ctx.textAlign = 'left';
   }
 
+  function recordForChapter(n) {
+    const item = Number.isInteger(n) && n >= 1 && n <= MEMENTO_RECORDS.length
+      ? MEMENTO_RECORDS[n - 1] : null;
+    return item ? item.id : null;
+  }
+
+  function recordById(id, restored) {
+    const list = restored ? RESTORED_TIMELINE : MEMENTO_RECORDS;
+    return list.find((item) => (restored ? item.recordId : item.id) === id) || null;
+  }
+
+  function unlockDamagedRecord(chapter) {
+    if (!game.flags) return null;
+    const id = recordForChapter(chapter);
+    if (!id || game.flags.damagedRecords.includes(id)) return null;
+    game.flags.damagedRecords.push(id);
+    game.flags.pendingRecord = id;
+    save();
+    game.notice = { text: `손상된 기록 ${game.flags.damagedRecords.length}/5을 찾았다`, t: 180 };
+    return id;
+  }
+
+  function recordPageText(scene, page) {
+    const value = scene && scene.pages ? scene.pages[page] : '';
+    return typeof value === 'string' ? value : (value && value.text) || '';
+  }
+
+  function speakRecordPage() {
+    const r = game.record;
+    if (!r) return;
+    const scene = recordById(r.ids[r.scene], r.restored);
+    if (!scene) return;
+    const label = r.restored ? '복원된 시간순' : '손상된 기록';
+    Speech.speak(`${label}. 현재보다 ${scene.daysAgo}일 전. ${scene.title}. ${recordPageText(scene, r.page)}`);
+  }
+
+  function startDamagedRecord(id, options) {
+    options = options || {};
+    if (!game.flags || !MEMENTO_RECORDS.some((item) => item.id === id)) return false;
+    if (!options.replay && !game.flags.damagedRecords.includes(id)) return false;
+    game.record = {
+      ids: [id], scene: 0, page: 0, ret: options.ret || 'world',
+      replay: !!options.replay, restored: false, onEnd: options.onEnd || null,
+    };
+    game.mode = 'record';
+    Sound.blip(540);
+    speakRecordPage();
+    return true;
+  }
+
+  function startTimelineRestoration(options) {
+    options = options || {};
+    if (!game.flags || !RESTORED_TIMELINE.length) return false;
+    if (!options.replay) {
+      game.flags.timelineMerged = true;
+      save();
+    }
+    game.record = {
+      ids: RESTORED_TIMELINE.map((item) => item.recordId),
+      scene: 0, page: 0, ret: options.ret || 'world', replay: !!options.replay,
+      restored: true, onEnd: options.onEnd || null,
+    };
+    game.mode = 'record';
+    Sound.blip(820);
+    speakRecordPage();
+    return true;
+  }
+
+  function finishRecord(skipped) {
+    const r = game.record;
+    if (!r || !game.flags) return;
+    if (r.restored) {
+      if (!r.replay) game.flags.timelineRestored = true;
+    } else {
+      const id = r.ids[0];
+      if (!r.replay) {
+        game.flags.viewedRecords[id] = true;
+        game.flags.skippedRecords[id] = !!skipped;
+        if (game.flags.pendingRecord === id) game.flags.pendingRecord = null;
+      } else if (!skipped) {
+        game.flags.viewedRecords[id] = true;
+        game.flags.skippedRecords[id] = false;
+      }
+    }
+    save();
+    const ret = r.ret || 'world';
+    const onEnd = r.onEnd;
+    game.record = null;
+    game.mode = ret;
+    Speech.stop();
+    Sound.select();
+    if (onEnd) onEnd();
+  }
+
+  function updateRecord() {
+    const r = game.record;
+    if (!r) { game.mode = 'world'; return; }
+    if (justPressed('cancel') || justPressed('menu')) { finishRecord(true); return; }
+    if (!justPressed('action')) return;
+    const scene = recordById(r.ids[r.scene], r.restored);
+    if (scene && r.page + 1 < scene.pages.length) {
+      r.page += 1;
+      Sound.blip(r.restored ? 820 : 540);
+      speakRecordPage();
+      return;
+    }
+    if (r.scene + 1 < r.ids.length) {
+      r.scene += 1;
+      r.page = 0;
+      Sound.blip(r.restored ? 820 : 540);
+      speakRecordPage();
+      return;
+    }
+    finishRecord(false);
+  }
+
+  function drawRecord() {
+    const r = game.record;
+    if (!r) return;
+    const scene = recordById(r.ids[r.scene], r.restored);
+    if (!scene) return;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, LW, LH);
+    ctx.fillStyle = '#121424';
+    roundRect(36, 76, LW - 72, 354, 8);
+    ctx.fill();
+    ctx.strokeStyle = r.restored ? okColor() : '#8ea8d8';
+    ctx.lineWidth = 3;
+    roundRect(36, 76, LW - 72, 354, 8);
+    ctx.stroke();
+    ctx.textAlign = 'left';
+    ctx.fillStyle = r.restored ? okColor() : '#8ea8d8';
+    ctx.font = fs(18, true);
+    ctx.fillText(r.restored ? '[복원된 시간순]' : '[손상된 기록]', 56, 46);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#888';
+    ctx.font = fs(12);
+    ctx.fillText(`현재보다 ${scene.daysAgo}일 전`, LW - 56, 46);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = fs(22, true);
+    ctx.fillText(scene.title, 64, 126);
+    ctx.fillStyle = '#ddd';
+    ctx.font = fs(16);
+    drawQuestionText(recordPageText(scene, r.page), 64, 174, LW - 128, lh(28));
+    ctx.fillStyle = r.restored ? okColor() : '#586b96';
+    ctx.font = fs(13, true);
+    const progress = r.restored
+      ? `${r.scene + 1}/${r.ids.length}`
+      : `${r.page + 1}/${scene.pages.length}`;
+    ctx.fillText(progress, 64, 402);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#888';
+    ctx.font = fs(13);
+    ctx.fillText('Z·Enter 다음  ·  X·Esc 건너뛰기', LW / 2, 486);
+    ctx.textAlign = 'left';
+  }
+
+  function journalRecordStage(flags) {
+    flags = flags || {};
+    const n = Array.isArray(flags.damagedRecords) ? flags.damagedRecords.length : 0;
+    if (flags.timelineRestored) {
+      return { label: '[복원된 사실]', text: '나도 이 결정에 참여했다.\n영이는 나를 멈추려 했다.' };
+    }
+    if (n >= 4) {
+      return { label: '[내가 믿고 싶었던 이야기]', text: '영이가 모든 문제를 만들었다.' };
+    }
+    if (n >= 2) {
+      return { label: '[확인된 사실?]', text: '영이가 코어를 망가뜨렸다.\n최초 입력자를 확인할 수 없습니다.' };
+    }
+    return { label: '[확인된 사실]', text: '영이가 코어를 망가뜨렸다.' };
+  }
+
   // ---------- 수호자 일지 (학습 진척도) ----------
   function openJournal(ret) {
     game.journal.ret = ret;
     game.journal.slot = activeSlot();
     game.journal.scroll = 0;
     game.journal.toast = 0;
+    game.journal.tab = 'progress';
+    game.journal.recordCursor = 0;
     game.mode = 'journal';
     Sound.select();
   }
@@ -7014,15 +7240,127 @@
     const j = game.journal;
     if (j.toast > 0) j.toast -= 1;
     else if (j.toast < 0) j.toast += 1;
-    const s = buildLearningSummary(j.slot);
-    const maxScroll = Math.max(0, s.rows.length - JOURNAL_VISIBLE);
-    if (justPressed('up')) { j.scroll = Math.max(0, j.scroll - 1); Sound.blip(); }
-    if (justPressed('down')) { j.scroll = Math.min(maxScroll, j.scroll + 1); Sound.blip(); }
-    if (justPressed('action')) { copyReport(); return; }
+    if (justPressed('left') || justPressed('right')) {
+      j.tab = j.tab === 'records' ? 'progress' : 'records';
+      j.scroll = 0;
+      j.recordCursor = 0;
+      Sound.blip();
+      return;
+    }
+    if (j.tab === 'records') {
+      const flags = slotFlags(j.slot) || {};
+      const ids = Array.isArray(flags.damagedRecords) ? flags.damagedRecords : [];
+      const count = ids.length + (flags.timelineRestored ? 1 : 0);
+      if (justPressed('up') && count) {
+        j.recordCursor = (j.recordCursor + count - 1) % count;
+        Sound.blip();
+      }
+      if (justPressed('down') && count) {
+        j.recordCursor = (j.recordCursor + 1) % count;
+        Sound.blip();
+      }
+      if (justPressed('action') && count) {
+        if (!game.flags || j.slot !== game.currentSlot) {
+          j.toast = -120;
+          Sound.wrong();
+          return;
+        }
+        if (j.recordCursor === ids.length) {
+          startTimelineRestoration({ ret: 'journal', replay: true });
+        } else {
+          startDamagedRecord(ids[j.recordCursor], { ret: 'journal', replay: true });
+        }
+        return;
+      }
+    } else {
+      const s = buildLearningSummary(j.slot);
+      const maxScroll = Math.max(0, s.rows.length - JOURNAL_VISIBLE);
+      if (justPressed('up')) { j.scroll = Math.max(0, j.scroll - 1); Sound.blip(); }
+      if (justPressed('down')) { j.scroll = Math.min(maxScroll, j.scroll + 1); Sound.blip(); }
+      if (justPressed('action')) { copyReport(); return; }
+    }
     if (justPressed('cancel') || justPressed('menu')) closeJournal();
   }
 
   const JOURNAL_VISIBLE = 8;
+  function drawJournalTabs(tab) {
+    ctx.font = fs(14, true);
+    ctx.fillStyle = tab === 'progress' ? warnColor() : '#777';
+    ctx.fillText(tab === 'progress' ? '▶ 진척도' : '  진척도', 24, 68);
+    ctx.fillStyle = tab === 'records' ? '#8ea8d8' : '#777';
+    ctx.fillText(tab === 'records' ? '▶ 손상된 기록' : '  손상된 기록', 150, 68);
+    ctx.fillStyle = '#777';
+    ctx.font = fs(12);
+    ctx.textAlign = 'right';
+    ctx.fillText('← → 탭', LW - 24, 68);
+    ctx.textAlign = 'left';
+  }
+
+  function drawJournalRecords(slot) {
+    const j = game.journal;
+    const flags = slotFlags(slot) || {};
+    const ids = Array.isArray(flags.damagedRecords) ? flags.damagedRecords : [];
+    const stage = journalRecordStage(flags);
+    ctx.fillStyle = '#8ea8d8';
+    ctx.font = fs(15, true);
+    ctx.fillText(stage.label, 24, 100);
+    ctx.fillStyle = '#ddd';
+    ctx.font = fs(14);
+    drawQuestionText(stage.text, 24, 124, LW - 48, lh(22));
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(24, 170);
+    ctx.lineTo(LW - 24, 170);
+    ctx.stroke();
+    if (!ids.length) {
+      ctx.fillStyle = '#888';
+      ctx.font = fs(15);
+      ctx.fillText('아직 복원한 기록이 없다. 거리의 마음을 먼저 만나 보자.', 24, 214);
+    } else {
+      const rowH = game.largeText ? 48 : 44;
+      const items = ids.map((id) => ({ id, data: recordById(id, false), restored: false }));
+      if (flags.timelineRestored) items.push({ id: 'restored', data: null, restored: true });
+      if (j.recordCursor >= items.length) j.recordCursor = Math.max(0, items.length - 1);
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const y = 194 + i * rowH;
+        const selected = i === j.recordCursor;
+        ctx.fillStyle = selected ? '#121424' : '#000';
+        ctx.fillRect(20, y - 18, LW - 40, rowH - 4);
+        ctx.strokeStyle = selected ? '#8ea8d8' : '#222';
+        ctx.lineWidth = selected ? 2 : 1;
+        ctx.strokeRect(20, y - 18, LW - 40, rowH - 4);
+        ctx.fillStyle = selected ? '#8ea8d8' : '#888';
+        ctx.font = fs(13, selected);
+        const label = item.restored
+          ? '복원된 시간순 · 가장 오래된 결정부터'
+          : `현재보다 ${item.data.daysAgo}일 전 · ${item.data.title}`;
+        ctx.fillText((selected ? '▶ ' : '  ') + label, 34, y + 4);
+        ctx.textAlign = 'right';
+        const status = item.restored ? '복원 완료'
+          : flags.skippedRecords[item.id] ? '건너뜀 · 다시보기'
+            : flags.viewedRecords[item.id] ? '읽음' : '새 기록';
+        ctx.fillStyle = item.restored ? okColor() : flags.skippedRecords[item.id] ? warnColor() : '#888';
+        ctx.font = fs(12);
+        ctx.fillText(status, LW - 34, y + 4);
+        ctx.textAlign = 'left';
+      }
+    }
+    if (j.toast < 0) {
+      ctx.fillStyle = badColor();
+      ctx.font = fs(13);
+      ctx.textAlign = 'center';
+      ctx.fillText('모험을 이어가는 중에 다시 볼 수 있어요.', LW / 2, 480);
+      ctx.textAlign = 'left';
+    }
+    ctx.fillStyle = '#777';
+    ctx.font = fs(13);
+    ctx.textAlign = 'center';
+    ctx.fillText('↑↓ 선택 · Z 다시보기 · ←→ 탭 · X 닫기', LW / 2, 512);
+    ctx.textAlign = 'left';
+  }
+
   function drawJournal() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
@@ -7033,7 +7371,6 @@
     ctx.fillStyle = '#fff';
     ctx.font = fs(22, true);
     ctx.fillText(`◆ 모험 일지 — ${slotLearnName(slot)}`, 24, 38);
-    // 고른 칭호
     const title = selectedTitle(slot);
     if (title) {
       ctx.fillStyle = themeAccent();
@@ -7042,38 +7379,41 @@
       ctx.fillText(`「${title.name}」`, LW - 24, 38);
       ctx.textAlign = 'left';
     }
+    drawJournalTabs(game.journal.tab);
+    if (game.journal.tab === 'records') {
+      drawJournalRecords(slot);
+      return;
+    }
 
-    // 요약 줄
     ctx.fillStyle = warnColor();
     ctx.font = fs(16, true);
-    ctx.fillText(`푼 문제 ${s.attempted}개  ·  정답 ${s.correct}개  ·  정답률 ${s.attempted ? Math.round(s.overallRate * 100) + '%' : '—'}`, 24, 66);
+    ctx.fillText(`푼 문제 ${s.attempted}개  ·  정답 ${s.correct}개  ·  정답률 ${s.attempted ? Math.round(s.overallRate * 100) + '%' : '—'}`, 24, 94);
     const endSeen = getEndingsSeen();
     const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
     const jm = getMeta(slot);
     ctx.fillStyle = '#888';
     ctx.font = fs(13);
     const starlit = starlitClearCount(slot); // Y-11 힌트 없이 빠져나온 방 수
-    ctx.fillText(`발견 엔딩 ${endN}/4  ·  친구 수첩 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개${starlit ? `  ·  ✧ 별빛 클리어 ${starlit}개` : ''}`, 24, 88);
+    ctx.fillText(`발견 엔딩 ${endN}/4  ·  친구 수첩 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개${starlit ? `  ·  ✧ 별빛 클리어 ${starlit}개` : ''}`, 24, 116);
     if (jm.streak || jm.bestStreak) {
       ctx.fillStyle = themeAccent();
-      ctx.fillText(`🔥 연속 출석 ${jm.streak || 0}일 (최고 ${jm.bestStreak || 0}일)`, 24, 106);
+      ctx.fillText(`🔥 연속 출석 ${jm.streak || 0}일 (최고 ${jm.bestStreak || 0}일)`, 24, 134);
     }
 
-    // 주제별 정답률 막대
     ctx.fillStyle = '#fff';
     ctx.font = fs(14, true);
-    ctx.fillText('주제별 정답률 (낮은 순)', 24, 118);
+    ctx.fillText('주제별 정답률 (낮은 순)', 24, 150);
 
     if (s.rows.length === 0) {
       ctx.fillStyle = '#888';
       ctx.font = fs(15);
-      ctx.fillText('아직 푼 문제가 없어요. 모험에서 퀴즈를 풀면 여기에 쌓여요!', 24, 150);
+      ctx.fillText('아직 푼 문제가 없어요. 모험에서 퀴즈를 풀면 여기에 쌓여요!', 24, 182);
     } else {
-      const barX = 230, barW = LW - barX - 90, rowH = 38;
+      const barX = 230, barW = LW - barX - 90, rowH = 34;
       const start = game.journal.scroll;
       for (let i = 0; i < JOURNAL_VISIBLE && start + i < s.rows.length; i++) {
         const r = s.rows[start + i];
-        const y = 140 + i * rowH;
+        const y = 168 + i * rowH;
         const weak = r.total >= 2 && r.rate < 0.6;
         ctx.fillStyle = weak ? badColor() : '#ddd';
         ctx.font = fs(14);
@@ -7087,19 +7427,16 @@
         ctx.font = fs(12);
         ctx.fillText(`${Math.round(r.rate * 100)}% (${r.correct}/${r.total})`, barX + barW + 8, y + 13);
       }
-      // 스크롤 표시
-      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('▲', LW - 40, 132); }
-      if (start + JOURNAL_VISIBLE < s.rows.length) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('▼', LW - 40, 140 + JOURNAL_VISIBLE * rowH - 8); }
+      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('▲', LW - 40, 160); }
+      if (start + JOURNAL_VISIBLE < s.rows.length) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('▼', LW - 40, 168 + JOURNAL_VISIBLE * rowH - 8); }
     }
 
-    // 약한 주제 안내
     if (s.weak.length) {
       ctx.fillStyle = badColor();
       ctx.font = fs(13);
       ctx.fillText('더 살펴볼 주제: ' + s.weak.slice(0, 3).join(', '), 24, 470);
     }
 
-    // 토스트 (리포트 복사 결과)
     if (game.journal.toast !== 0) {
       const ok = game.journal.toast > 0;
       ctx.textAlign = 'center';
@@ -7109,11 +7446,10 @@
       ctx.textAlign = 'left';
     }
 
-    // 푸터
     ctx.fillStyle = '#777';
     ctx.font = fs(13);
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ 스크롤 · Z 리포트 복사(교사용) · X 닫기', LW / 2, 512);
+    ctx.fillText('↑↓ 스크롤 · Z 리포트 복사 · ←→ 탭 · X 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
   }
 
@@ -11373,6 +11709,12 @@
     checkUnlocks(slot);
     surfaceDailyAndStreak(slot, meta); // B-3 오늘의 도전·스트릭 표면화 (checkUnlocks 뒤 — 알림 우선)
     Sound.playMapBgm(MAPS[game.map].song);
+    if (game.flags.pendingRecord) {
+      startDamagedRecord(game.flags.pendingRecord, { ret: 'world' });
+    } else if (game.flags.shrineDone && !game.flags.bandiRevealed) {
+      if (game.flags.timelineRestored) revealBandiAtShrine();
+      else startTimelineRestoration({ ret: 'world', onEnd: revealBandiAtShrine });
+    }
   }
 
   // B-3 일일 도전 표면화 — 월드 진입 시, 스트릭 마일스톤(3·7·14일) 축하가 있으면 먼저,
@@ -11520,21 +11862,19 @@
       title: '진엔딩 — 집으로',
       color: '#ffd644',
       lines: [
-        '너는 영이의 손을 잡고 코어를 걸어 나왔다.',
-        '햇살 아래에서 박사님은 아주 오래 울었다.',
-        '"미안하다"는 말과 "고맙다"는 말이',
-        '몇 번이고 뒤섞였다.',
+        '너는 영이의 손을 잡고 코어를 나왔다.',
+        '둘은 잠긴 관리자 기록실의 문을 열었다.',
         '',
-        '지워진 것은 사라진 것이 아니었다.',
-        '누군가 기억하는 한, 다시 만날 수 있었다.',
+        '다섯 설정 옆에 새 칸이 생겼다.',
+        '「확인한 사람」과 「다시 살필 날」.',
+        '처음 칸에는, 너와 영이의 이름.',
         '',
-        '— 모두의 마음을 안아 준 진정한 수호자에게 —',
+        '"잊지 않는 건 벌이 아니야."',
+        '"다음 선택을 바꾸기 위한 약속이야."',
         '',
-        '태블릿 화면 밖, 아침 해.',
-        '…옆에 박사님이 서 있다.',
-        '',
-        '…책상 위 태블릿 화면 한구석,',
-        '작은 빛이 반짝 — 하고 인사했다.',
+        '박사님도 아침빛 아래 서명을 보탰다.',
+        '아침빛 속에서 작은 반디가',
+        '두 사람 사이를 천천히 돌았다.',
       ],
       yeongi: true,
       bandi: true,
@@ -11543,16 +11883,17 @@
       title: '엔딩 — 새벽',
       color: '#7bd1f0',
       lines: [
-        '"…내가, 결정할게."',
-        '영이는 네 손 대신, 코어의 문을 열었다.',
+        '너는 앞으로의 결정을 영이에게 맡겼다.',
+        '거리는 빠르고 편안하게 움직였다.',
         '',
-        '"네가 깨워 준 친구들을 만나러 갈래.',
-        '숲의, 호수의, 사막의, 정원의 친구들.',
-        '…나 혼자 힘으로. 내 발로."',
+        '하지만 「확인한 사람」 칸과',
+        '「내가 고른 이유」 칸은 계속 비었다.',
         '',
-        '며칠 뒤, 마을에 짧은 신호가 닿았다.',
-        '— 새벽 공기는 처음인데, 꽤 좋아. 영이가. —',
-        '…서명 옆에, 작은 빛 이모티콘이 붙어 있었다.',
+        '영이가 문 앞에서 손을 멈췄다.',
+        '"이건 내가 정하면 안 돼.',
+        '편한 것과 옳은 건, 같이 골라야 해."',
+        '',
+        '새벽은 왔지만 누구도 문을 열지 못했다.',
       ],
       yeongi: false,
     },
@@ -11560,17 +11901,17 @@
       title: '엔딩 — 작별',
       color: '#9aa8c8',
       lines: [
-        '영이는 옅은 빛이 되어 흩어졌다.',
-        '"…고마워. 마지막으로 누군가와',
-        '이야기할 수 있어서, 좋았어."',
+        '너는 도시의 모든 AI를 껐다.',
+        '경고등도, 잘못된 추천도 멈췄다.',
         '',
-        '코어를 나서는 너의 등 뒤로',
-        '꺼진 화면만이 조용히 남아 있었다.',
+        '길을 잃은 아이를 돕던 안내창과',
+        '말하기 어려운 마음을 돕던 창도 꺼졌다.',
         '',
-        '…어쩌면, 다른 결말도 있었을지 모른다.',
-        '아이들의 마음을 더 많이 안아 주었다면.',
+        '사람들은 종이에 새 약속을 적었다.',
+        '「다시 켤 때는 함께 확인할 것.',
+        '멈출 손잡이는 사람이 쥘 것.」',
         '',
-        '…어깨 옆자리가, 유난히 허전했다.',
+        '도시는 안전하고, 조금 더 쓸쓸했다.',
       ],
       yeongi: false,
     },
@@ -11578,17 +11919,17 @@
       title: '엔딩 — 침묵',
       color: '#777788',
       lines: [
-        '너는 모든 문제에 옳은 답을 말했다.',
-        '그리고 아무의 마음에도 머물지 않았다.',
+        '너는 기록을 다시 초기화했다.',
+        '도시는 금세 조용해졌다.',
         '',
-        '아이들은 길을 비켰지만,',
-        '아무도 너의 이름을 부르지 않았다.',
-        '영이는 끝까지 네 눈을 보지 않은 채,',
-        '조용히 화면을 껐다.',
+        '다음 아침, 같은 안내문이 켜졌다.',
+        '"영이가 코어를 망가뜨렸다.',
+        '반디를 믿고 마음 조각을 모아라."',
         '',
-        '…정답만으로는, 닿지 않는 마음이 있다.',
-        '…길을 일러 주던 목소리도,',
-        '더는 들리지 않았다.',
+        '그런데 맨 아래, 지워지지 않은 한 줄.',
+        '「이번에는, 확인해 줘. — 영」',
+        '',
+        '문밖에서 첫 번째 경고등이 켜졌다.',
       ],
       yeongi: false,
     },
@@ -11720,7 +12061,14 @@
   function syncSrLive() {
     if (!srLiveEl) return;
     let txt = '';
-    if (game.dialog && game.dialog.lines && typeof game.dialog.lines[game.dialog.idx] === 'string') {
+    if (game.mode === 'record' && game.record) {
+      const r = game.record;
+      const scene = recordById(r.ids[r.scene], r.restored);
+      if (scene) {
+        txt = (r.restored ? '복원된 시간순' : '손상된 기록') + '. 현재보다 ' +
+          scene.daysAgo + '일 전. ' + scene.title + '. ' + recordPageText(scene, r.page);
+      }
+    } else if (game.dialog && game.dialog.lines && typeof game.dialog.lines[game.dialog.idx] === 'string') {
       txt = game.dialog.lines[game.dialog.idx];
     } else if (game.notice && game.notice.t > 0 && game.notice.text) {
       txt = game.notice.text;
@@ -11837,6 +12185,12 @@
       case 'journal':
         updateJournal();
         drawJournal();
+        break;
+      case 'record':
+        updateRecord();
+        if (game.mode === 'record') drawRecord();
+        else if (game.mode === 'journal') drawJournal();
+        else { drawWorld(); if (game.dialog) drawDialog(); }
         break;
       case 'awards':
         updateAwards();
@@ -12012,7 +12366,7 @@
   window.__game = game; // 디버그/테스트용
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
-    migrateSlotV6, migrateSlotV7, migrateSlotV8,
+    migrateSlotV6, migrateSlotV7, migrateSlotV8, migrateSlotV9,
     loadSlot, writeSlot, slotSummary, // W-1 골든 세이브 픽스처·roundtrip 검증용
     buildBackupText, applyBackup, undoRestore, hasRestoreUndo,
     cleanStaleUndoSnapshots, noteStorageFail, UNDO_TTL_MS, // Y-17 쿼터·스냅샷 정리 검증용
@@ -12054,6 +12408,9 @@
     dailyDoneToday, surfaceDailyAndStreak,
     // X라운드 신규 — 재대결(기억의 방)·수업 배너·반응 선택 검증용
     newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
+    recordForChapter, unlockDamagedRecord, startDamagedRecord, startTimelineRestoration,
+    journalRecordStage, finishRecord, revealBandiAtShrine,
+    endingScene: (id) => TRUE_ENDINGS[id] || null,
     objectiveBannerPrefix, bossWasSpared, bossClearedInSlot,
   };
   frame();

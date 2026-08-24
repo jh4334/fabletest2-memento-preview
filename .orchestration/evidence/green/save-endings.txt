@@ -1,0 +1,17 @@
+2026-08-25 KST
+
+Command: npm test
+Exit: 0
+
+Save evidence:
+- SAVE_VERSION 9
+- Existing v3, v5, and v8 fixtures migrate successfully.
+- Three slots, backup/restore, unknown future fields, and round trips pass.
+- New record fields default safely and skipped state is saved.
+
+Ending evidence:
+- home: restored record room and human verification fields
+- silent: another reset and the same biased guide
+- dawn: decisions delegated to AI and human choice fields left blank
+- farewell: harmful AI behavior and useful assistance both switched off
+- Existing IDs home/dawn/farewell/silent and cumulative conditions pass.

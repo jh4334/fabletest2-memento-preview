@@ -151,10 +151,10 @@ check('학급 모드 예외 없이 진입', g.mode !== 'teacher');
 check('flags가 새로 채워짐', !!g.flags && typeof g.flags.defeated === 'object');
 
 // ── W-1 세이브 마이그레이션 골든 픽스처 테스트 ──
-// v3·v5·v8 세대의 "골든 세이브"를 심고, loadSlot의 마이그레이션 사슬이 (a) 필수 플래그를
+// v3·v5·v8 세대의 "골든 세이브"를 심고, loadSlot의 V9 마이그레이션 사슬이 (a) 필수 플래그를
 // 모두 채우고 (b) talkedProf 파생 추론이 정확하며 (c) defeated 승계가 유지되고
 // (d) v9 미래 필드가 roundtrip에서 사라지지 않는지 검사한다.
-console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9 미래필드)');
+console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8→v9·v9 미래필드)');
 {
   const T = windowObj.__test;
   const put = (i, obj) => storage.set('ai-ethics-adventure-slot-' + i, JSON.stringify(obj));
@@ -163,7 +163,7 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9
   put(0, { v: 3, name: '골든3', map: 'village', x: 13, y: 16,
     flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true }, mercy: 5, visited: {} } });
   const s3 = T.loadSlot(0);
-  check('W-1 v3→최신 버전 상승(v=8)', s3.v === 8);
+  check('W-1 v3→최신 버전 상승(v=9)', s3.v === 9);
   check('W-1 v3 필수 플래그 채워짐(introClue1·prologueClosed·privacyLeak 정의)',
     s3.flags.introClue1 !== undefined && s3.flags.prologueClosed !== undefined && s3.flags.privacyLeak === 0);
   check('W-1 v3 talkedProf 파생 추론 — introClue1 = !!talkedProf = true', s3.flags.introClue1 === true);
@@ -175,19 +175,22 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9
     flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true }, mercy: 8, visited: {},
       introClue1: true, introClue2: true, introClue3: true, introDoorOpen: true, introForestTrace: true } });
   const s5 = T.loadSlot(1);
-  check('W-1 v5→최신 버전 상승(v=8)', s5.v === 8);
+  check('W-1 v5→최신 버전 상승(v=9)', s5.v === 9);
   check('W-1 v5 ttaraFirstEncounter 파생 = !!defeated.bekkyeomon = true', s5.flags.ttaraFirstEncounter === true);
   check('W-1 v5 defeated 3인 승계 유지', s5.flags.defeated.pyeonhyangmon === true);
   check('W-1 v5 privacy 필드 기본값 채워짐', s5.flags.privacyLeak === 0 && s5.flags.privacyRecoveryActive === false);
 
-  // (v8 골든) — 클리어 세이브. 필드 유지 + 이미 최신이라 변형 없음.
+  // (v8 골든) — 클리어 세이브. 기존 필드를 유지하며 V9 기본값을 보탠다.
   put(2, { v: 8, name: '골든8', map: 'village', x: 13, y: 16,
     flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true, hwangakmon: true, yuhokmon: true, hollimmon: true, finalboss: true, yeongi: true },
       mercy: 8, visited: {}, introClue1: true, introForestTrace: true, ttaraFirstEncounter: true,
       privacyLeak: 0, privacyRecovery: 0, privacyRecoveryActive: false, prologueClosed: true, forestClearingRead: true,
       endingId: 'home' } });
   const s8 = T.loadSlot(2);
-  check('W-1 v8 그대로 유지(v=8) + endingId 보존', s8.v === 8 && s8.flags.endingId === 'home');
+  check('W-1 v8→v9 + endingId 보존', s8.v === 9 && s8.flags.endingId === 'home');
+  check('W-1 v8→v9 기록 필드 기본값', Array.isArray(s8.flags.damagedRecords) &&
+    s8.flags.damagedRecords.length === 0 && s8.flags.pendingRecord === null &&
+    s8.flags.timelineMerged === false && s8.flags.timelineRestored === false);
   check('W-1 v8 클리어 슬롯 요약 — done/endingId 노출', (() => { const sm = T.slotSummary(2); return sm && sm.done === true && sm.endingId === 'home'; })());
 
   // (v9 미래 필드 roundtrip) — 알려지지 않은 상위·flags 필드가 load→write→load에서 살아남아야 한다.
@@ -197,7 +200,7 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9
       introClue1: true, introForestTrace: true, ttaraFirstEncounter: true, privacyLeak: 0, prologueClosed: true,
       futureFlag: 42 } });
   const s9 = T.loadSlot(0);
-  // 참고: 마이그레이션 사슬은 v를 알려진 최신(8)으로 정규화하지만, '모르는 필드'는 지우지 않는다.
+  // 참고: 마이그레이션 사슬은 v를 알려진 최신(9)으로 정규화하지만, '모르는 필드'는 지우지 않는다.
   check('W-1 v9 미래 상위 필드 보존(load)', s9.futureTop === 'KEEP_ME');
   check('W-1 v9 미래 flags 필드 보존(load)', s9.flags.futureFlag === 42);
   T.writeSlot(0, s9); // roundtrip — 다시 저장 후 재로드
