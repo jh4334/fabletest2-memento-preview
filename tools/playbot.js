@@ -71,6 +71,13 @@ function advanceDialog(max = 200) {
   }
   if (g.mode === 'dialog') throw new Error('대화가 끝나지 않음');
 }
+function advanceRecord(max = 100) {
+  for (let i = 0; i < max && g.mode === 'record'; i++) {
+    tap('z');
+    dialogTaps += 1;
+  }
+  if (g.mode === 'record') throw new Error('기록이 끝나지 않음');
+}
 function pickChoice(idx) {
   if (g.mode !== 'choice') throw new Error('선택 모드가 아님: ' + g.mode);
   let guard = 0;
@@ -78,6 +85,7 @@ function pickChoice(idx) {
   tap('z');
 }
 function enterZone(x, y, key, expectMap) {
+  if (g.mode === 'record') advanceRecord();
   const dirOf = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   setPos(x, y, dirOf[key]);
   step(14); // 직전 워프의 쿨다운(12프레임)이 남아 있으면 워프 칸을 그냥 지나친다
@@ -406,7 +414,9 @@ for (let i = 0; i < SHRINE_WHISPERS.length; i++) {
   if (idx < 0) throw new Error('정답 카드 미소지: ' + SHRINE_WHISPERS[i].answer);
   pickChoice(idx); advanceDialog();
 }
+if (g.mode === 'record') advanceRecord();
 if (!g.flags.shrineDone || !g.flags.bandiRevealed) throw new Error('봉헌/정체 공개 실패');
+if (g.mode === 'dialog') advanceDialog();
 // U-2 반디 리빌 정지 비트 — Z로 넘기면 마지막 대사("…가면을 벗을게")로 이어진다
 if (g.mode === 'revealbeat') tap('z');
 if (g.mode === 'dialog') advanceDialog();

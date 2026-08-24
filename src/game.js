@@ -5022,6 +5022,7 @@
         game.mode = 'ending';
         game.endingType = 'true';
         game.endingT = 0;
+        announceEnding(endingId);
         Sound.playMapBgm('ending');
       });
     } else if (b.monId === 'bekkyeomon') {
@@ -7096,6 +7097,7 @@
     game.record = null;
     game.mode = ret;
     Speech.stop();
+    if (ret === 'journal') announceJournal();
     Sound.select();
     if (onEnd) onEnd();
   }
@@ -7189,11 +7191,44 @@
     game.journal.recordCursor = 0;
     game.mode = 'journal';
     Sound.select();
+    announceJournal();
   }
 
   function closeJournal() {
     game.mode = game.journal.ret;
+    Speech.stop();
     Sound.select();
+  }
+
+  function journalAnnouncement() {
+    const j = game.journal;
+    const name = slotLearnName(j.slot);
+    if (j.tab !== 'records') {
+      const s = buildLearningSummary(j.slot);
+      return `모험 일지, ${name}. 진척도 탭. 푼 문제 ${s.attempted}개, 정답 ${s.correct}개.`;
+    }
+    const flags = slotFlags(j.slot) || {};
+    const ids = Array.isArray(flags.damagedRecords) ? flags.damagedRecords : [];
+    const items = ids.map((id) => ({ id, data: recordById(id, false), restored: false }));
+    if (flags.timelineRestored) items.push({ id: 'restored', data: null, restored: true });
+    const stage = journalRecordStage(flags);
+    if (!items.length) {
+      return `모험 일지, ${name}. 손상된 기록 탭. 해금된 기록 0개. ${stage.label}. ${stage.text}`;
+    }
+    const cursor = Math.min(j.recordCursor, items.length - 1);
+    const item = items[cursor];
+    const label = item.restored
+      ? '복원된 시간순, 가장 오래된 결정부터'
+      : `현재보다 ${item.data.daysAgo}일 전, ${item.data.title}`;
+    const status = item.restored ? '복원 완료'
+      : flags.skippedRecords[item.id] ? '건너뜀, 다시보기 가능'
+        : flags.viewedRecords[item.id] ? '읽음' : '새 기록';
+    return `모험 일지, ${name}. 손상된 기록 탭. 해금된 기록 ${items.length}개 중 ${cursor + 1}번째. ` +
+      `${stage.label}. ${stage.text}. ${label}. ${status}.`;
+  }
+
+  function announceJournal() {
+    Speech.speak(journalAnnouncement());
   }
 
   // 학습 리포트(교사·학부모용)를 텍스트로 만들어 클립보드에 복사
@@ -7245,6 +7280,7 @@
       j.scroll = 0;
       j.recordCursor = 0;
       Sound.blip();
+      announceJournal();
       return;
     }
     if (j.tab === 'records') {
@@ -7254,10 +7290,12 @@
       if (justPressed('up') && count) {
         j.recordCursor = (j.recordCursor + count - 1) % count;
         Sound.blip();
+        announceJournal();
       }
       if (justPressed('down') && count) {
         j.recordCursor = (j.recordCursor + 1) % count;
         Sound.blip();
+        announceJournal();
       }
       if (justPressed('action') && count) {
         if (!game.flags || j.slot !== game.currentSlot) {
@@ -11862,8 +11900,7 @@
       title: '진엔딩 — 집으로',
       color: '#ffd644',
       lines: [
-        '너는 영이의 손을 잡고 코어를 나왔다.',
-        '둘은 잠긴 관리자 기록실의 문을 열었다.',
+        '너와 영이는 잠긴 관리자 기록실을 열었다.',
         '',
         '다섯 설정 옆에 새 칸이 생겼다.',
         '「확인한 사람」과 「다시 살필 날」.',
@@ -11873,8 +11910,7 @@
         '"다음 선택을 바꾸기 위한 약속이야."',
         '',
         '박사님도 아침빛 아래 서명을 보탰다.',
-        '아침빛 속에서 작은 반디가',
-        '두 사람 사이를 천천히 돌았다.',
+        '작은 반디가 두 사람 사이를 천천히 돌았다.',
       ],
       yeongi: true,
       bandi: true,
@@ -11935,6 +11971,19 @@
     },
   };
 
+  function endingScene(id) {
+    return TRUE_ENDINGS[id] || TRUE_ENDINGS.farewell;
+  }
+
+  function endingAnnouncement(id) {
+    const e = endingScene(id);
+    return [e.title].concat(e.lines).filter(Boolean).join('. ');
+  }
+
+  function announceEnding(id) {
+    Speech.speak(endingAnnouncement(id || game.flags.endingId));
+  }
+
   function drawEnding() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
@@ -11943,14 +11992,15 @@
     for (let i = 0; i < 60; i++) {
       const sx = (i * 131) % LW;
       const sy = (i * 71) % LH;
-      ctx.fillStyle = `rgba(255,255,255,${Math.sin(game.time / 25 + i) > 0 ? 0.6 : 0.2})`;
+      const alpha = game.reduceFx ? 0.4 : (Math.sin(game.time / 25 + i) > 0 ? 0.6 : 0.2);
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
       ctx.fillRect(sx, sy, 2, 2);
     }
 
     ctx.textAlign = 'center';
 
     if (game.endingType === 'true') {
-      const e = TRUE_ENDINGS[game.flags.endingId] || TRUE_ENDINGS.farewell;
+      const e = endingScene(game.flags.endingId);
       ctx.fillStyle = e.color;
       ctx.font = fs(34, true);
       ctx.fillText(e.title, LW / 2, 110);
@@ -11967,16 +12017,16 @@
       ctx.fillText(`발견한 결말 ${seenCount}/${Object.keys(TRUE_ENDINGS).length}` +
         (seenCount < Object.keys(TRUE_ENDINGS).length ? ' — 다른 작별도, 있었을지 모른다' : ' — 모든 작별을 만났다'), LW / 2, ty + 32);
       if (e.yeongi) {
-        const bob = Math.sin(game.time / 18) * 4;
-        drawMon(ctx, 'yeongi', LW / 2 - 32, 420 + bob, 4);
+        const bob = game.reduceFx ? 0 : Math.sin(game.time / 18) * 4;
+        drawMon(ctx, 'yeongi', 84, 420 + bob, 4);
       }
       if (e.bandi) {
         // 영이 곁의 작은 빛 — 여정 내내 함께 걷던 반디의 마지막 인사
-        const bob2 = Math.sin(game.time / 14 + 1.5) * 5;
-        drawMon(ctx, 'bandi', LW / 2 + 44, 434 + bob2, 2);
+        const bob2 = game.reduceFx ? 0 : Math.sin(game.time / 14 + 1.5) * 5;
+        drawMon(ctx, 'bandi', 164, 434 + bob2, 2);
       }
       if (game.endingT > 150) {
-        ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
+        ctx.fillStyle = game.reduceFx || Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
         ctx.font = fs(15);
         ctx.fillText('Z·스페이스를 누르면 마을로 돌아갑니다', LW / 2, 510);
       }
@@ -12020,12 +12070,12 @@
       const col = row === 0 ? i : i - 14;
       const perRow = row === 0 ? 14 : ids.length - 14;
       const bx = LW / 2 - perRow * 20 + col * 40;
-      const by = 428 + row * 38 + Math.sin(game.time / 15 + i) * 4;
+      const by = 428 + row * 38 + (game.reduceFx ? 0 : Math.sin(game.time / 15 + i) * 4);
       drawMon(ctx, ids[i], bx, by, 2);
     }
 
     if (game.endingT > 120) {
-      ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
+      ctx.fillStyle = game.reduceFx || Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
       ctx.font = fs(15); // 엔딩에서 다음 행동 안내 — 큰 글씨 모드 적용
       ctx.fillText('Z·스페이스를 누르면 모험이 계속됩니다', LW / 2, 516);
     }
@@ -12068,6 +12118,10 @@
         txt = (r.restored ? '복원된 시간순' : '손상된 기록') + '. 현재보다 ' +
           scene.daysAgo + '일 전. ' + scene.title + '. ' + recordPageText(scene, r.page);
       }
+    } else if (game.mode === 'journal') {
+      txt = journalAnnouncement();
+    } else if (game.mode === 'ending' && game.endingType === 'true') {
+      txt = endingAnnouncement(game.flags.endingId);
     } else if (game.dialog && game.dialog.lines && typeof game.dialog.lines[game.dialog.idx] === 'string') {
       txt = game.dialog.lines[game.dialog.idx];
     } else if (game.notice && game.notice.t > 0 && game.notice.text) {
@@ -12409,8 +12463,8 @@
     // X라운드 신규 — 재대결(기억의 방)·수업 배너·반응 선택 검증용
     newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
     recordForChapter, unlockDamagedRecord, startDamagedRecord, startTimelineRestoration,
-    journalRecordStage, finishRecord, revealBandiAtShrine,
-    endingScene: (id) => TRUE_ENDINGS[id] || null,
+    journalRecordStage, journalAnnouncement, announceJournal, finishRecord, revealBandiAtShrine,
+    endingScene, endingAnnouncement, announceEnding,
     objectiveBannerPrefix, bossWasSpared, bossClearedInSlot,
   };
   frame();

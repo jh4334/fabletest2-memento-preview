@@ -169,6 +169,35 @@ check('프롤로그→다섯 거리→고요의 뜰→코어 맵이 모두 보�
 check('장 번호 1~5만 기록에 연결되어 본편 순서를 바꾸지 않음',
   has('recordForChapter') && T.recordForChapter(0) === null && T.recordForChapter(6) === null);
 
+console.log('[M-9] 새 기록·엔딩 문구는 화면낭독기와 TTS가 읽을 수 있다');
+if (has('journalAnnouncement')) {
+  g.currentSlot = 0;
+  g.flags = Object.assign(T.newFlags(), {
+    damagedRecords: ['reset_after'],
+    viewedRecords: { reset_after: true },
+  });
+  T.writeSlot(0, { v: 9, name: '테스트', map: 'freestreet', x: 1, y: 1, flags: g.flags });
+  g.journal.slot = 0;
+  g.journal.tab = 'records';
+  g.journal.recordCursor = 0;
+  const journalSpeech = T.journalAnnouncement();
+  check('일지 낭독문에 현재 탭·기록 수·선택 항목·상태가 포함됨',
+    /손상된 기록 탭/.test(journalSpeech) && /1개 중 1번째/.test(journalSpeech) &&
+    /현재보다 1일 전/.test(journalSpeech) && /읽음/.test(journalSpeech));
+} else {
+  check('일지 낭독문 API 존재', false);
+}
+if (has('endingAnnouncement')) {
+  check('네 엔딩 낭독문에 제목과 화면의 모든 문장이 포함됨',
+    ['home', 'silent', 'dawn', 'farewell'].every((id) => {
+      const scene = T.endingScene(id);
+      const speech = T.endingAnnouncement(id);
+      return speech.includes(scene.title) && scene.lines.filter(Boolean).every((line) => speech.includes(line));
+    }));
+} else {
+  check('엔딩 낭독문 API 존재', false);
+}
+
 if (failed > 0) {
   console.error(`\n✘ 메멘토 테스트 실패 (${failed}개 실패, ${passed}개 통과)`);
   process.exit(1);

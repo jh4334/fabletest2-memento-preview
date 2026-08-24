@@ -2980,7 +2980,7 @@ const endingsSeenFinal = JSON.parse(storage.get('ai-ethics-adventure-endings') |
 check('엔딩 기록(recordEndingSeen) — home 기록됨', endingsSeenFinal.home === true);
 const gameSrcFinal = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
 check('진엔딩 화면에 박사님과 아침빛 장면 보존', gameSrcFinal.includes('박사님도 아침빛 아래 서명을 보탰다') &&
-  gameSrcFinal.includes('아침빛 속에서 작은 반디'));
+  gameSrcFinal.includes('작은 반디가 두 사람 사이를 천천히 돌았다'));
 
 console.log('[105] 수업 모드 — 「파이널 — 고요의 뜰 → 코어」 특별 항목');
 g.mode = 'ending'; g.mode = 'world'; g.dialog = null;
