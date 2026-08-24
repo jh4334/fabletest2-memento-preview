@@ -147,11 +147,20 @@ check('의존 엔딩도 앞선 자비 누적이 필요',
   computeEnding('neutral', 5) === 'dawn' && computeEnding('neutral', 4) === 'farewell');
 check('낮은 자비 누적은 마지막 선택과 무관하게 반복 엔딩',
   computeEnding('mercy', 2) === 'silent' && computeEnding('neutral', 2) === 'silent');
+if (has('endingScene')) {
+  const endingText = (id) => T.endingScene(id).lines.join('\n');
+  check('집으로는 기록실과 사람의 확인을 되살림', /기록실/.test(endingText('home')) && /확인한 사람/.test(endingText('home')));
+  check('침묵은 초기화와 같은 안내문의 반복을 보여 줌', /초기화/.test(endingText('silent')) && /같은 안내문/.test(endingText('silent')));
+  check('새벽은 판단을 맡긴 뒤 선택 칸이 비는 결과를 보여 줌', /결정을 영이에게 맡겼다/.test(endingText('dawn')) && /이유」 칸은 계속 비었다/.test(endingText('dawn')));
+  check('작별은 모든 AI와 도움 가능성이 함께 꺼지는 결과를 보여 줌', /모든 AI를 껐다/.test(endingText('farewell')) && /돕던 창도 꺼졌다/.test(endingText('farewell')));
+}
 
 console.log('[M-8] 공정한 복선·금지 문구·기존 본편 순서를 지킨다');
 const clues = data('typeof MEMENTO_CLUES === "undefined" ? null : MEMENTO_CLUES', []) || [];
 check('반전 전에 재해석 가능한 복선 최소 3개', clues.length >= 3 && clues.every((c) => c.beforeFinal === true));
-const screenText = JSON.stringify({ records, restored, endingThemes, clues });
+const endingScenes = has('endingScene')
+  ? ['home', 'silent', 'dawn', 'farewell'].map((id) => T.endingScene(id)) : [];
+const screenText = JSON.stringify({ records, restored, endingThemes, endingScenes, clues });
 check('새 화면 문구에 금지 어휘·-몬식 이름 없음', !/(몬스터|도감|증표|[가-힣]+몬)/.test(screenText));
 const maps = data('Object.keys(MAPS)', []);
 check('프롤로그→다섯 거리→고요의 뜰→코어 맵이 모두 보존',
