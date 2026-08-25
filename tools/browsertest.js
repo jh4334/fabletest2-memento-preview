@@ -122,6 +122,8 @@ async function canvasColorProfile(page, rect) {
   if (!fs.existsSync(mementoShotsDir)) fs.mkdirSync(mementoShotsDir, { recursive: true });
   const endingShotsDir = path.join(ROOT, '.orchestration', 'evidence', 'final-browser', 'endings');
   if (!fs.existsSync(endingShotsDir)) fs.mkdirSync(endingShotsDir, { recursive: true });
+  const gameplayLoopShotsDir = path.join(ROOT, '.omo', 'evidence', 'memento-gameplay-browser', 'screenshots');
+  if (!fs.existsSync(gameplayLoopShotsDir)) fs.mkdirSync(gameplayLoopShotsDir, { recursive: true });
 
   const browser = await chromium.launch({ executablePath: resolveChromium() });
   for (const vp of VIEWPORTS) {
@@ -171,6 +173,214 @@ async function canvasColorProfile(page, rect) {
     await page.screenshot({ path: path.join(shotsDir, `browser-${vp.name}.png`) });
     await ctx.close();
   }
+
+  // 메멘토는 장 끝 컷신이 아니라, 첫 화면에서 현재 단말을 풀고 시간을 직접 복원하는
+  // 조작 루프다. 이 블록은 테스트 seam으로 결과만 찍지 않고 실제 키보드 입력을 보낸다.
+  {
+    console.log('[memento-gameplay-loop] 제목→첫 기록→단말→수동 복원→오프라인 재개');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await installSpeechRecorder(ctx);
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console.error: ' + m.text());
+    });
+    await page.goto(base + '?memento-loop=1', { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    const startedAt = Date.now();
+    const title = await page.evaluate(() => ({
+      mode: window.__game.mode, screen: window.__game.titleScreen,
+      routes: window.__test.titleRoutes().map((route) => route.label), live: window.__test.srLiveText(),
+    }));
+    check('첫 타이틀은 두 시간선 선택 화면', title.mode === 'title' && title.screen === 'routechoice' &&
+      title.routes.join(',') === '원래 모험 시작,메멘토 시간선 체험');
+    check('시간선 선택이 aria-live에 연결됨', /시간선 선택/.test(title.live));
+    await page.waitForTimeout(180);
+    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'routechoice-desktop.png') });
+
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('z');
+    await page.waitForFunction(() => window.__game.titleScreen === 'slots', { timeout: 1500 });
+    check('키보드 메멘토 선택이 빈 슬롯으로 이어짐', (await page.evaluate(() => window.__game.newGameRoute)) === 'memento');
+    await page.keyboard.press('z');
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('name-overlay')).display !== 'none', { timeout: 1500 });
+    await page.locator('#name-input').fill('시간아이');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => window.__game.mode === 'record' && window.__game.record && window.__game.record.discovery, { timeout: 2500 });
+    const firstRecord = await page.evaluate((begin) => ({
+      id: window.__game.record.ids[0], frames: window.__game.time, elapsedMs: Date.now() - begin,
+      route: window.__game.flags.storyRoute, live: window.__test.srLiveText(),
+    }), startedAt);
+    check(`첫 손상 기록은 3,600 프레임 안(${firstRecord.frames})`, firstRecord.id === 'reset_after' && firstRecord.frames < 3600);
+    check(`첫 손상 기록은 실제 60초 안(${firstRecord.elapsedMs}ms)`, firstRecord.elapsedMs < 60000 && firstRecord.route === 'memento');
+    check('첫 기록은 현재에서 과거로 가는 방향을 안내', /현재에서 과거 방향/.test(firstRecord.live));
+    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'first-record-desktop.png') });
+
+    // 스킵은 해금을 남기되 증거는 남기지 않아, 현재 단말을 우회할 수 없다.
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => window.__game.mode === 'world', { timeout: 1500 });
+    check('기록을 건너뛰면 증거가 없음', await page.evaluate(() =>
+      window.__game.flags.skippedRecords.reset_after && window.__game.flags.recordEvidence.length === 0));
+    await page.evaluate(() => {
+      const g = window.__game;
+      // 조사 대상은 발밑이 아니라 바라보는 칸이다. 단말 바로 아래에서 위를 본다.
+      g.player.x = 18; g.player.y = 17; g.player.px = 18 * 32; g.player.py = 17 * 32; g.player.dir = 'up';
+    });
+    await page.keyboard.press('z');
+    await page.waitForFunction(() => window.__game.mode === 'choice' && /잠김/.test(window.__game.choice.prompt), { timeout: 1500 });
+    check('현재 관리자 단말은 증거 전 잠김', await page.evaluate(() =>
+      window.__game.choice.options[0] === '기록 다시 보기' && window.__game.choice.options[1] === '돌아가기'));
+    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'terminal-locked-desktop.png') });
+    await page.keyboard.press('z');
+    await page.waitForFunction(() => window.__game.mode === 'record' && window.__game.record.replay, { timeout: 1500 });
+    for (let i = 0; i < 8 && (await page.evaluate(() => window.__game.mode === 'record')); i++) {
+      await page.keyboard.press('z');
+      await page.waitForTimeout(90);
+    }
+    await page.waitForFunction(() => window.__game.mode === 'choice' && window.__game.choice.options.length === 3, { timeout: 2500 });
+    check('다시보기 완료 뒤에만 단말 질문이 열림', await page.evaluate(() =>
+      window.__game.flags.recordEvidence.includes('reset_after') && window.__game.choice.options.length === 3));
+    await page.keyboard.press('z');
+    await page.waitForFunction(() => window.__game.mode === 'dialog' && /오답/.test(window.__game.dialog.lines[0]), { timeout: 1500 });
+    for (let i = 0; i < 20 && (await page.evaluate(() => window.__game.mode === 'dialog')); i++) {
+      await page.keyboard.press('z');
+      await page.waitForTimeout(24);
+    }
+    await page.waitForFunction(() => window.__game.mode === 'choice' && window.__game.choice.options.length === 3, { timeout: 1500 });
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('z');
+    await page.waitForFunction(() => window.__game.flags.administratorTerminalSolved, { timeout: 1500 });
+    check('오답 재시도 뒤 정확한 해석만 현재 문을 엶', await page.evaluate(() =>
+      window.__game.flags.administratorTerminalSolved && window.__game.flags.introDoorOpen));
+    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'terminal-open-desktop.png') });
+
+    for (const count of [0, 1, 3, 5]) {
+      const axis = await page.evaluate((n) => {
+        const g = window.__game, T = window.__test;
+        g.mode = 'world'; g.map = 'introlab'; g.flags = T.newFlags(); g.flags.storyRoute = 'memento';
+        g.flags.damagedRecords = ['reset_after', 'reset_before', 'city_failure', 'yeongi_warning', 'first_approval'].slice(0, n);
+        g.flags.recordEvidence = g.flags.damagedRecords.slice();
+        return T.recordHudText(g.flags, false);
+      }, count);
+      check(`역행 HUD ${count}개 상태는 현재·D-1·D-7을 보임`, /현재 ◀/.test(axis) && /D-1/.test(axis) && /D-7/.test(axis) && !/\d\/5/.test(axis));
+      await page.waitForTimeout(80);
+      await page.screenshot({ path: path.join(gameplayLoopShotsDir, `reverse-axis-${count}-desktop.png`) });
+    }
+
+    // 빈 칸→부분→오답→되돌림→정답: 자동 정렬/자동 결합을 잡는다.
+    await page.evaluate(() => {
+      const g = window.__game, T = window.__test;
+      g.flags = T.newFlags(); g.flags.storyRoute = 'memento';
+      g.flags.damagedRecords = ['reset_after', 'reset_before', 'city_failure', 'yeongi_warning', 'first_approval'];
+      g.flags.shrineDone = true; T.startTimelineOrdering();
+    });
+    await page.waitForFunction(() => window.__game.mode === 'timelineorder', { timeout: 1500 });
+    await page.waitForTimeout(180);
+    check('파이널은 빈 다섯 칸으로 시작', await page.evaluate(() => window.__game.flags.timelineOrderDraft.length === 0));
+    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'timeline-empty-desktop.png') });
+    await page.keyboard.press('z');
+    await page.waitForTimeout(90);
+    check('첫 카드 배치가 즉시 저장됨', await page.evaluate(() => window.__game.flags.timelineOrderDraft.length === 1));
+    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'timeline-partial-desktop.png') });
+    for (let i = 0; i < 5; i++) { await page.keyboard.press('z'); await page.waitForTimeout(90); }
+    await page.waitForFunction(() => window.__game.timelineOrder && !!window.__game.timelineOrder.feedback, { timeout: 1500 });
+    await page.waitForTimeout(180);
+    check('역행 공개 순서로 제출하면 오답 재시도', await page.evaluate(() =>
+      /순서가 이어지지 않는다/.test(window.__game.timelineOrder.feedback) && window.__game.flags.timelineOrderWrong === 1));
+    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'timeline-wrong-desktop.png') });
+    for (let i = 0; i < 6; i++) { await page.keyboard.press('Escape'); await page.waitForTimeout(90); }
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(90);
+    for (let i = 0; i < 6; i++) { await page.keyboard.press('z'); await page.waitForTimeout(90); }
+    await page.waitForFunction(() => window.__game.mode === 'record' && window.__game.flags.timelineMerged, { timeout: 2000 });
+    check('오래된 카드부터 직접 놓으면 컬러 복원이 시작', await page.evaluate(() =>
+      window.__game.flags.timelineMerged && window.__game.record.restored));
+    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'timeline-correct-desktop.png') });
+
+    // 부분 배치 저장, 온라인 reload로 SW 제어권 획득, 오프라인 reload, 저장 슬롯 계속하기.
+    await page.evaluate(() => {
+      const g = window.__game, T = window.__test;
+      g.flags = T.newFlags(); g.flags.storyRoute = 'memento';
+      g.flags.damagedRecords = ['reset_after', 'reset_before', 'city_failure', 'yeongi_warning', 'first_approval'];
+      g.flags.shrineDone = true; g.flags.bandiRevealed = false; g.currentSlot = 0;
+      T.startTimelineOrdering();
+    });
+    await page.keyboard.press('z');
+    await page.waitForTimeout(90);
+    await page.keyboard.press('c');
+    await page.waitForFunction(() => window.__game.mode === 'world', { timeout: 1500 });
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.waitForFunction(() => !!(navigator.serviceWorker && navigator.serviceWorker.controller), { timeout: 8000 });
+    await ctx.setOffline(true);
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(90);
+    await page.keyboard.press('z');
+    await page.waitForFunction(() => window.__game.titleScreen === 'slots', { timeout: 1500 });
+    await page.keyboard.press('z');
+    await page.waitForFunction(() => window.__game.mode === 'timelineorder', { timeout: 2500 });
+    check('오프라인 reload 뒤 부분 시간선으로 재개', await page.evaluate(() =>
+      window.__game.flags.timelineOrderDraft.join(',') === 'reset_after' && !window.__game.flags.timelineMerged));
+    await ctx.setOffline(false);
+    check('메멘토 키보드 동선 콘솔/페이지 에러 없음', errors.length === 0);
+    errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
+    await ctx.close();
+  }
+
+  for (const vp of VIEWPORTS.filter((item) => item.mobile)) {
+    console.log(`[memento-gameplay-touch-${vp.name}] 터치·큰 글씨·효과 줄이기`);
+    const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+    await installSpeechRecorder(ctx);
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console.error: ' + m.text()); });
+    await page.goto(base + `?memento-touch=${vp.name}`, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    if (vp.name === 'mobile-portrait') await page.click('#rotate-dismiss');
+    await page.evaluate(() => { window.__game.routeCursor = 1; });
+    check(`${vp.name}: 시간선 선택 A의 접근성 이름`, (await page.locator('#t-a').getAttribute('aria-label')) === '선택한 시간선 결정');
+    await page.tap('#t-a');
+    await page.waitForFunction(() => window.__game.titleScreen === 'slots', { timeout: 1500 });
+    await page.evaluate(() => {
+      const g = window.__game, T = window.__test;
+      g.flags = T.newFlags(); g.flags.storyRoute = 'memento';
+      g.flags.damagedRecords = ['reset_after', 'reset_before', 'city_failure', 'yeongi_warning', 'first_approval'];
+      g.tts = true; g.largeText = true; g.reduceFx = true; g.lowGraphics = true; T.startTimelineOrdering();
+    });
+    await page.waitForFunction(() => window.__game.mode === 'timelineorder', { timeout: 1500 });
+    await page.waitForTimeout(180);
+    const touch = await page.evaluate(() => ({
+      live: window.__test.srLiveText(), spoken: window.__spoken[window.__spoken.length - 1] || '',
+      action: document.getElementById('t-a').getAttribute('aria-label'), sub: document.querySelector('#t-a .sub').textContent,
+      undo: document.getElementById('t-pause').getAttribute('aria-label'),
+    }));
+    check(`${vp.name}: 큰 글씨·저사양·효과 줄이기에서도 aria/TTS 시간선 안내`, /시간순 복원/.test(touch.live) && /시간순 복원/.test(touch.spoken));
+    check(`${vp.name}: 시간선 터치는 놓기와 되돌리기를 구분`, touch.action === '선택한 시간 카드 놓기' && touch.sub === '카드 놓기' && touch.undo === '마지막 카드 되돌리기');
+    await page.evaluate(() => {
+      const el = document.getElementById('t-a');
+      const rect = el.getBoundingClientRect();
+      const touch = new Touch({ identifier: 91, target: el, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 });
+      el.dispatchEvent(new TouchEvent('touchstart', { changedTouches: [touch], bubbles: true, cancelable: true }));
+    });
+    await page.waitForTimeout(90);
+    await page.evaluate(() => {
+      const el = document.getElementById('t-a');
+      const rect = el.getBoundingClientRect();
+      const touch = new Touch({ identifier: 91, target: el, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 });
+      el.dispatchEvent(new TouchEvent('touchend', { changedTouches: [touch], bubbles: true, cancelable: true }));
+    });
+    await page.waitForTimeout(90);
+    check(`${vp.name}: 터치 A로 카드 한 장 배치`, await page.evaluate(() => window.__game.flags.timelineOrderDraft.length === 1));
+    await page.screenshot({ path: path.join(gameplayLoopShotsDir, `timeline-touch-large-${vp.name}.png`) });
+    check(`${vp.name}: 시간선 터치 렌더 콘솔/페이지 에러 없음`, errors.length === 0);
+    errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
+    await ctx.close();
+  }
+
   // 핵심 게임플레이 렌더: 타이틀 외에 '월드'까지 실제 브라우저에서 그려지는지
   // (캔버스 메인 렌더 경로의 회귀를 잡는다 — node 스모크는 목 캔버스라 못 잡음)
   {
@@ -597,6 +807,8 @@ async function canvasColorProfile(page, rect) {
     const page = await ctx.newPage();
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => { window.__game.titleScreen = 'slots'; });
+    await page.waitForTimeout(80);
     const semantics = await page.evaluate(() => {
       const ids = ['t-a', 't-hint', 't-menu', 't-pause', 't-teacher'];
       return ids.every((id) => {
@@ -743,6 +955,8 @@ async function canvasColorProfile(page, rect) {
     const page = await ctx.newPage();
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => { window.__game.titleScreen = 'slots'; });
+    await page.waitForTimeout(80);
     const fixture = await page.evaluate(() => {
       const undoKey = 'fabletest2-memento-preview-deleted-slot';
       const slotKey = 'fabletest2-memento-preview-slot-2';
@@ -792,6 +1006,8 @@ async function canvasColorProfile(page, rect) {
     const page = await ctx.newPage();
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => { window.__game.titleScreen = 'slots'; });
+    await page.waitForTimeout(80);
     const fixture = await page.evaluate(() => {
       const slotKey = 'fabletest2-memento-preview-slot-2';
       const statsKey = 'fabletest2-memento-preview-stats-2';
@@ -1015,7 +1231,7 @@ async function canvasColorProfile(page, rect) {
   }
 
   {
-    console.log('[service-worker-upgrade] 기준 버전 캐시에서 최신 게임으로 자동 전환');
+    console.log('[service-worker-upgrade] 미리보기 소유 캐시만 안전하게 정리');
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     await ctx.addInitScript(() => {
       const key = '__mementoUpgradeNavigations';
@@ -1029,7 +1245,7 @@ async function canvasColorProfile(page, rect) {
       if (registration) await registration.unregister();
       const keys = await caches.keys();
       await Promise.all(keys.map((key) => caches.delete(key)));
-      const oldCache = await caches.open('shadow-school-browser-fixture');
+      const oldCache = await caches.open('fabletest2-memento-preview-stale-fixture');
       await oldCache.put('./index.html', new Response('<title>방과 후: 그림자 학교</title>', {
         headers: { 'Content-Type': 'text/html' },
       }));
@@ -1039,16 +1255,15 @@ async function canvasColorProfile(page, rect) {
     await page.close();
     page = await ctx.newPage();
     await page.goto(base + '?v=upgrade-fixture', { waitUntil: 'load' });
-    await page.waitForFunction(() => Number(localStorage.getItem('__mementoUpgradeNavigations')) >= 3, { timeout: 8000 });
+    await page.waitForFunction(() => !!(window.__test && navigator.serviceWorker.controller), { timeout: 8000 });
     const upgraded = await page.evaluate(async () => ({
       title: document.title,
       navigations: Number(localStorage.getItem('__mementoUpgradeNavigations')),
       caches: await caches.keys(),
       controlled: !!navigator.serviceWorker.controller,
     }));
-    check('기준 버전 캐시를 발견하면 열린 탭을 한 번 다시 탐색', upgraded.navigations >= 3);
     check('업그레이드 뒤 마음의 문 문서와 새 서비스워커가 활성',
-      /마음의 문/.test(upgraded.title) && upgraded.controlled && !upgraded.caches.some((key) => key.startsWith('shadow-school-')));
+      /마음의 문/.test(upgraded.title) && upgraded.controlled && !upgraded.caches.some((key) => key.startsWith('fabletest2-memento-preview-stale-')));
     check('서비스워커 업그레이드는 같은 origin의 무관한 캐시를 보존',
       upgraded.caches.includes('unrelated-preview-cache'));
     await ctx.close();
