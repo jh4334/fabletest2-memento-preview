@@ -414,11 +414,14 @@ async function canvasColorProfile(page, rect) {
       }));
       check(`${id}: 엔딩 문구가 aria-live에 연결됨`, endingA11y.live.includes(state.title));
       check(`${id}: 엔딩 문구가 TTS에 연결됨`, endingA11y.spoken.includes(state.title));
+      check(`${id}: 엔딩 대기 중 다음 행동 시점을 aria-live로 안내`, /잠시 후/.test(endingA11y.live));
       await page.evaluate(() => {
         window.__game.reduceFx = true;
         window.__game.endingT = 600;
       });
       await page.waitForTimeout(100);
+      check(`${id}: 계속 가능할 때 마을 복귀 동작을 aria-live로 안내`,
+        /마을로/.test(await page.evaluate(() => window.__test.srLiveText() || '')));
       const promptPixels = await page.evaluate(() => {
         const canvas = document.getElementById('game');
         const pixels = canvas.getContext('2d').getImageData(80, 494, 560, 28).data;
@@ -436,6 +439,31 @@ async function canvasColorProfile(page, rect) {
     }
     check('네 엔딩 화면 콘솔/페이지 에러 없음', errors.length === 0);
     errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
+    await ctx.close();
+  }
+
+  {
+    console.log('[ending-touch-affordance] 모바일 엔딩 A 버튼 상태 안내');
+    const ctx = await browser.newContext({
+      viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true,
+    });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => {
+      window.__game.flags = window.__test.newFlags();
+      window.__game.flags.endingId = 'home';
+      window.__game.mode = 'ending';
+      window.__game.endingType = 'true';
+      window.__game.endingT = 0;
+    });
+    await page.waitForTimeout(100);
+    check('모바일 엔딩 대기 중 A 보조 문구가 잠시만',
+      (await page.locator('#t-a .sub').textContent()) === '잠시만');
+    await page.evaluate(() => { window.__game.endingT = 600; });
+    await page.waitForTimeout(100);
+    check('모바일 엔딩 계속 가능 시 A 보조 문구가 마을로',
+      (await page.locator('#t-a .sub').textContent()) === '마을로');
     await ctx.close();
   }
 

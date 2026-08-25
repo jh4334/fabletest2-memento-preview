@@ -1382,6 +1382,14 @@
     if (!action || !cancel) return;
     const actionSub = action.querySelector('.sub');
     const setActionSub = (text) => { if (actionSub) actionSub.textContent = text; };
+    if (game.mode === 'ending') {
+      const ready = endingContinueReady();
+      action.setAttribute('aria-label', ready ? '마을로 돌아가기' : '엔딩이 끝날 때까지 잠시 기다리기');
+      setActionSub(ready ? '마을로' : '잠시만');
+      cancel.setAttribute('aria-label', '엔딩에서는 A 버튼으로 계속합니다');
+      cancel.textContent = '안내';
+      return;
+    }
     if (game.mode === 'record') {
       if (game.record && game.record.discovery) {
         action.setAttribute('aria-label', '기록 복원 시작');
@@ -12376,7 +12384,7 @@
   function updateEnding() {
     game.endingT += 1;
     if (game.endingType === 'true') {
-      if (game.endingT > 150 && justPressed('action')) {
+      if (endingContinueReady() && justPressed('action')) {
         game.mode = 'world';
         game.map = 'village';
         game.player.x = 13; game.player.y = 16;
@@ -12393,7 +12401,7 @@
         };
       }
     } else {
-      if (game.endingT > 120 && justPressed('action')) {
+      if (endingContinueReady() && justPressed('action')) {
         game.mode = 'world';
         Sound.playMapBgm(MAPS[game.map].song);
       }
@@ -12486,8 +12494,21 @@
     return [e.title].concat(e.lines).filter(Boolean).join('. ');
   }
 
+  function endingContinueReady() {
+    return game.endingT > (game.endingType === 'true' ? 150 : 120);
+  }
+
+  function endingContinuationAnnouncement() {
+    if (endingContinueReady()) {
+      return game.endingType === 'true'
+        ? 'A 버튼 또는 Z·스페이스를 누르면 마을로 돌아갑니다.'
+        : 'A 버튼 또는 Z·스페이스를 누르면 모험이 계속됩니다.';
+    }
+    return '엔딩을 보고 있어요. 잠시 후 계속할 수 있어요.';
+  }
+
   function announceEnding(id) {
-    Speech.speak(endingAnnouncement(id || game.flags.endingId));
+    Speech.speak(endingAnnouncement(id || game.flags.endingId) + '. ' + endingContinuationAnnouncement());
   }
 
   function drawEnding() {
@@ -12531,11 +12552,13 @@
         const bob2 = game.reduceFx ? 0 : Math.sin(game.time / 14 + 1.5) * 5;
         drawMon(ctx, 'bandi', 164, 434 + bob2, 2);
       }
-      if (game.endingT > 150) {
-        ctx.fillStyle = game.reduceFx || Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
-        ctx.font = fs(15);
-        ctx.fillText('Z·스페이스를 누르면 마을로 돌아갑니다', LW / 2, 510);
-      }
+      ctx.fillStyle = endingContinueReady()
+        ? (game.reduceFx || Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822')
+        : '#777788';
+      ctx.font = fs(15);
+      ctx.fillText(endingContinueReady()
+        ? 'Z·스페이스를 누르면 마을로 돌아갑니다'
+        : '잠시 후 마을로 돌아갈 수 있어요', LW / 2, 510);
       ctx.textAlign = 'left';
       return;
     }
@@ -12580,11 +12603,13 @@
       drawMon(ctx, ids[i], bx, by, 2);
     }
 
-    if (game.endingT > 120) {
-      ctx.fillStyle = game.reduceFx || Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
-      ctx.font = fs(15); // 엔딩에서 다음 행동 안내 — 큰 글씨 모드 적용
-      ctx.fillText('Z·스페이스를 누르면 모험이 계속됩니다', LW / 2, 516);
-    }
+    ctx.fillStyle = endingContinueReady()
+      ? (game.reduceFx || Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822')
+      : '#777788';
+    ctx.font = fs(15); // 엔딩에서 다음 행동 안내 — 큰 글씨 모드 적용
+    ctx.fillText(endingContinueReady()
+      ? 'Z·스페이스를 누르면 모험이 계속됩니다'
+      : '잠시 후 모험을 계속할 수 있어요', LW / 2, 516);
     ctx.textAlign = 'left';
   }
 
@@ -12629,7 +12654,7 @@
     } else if (game.mode === 'journal') {
       txt = journalAnnouncement();
     } else if (game.mode === 'ending' && game.endingType === 'true') {
-      txt = endingAnnouncement(game.flags.endingId);
+      txt = endingAnnouncement(game.flags.endingId) + '. ' + endingContinuationAnnouncement();
     } else if (game.dialog && game.dialog.lines && typeof game.dialog.lines[game.dialog.idx] === 'string') {
       txt = game.dialog.lines[game.dialog.idx];
     } else if (game.notice && game.notice.t > 0 && game.notice.text) {
