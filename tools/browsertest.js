@@ -895,12 +895,30 @@ async function canvasColorProfile(page, rect) {
       pending.navigations === before && pending.mode === 'world');
     check('플레이 중 업데이트는 준비 상태만 알리고 적용 버튼을 숨김',
       pending.ready && pending.button && pending.visible === false);
+    const updateStyle = pending.button ? await page.locator('#update-ready').evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        border: style.borderTopWidth,
+        shadow: style.boxShadow,
+      };
+    }) : null;
+    check('업데이트 버튼은 문서화된 경고색·테두리 중심 표면을 사용', !!updateStyle &&
+      updateStyle.background === 'rgb(255, 214, 68)' && updateStyle.color === 'rgb(0, 0, 0)' &&
+      updateStyle.border === '4px' && updateStyle.shadow === 'none');
     let visibleInPause = false;
+    let focusToken = false;
     let applied = false;
     if (pending.button) {
       await page.evaluate(() => { window.__game.mode = 'pause'; });
       await page.waitForTimeout(200);
       visibleInPause = await page.locator('#update-ready').isVisible();
+      await page.locator('#update-ready').focus();
+      focusToken = await page.locator('#update-ready').evaluate((el) => {
+        const style = getComputedStyle(el);
+        return style.outlineColor === 'rgb(142, 168, 216)' && style.outlineWidth === '3px';
+      });
       await page.locator('#update-ready').click();
       try {
         await page.waitForFunction((count) =>
@@ -909,6 +927,7 @@ async function canvasColorProfile(page, rect) {
       } catch (e) {}
     }
     check('업데이트 적용 버튼은 일시정지 메뉴에서 표시', visibleInPause);
+    check('업데이트 적용 버튼의 키보드 포커스가 기록 강조 토큰으로 표시', focusToken);
     check('사용자가 적용 버튼을 누른 뒤에만 새 문서로 이동', applied);
     await ctx.close();
   }
