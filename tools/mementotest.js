@@ -148,6 +148,12 @@ if (has('migrateSlotV9')) {
   check('완료한 장이 있는 구세이브는 해당 손상 기록을 새 기록으로 보충',
     chapterSave.flags.damagedRecords.join(',') === 'reset_after,reset_before' &&
     Object.keys(chapterSave.flags.viewedRecords).length === 0 && chapterSave.flags.pendingRecord === null);
+  const defeatedOnly = T.migrateSlotV9({ v: 8, flags: {
+    shrineDone: false,
+    defeated: { sujipmon: true, pyeonhyangmon: true, hwangakmon: true, yuhokmon: true, hollimmon: true },
+  } });
+  check('일반 전투 완료 표식만으로 장 기록을 잘못 보충하지 않음',
+    defeatedOnly.flags.damagedRecords.length === 0 && defeatedOnly.flags.pendingRecord === null);
 }
 const fresh = has('newFlags') ? T.newFlags() : {};
 check('신규 세이브의 기록 상태 기본값', Array.isArray(fresh.damagedRecords) && fresh.damagedRecords.length === 0 &&

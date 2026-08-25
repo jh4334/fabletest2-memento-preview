@@ -185,6 +185,7 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8→v
     flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true, hwangakmon: true, yuhokmon: true, hollimmon: true, finalboss: true, yeongi: true },
       mercy: 8, visited: {}, introClue1: true, introForestTrace: true, ttaraFirstEncounter: true,
       privacyLeak: 0, privacyRecovery: 0, privacyRecoveryActive: false, prologueClosed: true, forestClearingRead: true,
+      chapter1Clear: true, chapter2Clear: true, chapter3Clear: true, chapter4Clear: true, chapter5Clear: true,
       endingId: 'home' } });
   const s8 = T.loadSlot(2);
   check('W-1 v8→v9 + endingId 보존', s8.v === 9 && s8.flags.endingId === 'home');

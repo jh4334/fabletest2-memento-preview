@@ -294,9 +294,7 @@
     const fromVersion = Number(data.v) || 0;
     const ids = MEMENTO_RECORDS.map((r) => r.id);
     const incoming = Array.isArray(f.damagedRecords) ? f.damagedRecords : [];
-    const chapterBosses = ['sujipmon', 'pyeonhyangmon', 'hwangakmon', 'yuhokmon', 'hollimmon'];
-    const cleared = ids.filter((id, i) =>
-      !!f['chapter' + (i + 1) + 'Clear'] || !!(f.defeated && f.defeated[chapterBosses[i]]));
+    const cleared = ids.filter((id, i) => !!f['chapter' + (i + 1) + 'Clear']);
     f.damagedRecords = ids.filter((id) => incoming.includes(id) || cleared.includes(id));
     const plainObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
     const viewed = plainObject(f.viewedRecords) ? f.viewedRecords : {};
