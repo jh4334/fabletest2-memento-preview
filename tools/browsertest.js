@@ -25,6 +25,7 @@ const MIME = {
   '.json': 'application/json', '.webmanifest': 'application/manifest+json',
   '.png': 'image/png', '.css': 'text/css', '.svg': 'image/svg+xml', '.ico': 'image/png',
 };
+const serverFaults = new Map();
 
 function startServer() {
   return new Promise((resolve) => {
@@ -32,6 +33,12 @@ function startServer() {
       let p = decodeURIComponent(req.url.split('?')[0]);
       if (p === '/') p = '/index.html';
       if (p === '/favicon.ico') p = '/icons/icon-192.png'; // 파비콘 404 잡음 방지
+      const forcedStatus = serverFaults.get(p);
+      if (forcedStatus) {
+        res.statusCode = forcedStatus;
+        res.end('forced failure');
+        return;
+      }
       const fp = path.join(ROOT, p);
       if (!fp.startsWith(ROOT) || !fs.existsSync(fp) || fs.statSync(fp).isDirectory()) {
         res.statusCode = 404; res.end('not found'); return;
@@ -407,11 +414,14 @@ async function canvasColorProfile(page, rect) {
       }));
       check(`${id}: 엔딩 문구가 aria-live에 연결됨`, endingA11y.live.includes(state.title));
       check(`${id}: 엔딩 문구가 TTS에 연결됨`, endingA11y.spoken.includes(state.title));
+      check(`${id}: 엔딩 대기 중 다음 행동 시점을 aria-live로 안내`, /잠시 후/.test(endingA11y.live));
       await page.evaluate(() => {
         window.__game.reduceFx = true;
         window.__game.endingT = 600;
       });
       await page.waitForTimeout(100);
+      check(`${id}: 계속 가능할 때 마을 복귀 동작을 aria-live로 안내`,
+        /마을로/.test(await page.evaluate(() => window.__test.srLiveText() || '')));
       const promptPixels = await page.evaluate(() => {
         const canvas = document.getElementById('game');
         const pixels = canvas.getContext('2d').getImageData(80, 494, 560, 28).data;
@@ -429,6 +439,31 @@ async function canvasColorProfile(page, rect) {
     }
     check('네 엔딩 화면 콘솔/페이지 에러 없음', errors.length === 0);
     errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
+    await ctx.close();
+  }
+
+  {
+    console.log('[ending-touch-affordance] 모바일 엔딩 A 버튼 상태 안내');
+    const ctx = await browser.newContext({
+      viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true,
+    });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => {
+      window.__game.flags = window.__test.newFlags();
+      window.__game.flags.endingId = 'home';
+      window.__game.mode = 'ending';
+      window.__game.endingType = 'true';
+      window.__game.endingT = 0;
+    });
+    await page.waitForTimeout(100);
+    check('모바일 엔딩 대기 중 A 보조 문구가 잠시만',
+      (await page.locator('#t-a .sub').textContent()) === '잠시만');
+    await page.evaluate(() => { window.__game.endingT = 600; });
+    await page.waitForTimeout(100);
+    check('모바일 엔딩 계속 가능 시 A 보조 문구가 마을로',
+      (await page.locator('#t-a .sub').textContent()) === '마을로');
     await ctx.close();
   }
 
@@ -473,7 +508,126 @@ async function canvasColorProfile(page, rect) {
     await ctx.close();
   }
 
+  {
+    console.log('[teacher-report-pages] 긴 학생 진단 리포트 전체 탐색');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => {
+      const topics = [
+        'privacy', 'copyright', 'consent', 'security', 'identity', 'fake', 'genai', 'deepfake', 'rumor',
+        'bias', 'filterbubble', 'listen', 'balance', 'footprint', 'saving', 'environment', 'persuasion',
+        'manners', 'emotion', 'responsibility', 'excuse', 'safety', 'transparency', 'core',
+      ];
+      const stats = {};
+      for (const topic of topics) stats[topic] = { correct: 0, total: 3 };
+      localStorage.setItem('ai-ethics-adventure-slot-0', JSON.stringify({
+        v: 9, name: '긴보고서', map: 'village', x: 13, y: 16,
+        flags: { defeated: {}, mercy: 0, visited: {} },
+      }));
+      localStorage.setItem('ai-ethics-adventure-stats-0', JSON.stringify(stats));
+      window.__game.mode = 'report';
+      window.__game.report.ret = 'title';
+      window.__game.report.slot = 0;
+      window.__game.report.page = 0;
+    });
+    await page.waitForTimeout(200);
+    const first = await page.evaluate(() => ({
+      page: window.__game.report.page,
+      live: window.__test.srLiveText() || '',
+      image: document.getElementById('game').toDataURL(),
+    }));
+    check('긴 리포트 첫 페이지와 전체 페이지 수 안내', first.page === 0 && /페이지 1 \/ [2-9]/.test(first.live));
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(200);
+    const second = await page.evaluate(() => ({
+      page: window.__game.report.page,
+      live: window.__test.srLiveText() || '',
+      image: document.getElementById('game').toDataURL(),
+    }));
+    check('아래 방향으로 다음 리포트 페이지 이동', second.page === 1);
+    check('다음 페이지가 새 내용과 페이지 번호를 표시', second.image !== first.image && /페이지 2 \/ [2-9]/.test(second.live));
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(200);
+    check('위 방향으로 이전 리포트 페이지 복귀',
+      (await page.evaluate(() => window.__game.report.page)) === 0);
+    await ctx.close();
+
+    const mobileCtx = await browser.newContext({
+      viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true,
+    });
+    const mobilePage = await mobileCtx.newPage();
+    await mobilePage.goto(base, { waitUntil: 'load' });
+    await mobilePage.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await mobilePage.evaluate(() => {
+      const topics = [
+        'privacy', 'copyright', 'consent', 'security', 'identity', 'fake', 'genai', 'deepfake', 'rumor',
+        'bias', 'filterbubble', 'listen', 'balance', 'footprint', 'saving', 'environment', 'persuasion',
+        'manners', 'emotion', 'responsibility', 'excuse', 'safety', 'transparency', 'core',
+      ];
+      const stats = {};
+      for (const topic of topics) stats[topic] = { correct: 0, total: 3 };
+      localStorage.setItem('ai-ethics-adventure-slot-0', JSON.stringify({
+        v: 9, name: '모바일보고서', map: 'village', x: 13, y: 16,
+        flags: { defeated: {}, mercy: 0, visited: {} },
+      }));
+      localStorage.setItem('ai-ethics-adventure-stats-0', JSON.stringify(stats));
+      window.__game.mode = 'report';
+      window.__game.report.slot = 0;
+      window.__game.report.page = 0;
+    });
+    await mobilePage.waitForTimeout(200);
+    check('모바일 리포트 A·닫기 동작명이 화면에 맞게 변경',
+      (await mobilePage.locator('#t-a .sub').textContent()) === '내보내기' &&
+      (await mobilePage.locator('#t-pause').textContent()) === '닫기');
+    await mobilePage.keyboard.press('ArrowDown');
+    await mobilePage.waitForTimeout(200);
+    check('모바일 가로에서도 다음 리포트 페이지 접근',
+      (await mobilePage.evaluate(() => window.__game.report.page)) === 1);
+    await mobileCtx.close();
+  }
+
   // 멀티터치: 같은 버튼 두 손가락 → 하나만 떼도 유지, 스틱은 둘째 손가락이 탈취 못 함
+  {
+    console.log('[accessible-touch-buttons] 네이티브 의미와 키보드 활성화');
+    const ctx = await browser.newContext({
+      viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true,
+    });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    const semantics = await page.evaluate(() => {
+      const ids = ['t-a', 't-hint', 't-menu', 't-pause', 't-teacher'];
+      return ids.every((id) => {
+        const el = document.getElementById(id);
+        return el && el.tagName === 'BUTTON' && el.type === 'button';
+      });
+    });
+    check('터치 동작 5종이 기본 포커스를 가진 button 요소', semantics);
+    await page.evaluate(() => {
+      window.addEventListener('keydown', (event) => event.stopImmediatePropagation(), true);
+      window.addEventListener('keyup', (event) => event.stopImmediatePropagation(), true);
+    });
+    await page.locator('#t-a').focus();
+    const focused = await page.evaluate(() => document.activeElement && document.activeElement.id);
+    check('A 터치 버튼에 키보드 포커스 진입', focused === 't-a');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+    check('A 버튼 Enter로 새 모험 이름 화면 진입',
+      (await page.evaluate(() => window.__game.titleScreen)) === 'name');
+    await page.evaluate(() => {
+      window.__game.mode = 'title';
+      window.__game.titleScreen = 'slots';
+    });
+    await page.locator('#t-a').focus();
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(200);
+    check('A 버튼 Space로 새 모험 이름 화면 진입',
+      (await page.evaluate(() => window.__game.titleScreen)) === 'name');
+    await ctx.close();
+  }
+
   {
     console.log('[multitouch] 태블릿 멀티터치 입력');
     const ctx = await browser.newContext({
@@ -507,6 +661,18 @@ async function canvasColorProfile(page, rect) {
       out.stickSurvivesSteal = window.__test.heldKeys().includes('right');
       fire(stick, 'touchend', [mkTouch(stick, 21, sx + 40, sy)]);   // 원래 손가락 뗌
       out.stickReleased = !window.__test.heldKeys().includes('right');
+
+      fire(btn, 'touchstart', [mkTouch(btn, 31, bx, by)]);
+      window.dispatchEvent(new TouchEvent('touchcancel', {
+        changedTouches: [mkTouch(btn, 31, bx, by)], bubbles: true, cancelable: true,
+      }));
+      out.globalCancelReleased = !window.__test.heldKeys().includes('action');
+
+      fire(stick, 'touchstart', [mkTouch(stick, 41, sx + 40, sy)]);
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      out.hiddenReleased = !window.__test.heldKeys().includes('right') &&
+        document.getElementById('t-stick-knob').style.transform.includes('0px');
       return out;
     });
     check('버튼: 두 손가락 중 하나만 떼면 유지', r.heldAfterOneUp === true);
@@ -514,6 +680,337 @@ async function canvasColorProfile(page, rect) {
     check('스틱: 방향 입력 인식', r.stickRight === true);
     check('스틱: 둘째 손가락 탈취에도 이동 유지', r.stickSurvivesSteal === true);
     check('스틱: 원래 손가락 떼면 정지', r.stickReleased === true);
+    check('전역 touchcancel에서 모든 터치 입력 해제', r.globalCancelReleased === true);
+    check('앱이 숨겨질 때 방향 입력과 스틱 위치 초기화', r.hiddenReleased === true);
+    await ctx.close();
+  }
+
+  {
+    console.log('[service-worker-http-error] core 503 응답의 마지막 정상 캐시 폴백');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && navigator.serviceWorker.controller), { timeout: 8000 });
+    serverFaults.set('/src/game.js', 503);
+    const fallback = await page.evaluate(async () => {
+      const response = await fetch('src/game.js?fault=503', { cache: 'no-store' });
+      return { status: response.status, text: await response.text() };
+    });
+    serverFaults.delete('/src/game.js');
+    check('core 503 대신 캐시된 game.js 200 응답', fallback.status === 200 && /window\.__game/.test(fallback.text));
+    await ctx.close();
+  }
+
+  {
+    console.log('[slot-delete-snapshot-failure] 삭제 안전망 실패 시 원본 보존');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => {
+      localStorage.setItem('ai-ethics-adventure-slot-2', JSON.stringify({ v: 9, name: '보존아이', flags: { defeated: {} } }));
+      localStorage.setItem('ai-ethics-adventure-stats-2', JSON.stringify({ privacy: { correct: 2, total: 3 } }));
+      const original = Storage.prototype.setItem;
+      window.__restoreStorageSetItem = () => { Storage.prototype.setItem = original; };
+      Storage.prototype.setItem = function setItem(key, value) {
+        if (key === 'ai-ethics-adventure-deleted-slot') throw new Error('snapshot unavailable');
+        return original.call(this, key, value);
+      };
+      window.__game.mode = 'title';
+      window.__game.titleScreen = 'delete';
+      window.__game.slotCursor = 2;
+    });
+    await page.keyboard.press('z');
+    await page.waitForTimeout(200);
+    const result = await page.evaluate(() => {
+      window.__restoreStorageSetItem();
+      return {
+        slot: !!localStorage.getItem('ai-ethics-adventure-slot-2'),
+        stats: !!localStorage.getItem('ai-ethics-adventure-stats-2'),
+        screen: window.__game.titleScreen,
+        notice: window.__game.notice && window.__game.notice.text,
+      };
+    });
+    check('삭제 안전망 실패 뒤 슬롯·학습 기록 보존', result.slot && result.stats);
+    check('삭제 실패 뒤 슬롯 화면과 저장 불가 안내 표시',
+      result.screen === 'slots' && /저장되지 않/.test(result.notice || ''));
+    await ctx.close();
+  }
+
+  {
+    console.log('[slot-delete-mid-failure] 삭제 중간 실패 시 전체 롤백');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    const fixture = await page.evaluate(() => {
+      const undoKey = 'ai-ethics-adventure-deleted-slot';
+      const slotKey = 'ai-ethics-adventure-slot-2';
+      const statsKey = 'ai-ethics-adventure-stats-2';
+      const oldUndo = JSON.stringify({ slot: 1, ts: Date.now(), 'ai-ethics-adventure-slot-1': '{"name":"이전 삭제"}' });
+      const oldSlot = JSON.stringify({ v: 9, name: '부분삭제방지', flags: { defeated: {} } });
+      const oldStats = JSON.stringify({ privacy: { correct: 4, total: 5 } });
+      localStorage.setItem(undoKey, oldUndo);
+      localStorage.setItem(slotKey, oldSlot);
+      localStorage.setItem(statsKey, oldStats);
+      const original = Storage.prototype.removeItem;
+      let failedOnce = false;
+      window.__restoreStorageRemoveItem = () => { Storage.prototype.removeItem = original; };
+      Storage.prototype.removeItem = function removeItem(key) {
+        if (key === statsKey && !failedOnce) {
+          failedOnce = true;
+          throw new Error('learning delete unavailable');
+        }
+        return original.call(this, key);
+      };
+      window.__game.mode = 'title';
+      window.__game.titleScreen = 'delete';
+      window.__game.slotCursor = 2;
+      return { undoKey, slotKey, statsKey, oldUndo, oldSlot, oldStats };
+    });
+    await page.keyboard.press('z');
+    await page.waitForTimeout(200);
+    const result = await page.evaluate((expected) => {
+      window.__restoreStorageRemoveItem();
+      return {
+        intact: localStorage.getItem(expected.slotKey) === expected.oldSlot &&
+          localStorage.getItem(expected.statsKey) === expected.oldStats,
+        undoPreserved: localStorage.getItem(expected.undoKey) === expected.oldUndo,
+        screen: window.__game.titleScreen,
+        notice: window.__game.notice && window.__game.notice.text,
+      };
+    }, fixture);
+    check('삭제 중간 실패 뒤 슬롯·학습·이전 되살리기 전체 보존', result.intact && result.undoPreserved);
+    check('삭제 중간 실패를 성공으로 표시하지 않음',
+      result.screen === 'slots' && /저장되지 않/.test(result.notice || ''));
+    await ctx.close();
+  }
+
+  {
+    console.log('[backup-restore-write-failure] 파일 복원 중간 실패 원자 롤백');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    const fixture = await page.evaluate(() => {
+      const slotKey = 'ai-ethics-adventure-slot-2';
+      const statsKey = 'ai-ethics-adventure-stats-2';
+      const undoKey = 'ai-ethics-adventure-restore-undo';
+      const priorUndo = JSON.stringify({
+        app: 'ai-ethics-adventure', version: 1, savedAt: Date.now() - 1000,
+        data: { 'ai-ethics-adventure-stats-0': '{"privacy":{"correct":3,"total":3}}' },
+      });
+      const oldSlot = JSON.stringify({ v: 9, name: '복원전', flags: { defeated: {} } });
+      const oldStats = JSON.stringify({ privacy: { correct: 1, total: 2 } });
+      localStorage.setItem(undoKey, priorUndo);
+      localStorage.setItem(slotKey, oldSlot);
+      localStorage.setItem(statsKey, oldStats);
+      const original = Storage.prototype.setItem;
+      let failedOnce = false;
+      window.__restoreStorageSetItem = () => { Storage.prototype.setItem = original; };
+      Storage.prototype.setItem = function setItem(key, value) {
+        if (key === statsKey && !failedOnce) {
+          failedOnce = true;
+          throw new Error('mid-restore write failed');
+        }
+        return original.call(this, key, value);
+      };
+      return {
+        slotKey, statsKey, undoKey, priorUndo, oldSlot, oldStats,
+        backup: JSON.stringify({
+          app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+          data: {
+            [slotKey]: JSON.stringify({ v: 9, name: '복원후', flags: { defeated: {} } }),
+            [statsKey]: JSON.stringify({ privacy: { correct: 9, total: 9 } }),
+          },
+        }),
+      };
+    });
+    await page.keyboard.press('u');
+    await page.waitForTimeout(150);
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(150);
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(150);
+    await page.keyboard.press('z');
+    await page.waitForTimeout(150);
+    const chooserPromise = page.waitForEvent('filechooser');
+    await page.keyboard.press('z');
+    const chooser = await chooserPromise;
+    await chooser.setFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(fixture.backup) });
+    await page.waitForFunction(() => window.__game.backup.toast < 0, { timeout: 8000 });
+    const result = await page.evaluate(({ slotKey, statsKey, undoKey, priorUndo, oldSlot, oldStats }) => {
+      window.__restoreStorageSetItem();
+      return {
+        intact: localStorage.getItem(slotKey) === oldSlot && localStorage.getItem(statsKey) === oldStats,
+        undoPreserved: localStorage.getItem(undoKey) === priorUndo,
+        mode: window.__game.mode,
+        toast: window.__game.backup.toast,
+        notice: window.__game.notice && window.__game.notice.text,
+      };
+    }, fixture);
+    check('파일 복원 중간 실패 뒤 기존 데이터와 이전 취소 모두 보존', result.intact && result.undoPreserved);
+    check('복원 실패를 성공 전환 없이 화면과 경고로 표시',
+      result.mode === 'backup' && result.toast < 0 && /저장되지 않/.test(result.notice || ''));
+    await ctx.close();
+  }
+
+  {
+    console.log('[backup-undo-absent-key] 복원 전 없던 키까지 정확히 취소');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!window.__test, { timeout: 8000 });
+    const result = await page.evaluate(() => {
+      const key = 'ai-ethics-adventure-cosmetic-2';
+      localStorage.removeItem(key);
+      const restored = window.__test.applyBackup(JSON.stringify({
+        app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+        data: { [key]: '{"theme":"night"}' },
+      }));
+      const presentAfterRestore = !!localStorage.getItem(key);
+      const undone = window.__test.undoRestore();
+      return {
+        restored, presentAfterRestore, undone,
+        absentAfterUndo: !localStorage.getItem(key),
+        undoConsumed: !window.__test.hasRestoreUndo(),
+      };
+    });
+    check('복원 전 없던 키도 취소 시 제거', result.restored.ok && result.presentAfterRestore &&
+      result.undone.ok && result.absentAfterUndo && result.undoConsumed);
+    await ctx.close();
+  }
+
+  {
+    console.log('[learning-storage-warning] 학습 기록 저장 실패 사용자 안내');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => {
+      const original = Storage.prototype.setItem;
+      window.__restoreStorageSetItem = () => { Storage.prototype.setItem = original; };
+      Storage.prototype.setItem = function setItem(key, value) {
+        if (key === 'ai-ethics-adventure-stats-0') throw new Error('learning data unavailable');
+        return original.call(this, key, value);
+      };
+      window.__test.recordTopicResult(0, 'privacy', true);
+      window.__restoreStorageSetItem();
+    });
+    await page.waitForTimeout(200);
+    const result = await page.evaluate(() => ({
+      storageOk: window.__test.getStorageOk(),
+      notice: window.__game.notice && window.__game.notice.text,
+      live: window.__test.srLiveText(),
+    }));
+    check('학습 기록 실패가 저장 불가 상태로 승격', result.storageOk === false);
+    check('학습 기록 실패 안내가 화면 상태와 aria-live에 표시',
+      /저장되지 않/.test(result.notice || '') && /저장되지 않/.test(result.live || ''));
+    await ctx.close();
+  }
+
+  {
+    console.log('[service-worker-optional-asset] 선택 아이콘 404 중에도 core shell 설치');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    serverFaults.set('/icons/apple-touch-icon.png', 404);
+    await page.goto(base, { waitUntil: 'load' });
+    let shellReady = false;
+    for (let i = 0; i < 60 && !shellReady; i++) {
+      shellReady = await page.evaluate(async () => {
+        if (!navigator.serviceWorker.controller) return false;
+        const keys = await caches.keys();
+        for (const key of keys) {
+          const cache = await caches.open(key);
+          if (await cache.match('./src/game.js')) return true;
+        }
+        return false;
+      }).catch(() => false);
+      if (!shellReady) await page.waitForTimeout(250);
+    }
+    serverFaults.delete('/icons/apple-touch-icon.png');
+    check('선택 아이콘 404 중에도 core shell과 controller 준비', shellReady);
+    let offlineReady = false;
+    if (shellReady) {
+      await ctx.setOffline(true);
+      try {
+        await page.goto(base + '?optional-icon=missing', { waitUntil: 'load' });
+        await page.waitForFunction(() => !!window.__test, { timeout: 8000 });
+        offlineReady = true;
+      } catch (e) {}
+      await ctx.setOffline(false);
+    }
+    check('선택 아이콘 없이 설치된 core shell로 오프라인 재진입', offlineReady);
+    await ctx.close();
+  }
+
+  {
+    console.log('[service-worker-update-confirmation] 플레이 중 유지 후 사용자 적용');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await ctx.addInitScript(() => {
+      const key = '__confirmedUpdateNavigations';
+      localStorage.setItem(key, String((Number(localStorage.getItem(key)) || 0) + 1));
+    });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && navigator.serviceWorker.controller), { timeout: 8000 });
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && navigator.serviceWorker.controller), { timeout: 8000 });
+    const before = await page.evaluate(() => Number(localStorage.getItem('__confirmedUpdateNavigations')));
+    await page.evaluate(() => {
+      window.__game.mode = 'world';
+      window.__game.map = 'village';
+      navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+    });
+    await page.waitForTimeout(500);
+    const pending = await page.evaluate(() => {
+      const button = document.getElementById('update-ready');
+      return {
+        navigations: Number(localStorage.getItem('__confirmedUpdateNavigations')),
+        mode: window.__game && window.__game.mode,
+        ready: window.__newVersionReady === true,
+        button: !!button,
+        visible: !!button && getComputedStyle(button).display !== 'none',
+      };
+    });
+    check('controllerchange가 플레이 중 페이지를 자동 새로고침하지 않음',
+      pending.navigations === before && pending.mode === 'world');
+    check('플레이 중 업데이트는 준비 상태만 알리고 적용 버튼을 숨김',
+      pending.ready && pending.button && pending.visible === false);
+    const updateStyle = pending.button ? await page.locator('#update-ready').evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        border: style.borderTopWidth,
+        shadow: style.boxShadow,
+      };
+    }) : null;
+    check('업데이트 버튼은 문서화된 경고색·테두리 중심 표면을 사용', !!updateStyle &&
+      updateStyle.background === 'rgb(255, 214, 68)' && updateStyle.color === 'rgb(0, 0, 0)' &&
+      updateStyle.border === '4px' && updateStyle.shadow === 'none');
+    let visibleInPause = false;
+    let focusToken = false;
+    let applied = false;
+    if (pending.button) {
+      await page.evaluate(() => { window.__game.mode = 'pause'; });
+      await page.waitForTimeout(200);
+      visibleInPause = await page.locator('#update-ready').isVisible();
+      await page.locator('#update-ready').focus();
+      focusToken = await page.locator('#update-ready').evaluate((el) => {
+        const style = getComputedStyle(el);
+        return style.outlineColor === 'rgb(142, 168, 216)' && style.outlineWidth === '3px';
+      });
+      await page.locator('#update-ready').click();
+      try {
+        await page.waitForFunction((count) =>
+          Number(localStorage.getItem('__confirmedUpdateNavigations')) > count, before, { timeout: 8000 });
+        applied = true;
+      } catch (e) {}
+    }
+    check('업데이트 적용 버튼은 일시정지 메뉴에서 표시', visibleInPause);
+    check('업데이트 적용 버튼의 키보드 포커스가 기록 강조 토큰으로 표시', focusToken);
+    check('사용자가 적용 버튼을 누른 뒤에만 새 문서로 이동', applied);
     await ctx.close();
   }
 

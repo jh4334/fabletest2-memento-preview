@@ -348,6 +348,62 @@ console.log('[Y-17b] 오래된 되돌리기 스냅샷 자동 정리 (SLOT_UNDO·
   storage.delete('ai-ethics-adventure-slot-1');
 }
 
+console.log('[P-3] 삭제 안전망 저장 실패 시 원본 슬롯 보존');
+{
+  const T = windowObj.__test;
+  const SLOT_UNDO = 'ai-ethics-adventure-deleted-slot';
+  const slotKey = 'ai-ethics-adventure-slot-2';
+  const statsKey = 'ai-ethics-adventure-stats-2';
+  storage.set(slotKey, JSON.stringify({ v: 9, name: '보존아이', flags: { defeated: {} } }));
+  storage.set(statsKey, JSON.stringify({ privacy: { correct: 2, total: 3 } }));
+  const realSet = sandbox.localStorage.setItem;
+  sandbox.localStorage.setItem = (key, value) => {
+    if (key === SLOT_UNDO) throw new Error('snapshot unavailable');
+    return realSet(key, value);
+  };
+  const deleted = T.deleteSlot(2);
+  sandbox.localStorage.setItem = realSet;
+  check('P-3 스냅샷 저장 실패 시 슬롯 원본 유지', !!storage.get(slotKey));
+  check('P-3 스냅샷 저장 실패 시 학습 기록 유지', !!storage.get(statsKey));
+  check('P-3 삭제 함수가 실패를 호출자에게 반환', deleted === false);
+  T.probeStorage();
+  storage.delete(slotKey);
+  storage.delete(statsKey);
+}
+
+console.log('[P-3b] 슬롯 데이터 삭제 중 실패하면 전체 원상 복구');
+{
+  const T = windowObj.__test;
+  const SLOT_UNDO = 'ai-ethics-adventure-deleted-slot';
+  const slotKey = 'ai-ethics-adventure-slot-2';
+  const statsKey = 'ai-ethics-adventure-stats-2';
+  const oldUndo = JSON.stringify({ slot: 1, ts: Date.now(), 'ai-ethics-adventure-slot-1': '{"name":"이전 삭제"}' });
+  const oldSlot = JSON.stringify({ v: 9, name: '부분삭제방지', flags: { defeated: {} } });
+  const oldStats = JSON.stringify({ privacy: { correct: 4, total: 5 } });
+  storage.set(SLOT_UNDO, oldUndo);
+  storage.set(slotKey, oldSlot);
+  storage.set(statsKey, oldStats);
+  const realRemove = sandbox.localStorage.removeItem;
+  let failedOnce = false;
+  sandbox.localStorage.removeItem = (key) => {
+    if (key === statsKey && !failedOnce) {
+      failedOnce = true;
+      throw new Error('learning delete unavailable');
+    }
+    return realRemove(key);
+  };
+  const deleted = T.deleteSlot(2);
+  sandbox.localStorage.removeItem = realRemove;
+  check('P-3b 중간 삭제 실패를 호출자에게 반환', deleted === false);
+  check('P-3b 중간 삭제 실패 뒤 슬롯·학습 기록 전체 보존',
+    storage.get(slotKey) === oldSlot && storage.get(statsKey) === oldStats);
+  check('P-3b 실패한 삭제가 이전 되살리기 기록을 덮어쓰지 않음', storage.get(SLOT_UNDO) === oldUndo);
+  T.probeStorage();
+  storage.delete(SLOT_UNDO);
+  storage.delete(slotKey);
+  storage.delete(statsKey);
+}
+
 // ── Y-17a 저장공간 쿼터 초과(QuotaExceededError) → noteStorageFail 경고 승격 ──
 console.log('[Y-17a] 쿼터 초과 모의 스토리지 — noteStorageFail 경고 승격');
 {
@@ -366,6 +422,14 @@ console.log('[Y-17a] 쿼터 초과 모의 스토리지 — noteStorageFail 경�
   // 안내 문구가 게임 notice로 뜬다(교사·학생에게 백업 유도)
   check('Y-17a 저장 불가 안내 notice 표시', !!(g.notice && /저장되지 않/.test(g.notice.text)));
   sandbox.localStorage.setItem = realSet; // 스토리지 원복
+
+  T.probeStorage();
+  g.notice = null;
+  sandbox.localStorage.setItem = () => { throw new Error('learning data unavailable'); };
+  T.recordTopicResult(0, 'privacy', true);
+  sandbox.localStorage.setItem = realSet;
+  check('P-5 학습 진척도 저장 실패도 storageOk=false로 승격', T.getStorageOk() === false);
+  check('P-5 학습 진척도 저장 실패도 사용자 안내 표시', !!(g.notice && /저장되지 않/.test(g.notice.text)));
 }
 
 console.log(`\n✔ 슬롯 테스트 통과 (${passed}개 검사)`);

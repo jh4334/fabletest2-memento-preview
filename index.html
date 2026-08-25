@@ -19,6 +19,19 @@
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <title>마음의 문</title>
 <style>
+  :root {
+    --surface-primary: #000000;
+    --text-primary: #ffffff;
+    --border-default: #ffffff;
+    --accent-warm: #ffd644;
+    --accent-record: #8ea8d8;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-4: 16px;
+    --control-min-size: 44px;
+    --control-radius: 8px;
+    --control-type-size: 15px;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
     width: 100%; height: 100%;
@@ -53,7 +66,11 @@
     border-radius: 16px;
     color: #fff;
     font-size: clamp(22px, 5.4vmin, 30px);
+    font-family: inherit;
     font-weight: bold;
+    padding: 0;
+    cursor: pointer;
+    appearance: none;
     display: flex; align-items: center; justify-content: center;
     user-select: none; -webkit-user-select: none;
     touch-action: none;
@@ -251,6 +268,32 @@
     border: none; border-radius: 6px;
     padding: 12px 28px; cursor: pointer; margin-top: 6px;
   }
+  #update-ready {
+    display: none;
+    position: fixed;
+    top: calc(var(--space-4) + env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 90;
+    min-height: var(--control-min-size);
+    padding: var(--space-2) var(--space-4);
+    border: 4px solid var(--border-default);
+    border-radius: var(--control-radius);
+    background: var(--accent-warm);
+    color: var(--surface-primary);
+    box-shadow: none;
+    font-family: inherit;
+    font-size: var(--control-type-size);
+    font-weight: 700;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+  body.update-ready.title-slots #update-ready,
+  body.update-ready.pause-open #update-ready { display: block; }
+  #update-ready:focus-visible {
+    outline: 3px solid var(--accent-record);
+    outline-offset: var(--space-1);
+  }
 </style>
 </head>
 <body>
@@ -276,11 +319,11 @@
   <div id="t-stick" role="application" aria-label="이동 스틱. 손가락으로 끌어 상하좌우로 움직입니다.">
     <div id="t-stick-knob"></div>
   </div>
-  <div class="tbtn" id="t-a" role="button" aria-label="결정·대화">A<span class="sub">결정</span></div>
-  <div class="tbtn" id="t-hint" role="button" aria-label="힌트 보기">힌트</div>
-  <div class="tbtn" id="t-menu" role="button" aria-label="친구 수첩 열기">수첩</div>
-  <div class="tbtn" id="t-pause" role="button" aria-label="메뉴 열기">메뉴</div>
-  <div class="tbtn" id="t-teacher" role="button" aria-label="선생님 방 열기">선생님</div>
+  <button class="tbtn" id="t-a" type="button" aria-label="결정·대화">A<span class="sub">결정</span></button>
+  <button class="tbtn" id="t-hint" type="button" aria-label="힌트 보기">힌트</button>
+  <button class="tbtn" id="t-menu" type="button" aria-label="친구 수첩 열기">수첩</button>
+  <button class="tbtn" id="t-pause" type="button" aria-label="메뉴 열기">메뉴</button>
+  <button class="tbtn" id="t-teacher" type="button" aria-label="선생님 방 열기">선생님</button>
 </div>
 <div id="rotate-hint">
   <div class="ico">📱</div>
@@ -302,6 +345,7 @@
   <small>인터넷 연결을 확인한 뒤 다시 시도해 주세요.<br>처음 한 번만 연결되면, 이후에는 오프라인에서도 실행됩니다.</small>
   <button onclick="location.reload()">다시 시도</button>
 </div>
+<button id="update-ready" type="button">새 버전 적용</button>
 <script src="src/sprites.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/data.js"></script>
@@ -348,25 +392,29 @@
   // 오프라인 설치(PWA) — file:// 로 직접 열었을 때는 등록하지 않는다
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     const hadServiceWorker = !!navigator.serviceWorker.controller;
-    let reloadingForUpdate = false;
-    const registrationStartedAt = Date.now();
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!hadServiceWorker || reloadingForUpdate) return;
-      if (Date.now() - registrationStartedAt < 60 * 1000) {
-        reloadingForUpdate = true;
-        location.reload();
-      }
-    });
+    const updateButton = document.getElementById('update-ready');
+    const markUpdateReady = () => {
+      if (!hadServiceWorker) return;
+      const firstNotice = window.__newVersionReady !== true;
+      window.__newVersionReady = true;
+      document.body.classList.add('update-ready');
+      if (firstNotice && window.__onNewVersion) window.__onNewVersion();
+    };
+    window.__applyNewVersion = () => {
+      if (!window.__newVersionReady) return;
+      if (window.__prepareVersionReload) window.__prepareVersionReload();
+      location.reload();
+    };
+    if (updateButton) updateButton.addEventListener('click', window.__applyNewVersion);
+    navigator.serviceWorker.addEventListener('controllerchange', markUpdateReady);
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
-        // 새 버전 감지 — cache-first라 배포해도 기존 사용자는 옛 화면을 본다.
-        // 새 워커 설치가 끝나면 게임에 알려 '새로고침 한 번' 안내를 띄운다.
+        // 새 버전 감지 — 플레이를 끊지 않고 타이틀·일시정지에서 직접 적용하게 한다.
         const watch = (worker) => {
           if (!worker) return;
           worker.addEventListener('statechange', () => {
             if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-              window.__newVersionReady = true;
-              if (window.__onNewVersion) window.__onNewVersion();
+              markUpdateReady();
             }
           });
         };

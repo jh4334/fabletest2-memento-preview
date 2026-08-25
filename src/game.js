@@ -159,7 +159,7 @@
     leaderboard: { ret: 'title', cursor: 0, toast: 0, rows: [], files: 0, skipped: 0 }, // Y-20 반 순위표(백업 여러 개 합산)
     classmode: { ret: 'world', sel: 0, confirm: false, toast: 0 }, // 수업 모드(챕터 바로 시작)
     prepost: null, // Y-18 사전/사후 점검 런타임 { ret, ch, kind, quizzes, idx, qCursor, choiceOrder, score, phase, feedback }
-    report: { ret: 'world', slot: 0, toast: 0 }, // 교사용 학생 진단 리포트
+    report: { ret: 'world', slot: 0, page: 0, toast: 0 }, // 교사용 학생 진단 리포트
     quizedit: { ret: 'title', cursor: 0, toast: 0, confirm: false }, // 커스텀 퀴즈 편집·가져오기
     cards: { ret: 'title', slot: 0, scroll: 0 },     // 학습 카드 컬렉션
     cert: { ret: 'title', slot: 0, toast: 0 },       // 수료증·진도 인증서
@@ -405,15 +405,39 @@
   function deleteSlot(i) {
     // 되살리기 안전망 — 지우기 직전 이 슬롯의 모든 데이터를 스냅샷해 둔다.
     // 공용 태블릿에서 다른 학생의 세이브를 실수로 지워도 1회 복구할 수 있다.
+    const keys = slotAllKeys(i);
+    let previousUndo = null;
+    let snap;
     try {
       // ts — Y-17b 스냅샷 나이 표시(로드 시 30일 지나면 자동 정리). 구 스냅샷(ts 없음)은
       // 삭제하지 않고 첫 로드 때 지금 시각으로 도장 찍는다(migrateSlotV3식 하위 호환).
-      const snap = { slot: i, ts: Date.now() };
-      for (const k of slotAllKeys(i)) { const v = localStorage.getItem(k); if (v != null) snap[k] = v; }
+      snap = { slot: i, ts: Date.now() };
+      for (const k of keys) { const v = localStorage.getItem(k); if (v != null) snap[k] = v; }
+      previousUndo = localStorage.getItem(SLOT_UNDO_KEY);
       localStorage.setItem(SLOT_UNDO_KEY, JSON.stringify(snap));
-    } catch (e) { /* 용량 부족 등이면 그냥 진행 */ }
-    try { localStorage.removeItem(slotKey(i)); } catch (e) { /* 무시 */ }
-    clearSlotLearning(i); // 학생을 지우면 학습 기록(일지·복습·도전과제)도 함께 지운다
+    } catch (e) {
+      noteStorageFail();
+      return false;
+    }
+    try {
+      localStorage.removeItem(slotKey(i));
+      clearSlotLearning(i);
+    } catch (e) {
+      for (const k of keys) {
+        try {
+          if (Object.prototype.hasOwnProperty.call(snap, k)) localStorage.setItem(k, snap[k]);
+          else localStorage.removeItem(k);
+        } catch (rollbackError) {}
+      }
+      try {
+        if (previousUndo == null) localStorage.removeItem(SLOT_UNDO_KEY);
+        else localStorage.setItem(SLOT_UNDO_KEY, previousUndo);
+      } catch (rollbackError) {}
+      if (puzzleLogCache && puzzleLogCache.slot === i) puzzleLogCache = null;
+      noteStorageFail();
+      return false;
+    }
+    return true;
   }
   function undoDeleteSlot() {
     let snap;
@@ -489,7 +513,7 @@
       const seen = getEndingsSeen();
       seen[id] = true;
       localStorage.setItem(ENDINGS_KEY, JSON.stringify(seen));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
 
   // 설정(자막 속도) — 세이브와 별개로, 게임을 다시 시작해도 남는다
@@ -663,14 +687,14 @@
       const m = getMistakes(slot);
       m[q._qid] = { topic: q._topic, q: q.q, a: q.a, c: q.c, why: q.why };
       localStorage.setItem(mistakesKey(slot), JSON.stringify(m));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
   function clearMistake(slot, qid) {
     try {
       const m = getMistakes(slot);
       delete m[qid];
       localStorage.setItem(mistakesKey(slot), JSON.stringify(m));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
   function mistakeCount(slot) { return Object.keys(getMistakes(slot)).length; }
 
@@ -692,7 +716,7 @@
       if (correct) e.correct += 1;
       s[topic] = e;
       localStorage.setItem(statsKey(slot), JSON.stringify(s));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
   // 학습 데이터를 한 화면 분량으로 정리한다 (일지·리포트 공용)
   function buildLearningSummary(slot) {
@@ -732,19 +756,17 @@
       m.challengeBest = Math.max(m.challengeBest || 0, score);
       m.challengeBestTotal = total;
       localStorage.setItem(metaKey(slot), JSON.stringify(m));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
 
   // 슬롯 삭제 시 학습 데이터도 함께 지운다 (방탈출 퍼즐 진행 로그 포함)
   function clearSlotLearning(slot) {
-    try {
-      localStorage.removeItem(statsKey(slot));
-      localStorage.removeItem(mistakesKey(slot));
-      localStorage.removeItem(metaKey(slot));
-      localStorage.removeItem(puzzleKey(slot));
-      // 지운 슬롯이 메모이즈 캐시에 남아 있으면 무효화(다음 getPuzzleLog가 빈 값을 반환하게)
-      if (puzzleLogCache && puzzleLogCache.slot === slot) puzzleLogCache = null;
-    } catch (e) { /* 무시 */ }
+    localStorage.removeItem(statsKey(slot));
+    localStorage.removeItem(mistakesKey(slot));
+    localStorage.removeItem(metaKey(slot));
+    localStorage.removeItem(puzzleKey(slot));
+    // 지운 슬롯이 메모이즈 캐시에 남아 있으면 무효화(다음 getPuzzleLog가 빈 값을 반환하게)
+    if (puzzleLogCache && puzzleLogCache.slot === slot) puzzleLogCache = null;
   }
 
   // 기존 전역 학습 데이터(이전 버전)를 슬롯 0으로 1회 이전한다
@@ -760,7 +782,7 @@
         localStorage.setItem(mistakesKey(0), oldMist);
         localStorage.removeItem(MISTAKES_KEY);
       }
-    } catch (e) { /* 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
 
 
@@ -785,7 +807,7 @@
     m.streak = diff === 1 ? (m.streak || 0) + 1 : 1; // 이어서 오면 +1, 아니면 1부터
     m.lastPlayDay = day;
     m.bestStreak = Math.max(m.bestStreak || 0, m.streak);
-    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { /* 무시 */ }
+    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { noteStorageFail(); }
     return m;
   }
   function dailyDoneToday(slot, day) {
@@ -798,7 +820,7 @@
     m.dailyRuns = (m.dailyRuns || 0) + 1;
     m.dailyBest = Math.max(m.dailyBest || 0, score);
     m.dailyTotal = total;
-    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { /* 무시 */ }
+    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { noteStorageFail(); }
     return m;
   }
 
@@ -839,11 +861,11 @@
       why: clampQuizStr(q.why, WHY_MAX),
     })).filter((q) => q.q && q.a.every((x) => x) && q.why); // 정리 후 빈 항목 제거
     if (clean.length === 0) return { ok: false, error: 'empty' };
-    try { localStorage.setItem(CUSTOM_QUIZ_KEY, JSON.stringify(clean)); } catch (e) { return { ok: false, error: 'save' }; }
+    try { localStorage.setItem(CUSTOM_QUIZ_KEY, JSON.stringify(clean)); } catch (e) { noteStorageFail(); return { ok: false, error: 'save' }; }
     return { ok: true, count: clean.length };
   }
   function clearCustomQuizzes() {
-    try { localStorage.removeItem(CUSTOM_QUIZ_KEY); } catch (e) { /* 무시 */ }
+    try { localStorage.removeItem(CUSTOM_QUIZ_KEY); } catch (e) { noteStorageFail(); }
   }
   // 커스텀 문제 양식(템플릿) 텍스트
   function customQuizTemplate() {
@@ -946,7 +968,7 @@
     catch (e) { return {}; }
   }
   function setCosmetic(slot, data) {
-    try { localStorage.setItem(cosmeticKey(slot), JSON.stringify(data)); } catch (e) { /* 무시 */ }
+    try { localStorage.setItem(cosmeticKey(slot), JSON.stringify(data)); } catch (e) { noteStorageFail(); }
   }
   const TITLES = [
     { id: 'rookie', name: '새내기 수호자', desc: '모험을 시작한 모두에게', check: () => true },
@@ -1109,21 +1131,69 @@
     }
     return JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(), data });
   }
+  function buildRestoreSnapshot(keys) {
+    const data = {};
+    const absent = [];
+    for (const k of keys) {
+      const v = localStorage.getItem(k);
+      if (v == null) absent.push(k);
+      else data[k] = v;
+    }
+    return JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(), data, absent });
+  }
   const BACKUP_UNDO_KEY = 'ai-ethics-adventure-restore-undo';
-  function applyBackup(text) {
+  function applyBackup(text, recordUndo = true) {
     let obj;
     try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: 'parse' }; }
     if (!obj || obj.app !== 'ai-ethics-adventure' || !obj.data) return { ok: false, error: 'format' };
     const valid = new Set(allBackupKeys());
     const incoming = Object.keys(obj.data).filter((k) => valid.has(k));
+    const absent = recordUndo || !Array.isArray(obj.absent)
+      ? []
+      : obj.absent.filter((k) => typeof k === 'string' && valid.has(k) && !incoming.includes(k));
+    const touched = Array.from(new Set(incoming.concat(absent)));
     // 인식 가능한 데이터가 하나도 없으면 덮어쓰지 않는다 — 잘못된/빈 파일에 '완료' 오표시 방지
-    if (incoming.length === 0) return { ok: false, error: 'empty' };
+    if (touched.length === 0) return { ok: false, error: 'empty' };
+    if (incoming.some((k) => typeof obj.data[k] !== 'string')) return { ok: false, error: 'value' };
+    const previous = {};
+    let previousUndo = null;
     // 되돌리기 안전망 — 덮어쓰기 직전 현재 상태를 스냅샷해 둔다 (실수 복원 1회 취소용)
-    try { localStorage.setItem(BACKUP_UNDO_KEY, buildBackupText()); } catch (e) { /* 용량 부족 등이면 그냥 진행 */ }
-    let count = 0;
-    for (const k of incoming) {
-      try { localStorage.setItem(k, String(obj.data[k])); count++; } catch (e) { /* 무시 */ }
+    try {
+      for (const k of touched) previous[k] = localStorage.getItem(k);
+      if (recordUndo) {
+        previousUndo = localStorage.getItem(BACKUP_UNDO_KEY);
+        localStorage.setItem(BACKUP_UNDO_KEY, buildRestoreSnapshot(touched));
+      }
+    } catch (e) {
+      noteStorageFail();
+      return { ok: false, error: 'snapshot' };
     }
+    let count = 0;
+    try {
+      for (const k of incoming) {
+        localStorage.setItem(k, obj.data[k]);
+        count++;
+      }
+      for (const k of absent) localStorage.removeItem(k);
+    } catch (e) {
+      let rolledBack = true;
+      for (const k of touched) {
+        try {
+          if (previous[k] == null) localStorage.removeItem(k);
+          else localStorage.setItem(k, previous[k]);
+        } catch (rollbackError) { rolledBack = false; }
+      }
+      if (recordUndo) {
+        try {
+          if (previousUndo == null) localStorage.removeItem(BACKUP_UNDO_KEY);
+          else localStorage.setItem(BACKUP_UNDO_KEY, previousUndo);
+        } catch (restoreUndoError) { rolledBack = false; }
+      }
+      puzzleLogCache = null;
+      noteStorageFail();
+      return { ok: false, error: rolledBack ? 'write' : 'rollback' };
+    }
+    puzzleLogCache = null;
     return { ok: true, count };
   }
   // 직전 복원을 취소한다 (되돌리기 스냅샷이 있을 때만).
@@ -1131,8 +1201,8 @@
     let snap;
     try { snap = localStorage.getItem(BACKUP_UNDO_KEY); } catch (e) { return { ok: false }; }
     if (!snap) return { ok: false };
-    const res = applyBackup(snap); // 스냅샷을 다시 적용 (이때 또 undo 스냅샷이 갱신됨)
-    try { localStorage.removeItem(BACKUP_UNDO_KEY); } catch (e) { /* 무시 */ }
+    const res = applyBackup(snap, false);
+    if (res.ok) { try { localStorage.removeItem(BACKUP_UNDO_KEY); } catch (e) { /* 무시 */ } }
     return res;
   }
   function hasRestoreUndo() {
@@ -1195,7 +1265,7 @@
       const seen = getDexSeen();
       seen[monId] = { seen: true, mercy: mercyKind || (seen[monId] && seen[monId].mercy) || null };
       localStorage.setItem(DEX_KEY, JSON.stringify(seen));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
   function dexSeenCount() {
     const seen = getDexSeen();
@@ -1311,9 +1381,15 @@
     const k = KEYMAP[e.key];
     if (k) held.delete(k);
   });
+  const inputResetters = [];
+  function releaseAllInputs() {
+    held.clear();
+    pressed.clear();
+    for (const reset of inputResetters) reset();
+  }
   // 창 포커스를 잃으면(다른 탭·앱으로 전환) keyup이 안 와서 키가 '눌린 채' 남아
   // 돌아왔을 때 캐릭터가 계속 걷는 문제를 막는다.
-  window.addEventListener('blur', () => { held.clear(); pressed.clear(); });
+  window.addEventListener('blur', releaseAllInputs);
 
   // 가상 스틱: 중심에서의 변위(dx,dy)를 우세 4방향 하나로 환산. 데드존 안이면 null.
   // (메뉴 커서 이동 등 단일 방향이 필요한 곳에서 사용) — 순수 함수라 테스트로 검증한다.
@@ -1346,6 +1422,21 @@
     if (!action || !cancel) return;
     const actionSub = action.querySelector('.sub');
     const setActionSub = (text) => { if (actionSub) actionSub.textContent = text; };
+    if (game.mode === 'report') {
+      action.setAttribute('aria-label', '진단 리포트 내보내기');
+      setActionSub('내보내기');
+      cancel.setAttribute('aria-label', '진단 리포트 닫기');
+      cancel.textContent = '닫기';
+      return;
+    }
+    if (game.mode === 'ending') {
+      const ready = endingContinueReady();
+      action.setAttribute('aria-label', ready ? '마을로 돌아가기' : '엔딩이 끝날 때까지 잠시 기다리기');
+      setActionSub(ready ? '마을로' : '잠시만');
+      cancel.setAttribute('aria-label', '엔딩에서는 A 버튼으로 계속합니다');
+      cancel.textContent = '안내';
+      return;
+    }
     if (game.mode === 'record') {
       if (game.record && game.record.discovery) {
         action.setAttribute('aria-label', '기록 복원 시작');
@@ -1377,6 +1468,8 @@
     isTouchDevice = true;
     document.body.classList.add('touch');
     const touchIds = new Map();
+    inputResetters.push(() => touchIds.clear());
+    window.addEventListener('touchcancel', releaseAllInputs);
     const bind = (id, key) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -1412,6 +1505,11 @@
       el.addEventListener('touchend', up);
       el.addEventListener('touchcancel', up);
       el.addEventListener('touchmove', move);
+      el.addEventListener('click', (e) => {
+        if (e.detail !== 0) return;
+        Sound.resume();
+        if (!held.has(key)) pressed.add(key);
+      });
     };
     bind('t-a', 'action');
     bind('t-menu', 'menu');
@@ -1426,6 +1524,7 @@
         if (game.mode === 'title' && game.titleScreen === 'slots') openTeacherRoom();
       };
       teacherBtn.addEventListener('touchstart', onTeacher);
+      teacherBtn.addEventListener('click', (e) => { if (e.detail === 0) onTeacher(e); });
     }
 
     // 가상 스틱 (이동) — 손가락 방향으로 상하좌우를 누른 효과를 낸다.
@@ -1484,6 +1583,11 @@
       stick.addEventListener('touchmove', onMove);
       stick.addEventListener('touchend', onEnd);
       stick.addEventListener('touchcancel', onEnd);
+      inputResetters.push(() => {
+        stickId = null;
+        setDir([]);
+        place(0, 0);
+      });
     }
     const hintBtn = document.getElementById('t-hint');
     if (hintBtn) {
@@ -1493,6 +1597,7 @@
         if (game.mode === 'battle' && game.battle && game.battle.phase === 'menu') battleHint();
       };
       hintBtn.addEventListener('touchstart', onHint);
+      hintBtn.addEventListener('click', (e) => { if (e.detail === 0) onHint(e); });
     }
   }
 
@@ -5012,7 +5117,7 @@
         m.bossRank[id] = rank;
         localStorage.setItem(metaKey(slot), JSON.stringify(m));
       }
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
   // 승리 대사 lines 뒤에 판정 한 줄을 얹고, 최고 등급을 기록한다.
   function appendRankLine(b, lines, id) {
@@ -9718,7 +9823,7 @@
       m.prepost[ch] = m.prepost[ch] || {};
       m.prepost[ch][kind] = { score, total, at: Date.now() };
       localStorage.setItem(metaKey(slot), JSON.stringify(m));
-    } catch (e) { /* 저장 불가 환경이면 무시 — 표시는 그대로 진행 */ }
+    } catch (e) { noteStorageFail(); }
   }
   function openPrepost(kind, ch, ret) {
     const quizzes = prepostQuizzes(ch);
@@ -9954,6 +10059,7 @@
   function openReport(ret) {
     game.report.ret = ret;
     game.report.slot = activeSlot();
+    game.report.page = 0;
     game.report.toast = 0;
     game.mode = 'report';
     Sound.select();
@@ -9961,13 +10067,44 @@
   function closeReport() { game.mode = game.report.ret; Sound.select(); }
   // slot 0..SLOT_COUNT-1 = 학생별, slot === SLOT_COUNT = 반 전체
   function reportView(slot) { return slot >= SLOT_COUNT ? buildClassDiagnostic() : buildDiagnosticReport(slot); }
+  const REPORT_PAGE_SIZE = 17;
+  function setReportLineStyle(line) {
+    if (line.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = fs(15, true); }
+    else if (line.startsWith('  · ')) { ctx.fillStyle = warnColor(); ctx.font = fs(13); }
+    else if (line.startsWith('추천 수업') || line.startsWith('우선 추천')) { ctx.fillStyle = okColor(); ctx.font = fs(13, true); }
+    else if (line.startsWith('──')) { ctx.fillStyle = '#444'; ctx.font = fs(13); }
+    else { ctx.fillStyle = '#ddd'; ctx.font = fs(13); }
+  }
+  function reportPageView(slot, page) {
+    const rows = [];
+    for (const source of reportView(slot).text.split('\n')) {
+      setReportLineStyle(source);
+      const wrapped = layoutLine(source, LW - 56);
+      for (const text of (wrapped.length ? wrapped : [''])) rows.push({ source, text });
+    }
+    const pages = Math.max(1, Math.ceil(rows.length / REPORT_PAGE_SIZE));
+    const current = Math.max(0, Math.min(Number(page) || 0, pages - 1));
+    return {
+      current,
+      pages,
+      rows: rows.slice(current * REPORT_PAGE_SIZE, (current + 1) * REPORT_PAGE_SIZE),
+    };
+  }
+  function reportPageAnnouncement() {
+    const view = reportPageView(game.report.slot, game.report.page);
+    return `학생 진단 리포트. 페이지 ${view.current + 1} / ${view.pages}. ` +
+      view.rows.map((row) => row.text).filter(Boolean).join('. ');
+  }
   function updateReport() {
     const r = game.report;
     const N = SLOT_COUNT + 1; // 학생 3명 + 반 전체
     if (r.toast > 0) r.toast -= 1; else if (r.toast < 0) r.toast += 1;
     // 좌우로 학생(슬롯)·반 전체 전환
-    if (justPressed('left')) { r.slot = (r.slot + N - 1) % N; Sound.blip(); }
-    if (justPressed('right')) { r.slot = (r.slot + 1) % N; Sound.blip(); }
+    if (justPressed('left')) { r.slot = (r.slot + N - 1) % N; r.page = 0; Sound.blip(); }
+    if (justPressed('right')) { r.slot = (r.slot + 1) % N; r.page = 0; Sound.blip(); }
+    const pages = reportPageView(r.slot, r.page).pages;
+    if (justPressed('up') && r.page > 0) { r.page -= 1; Sound.blip(); if (game.tts) Speech.speak(reportPageAnnouncement()); }
+    if (justPressed('down') && r.page + 1 < pages) { r.page += 1; Sound.blip(); if (game.tts) Speech.speak(reportPageAnnouncement()); }
     if (justPressed('action')) {
       const text = reportView(r.slot).text;
       const ok = downloadTextFile(text, 'ai-ethics-diagnostic-' + todayStr() + '.txt') || copyTextToClipboard(text);
@@ -9985,23 +10122,22 @@
     ctx.fillStyle = '#888'; ctx.font = fs(12);
     ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, 24, 58);
 
-    const rep = reportView(r.slot);
+    const view = reportPageView(r.slot, r.page);
+    r.page = view.current;
+    ctx.textAlign = 'right'; ctx.fillStyle = '#888'; ctx.font = fs(12);
+    ctx.fillText(`페이지 ${view.current + 1} / ${view.pages}`, LW - 24, 58);
+    ctx.textAlign = 'left';
     let y = 92;
-    const lines = rep.text.split('\n');
-    for (const ln of lines) {
-      if (ln.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = fs(15, true); }
-      else if (ln.startsWith('  · ')) { ctx.fillStyle = warnColor(); ctx.font = fs(13); }
-      else if (ln.startsWith('추천 수업') || ln.startsWith('우선 추천')) { ctx.fillStyle = okColor(); ctx.font = fs(13, true); }
-      else if (ln.startsWith('──')) { ctx.fillStyle = '#444'; ctx.font = fs(13); }
-      else { ctx.fillStyle = '#ddd'; ctx.font = fs(13); }
-      ctx.fillText(ln, 28, y);
+    for (const row of view.rows) {
+      setReportLineStyle(row.source);
+      ctx.fillText(row.text, 28, y);
       y += 22;
     }
 
     ctx.textAlign = 'center';
     if (r.toast > 0) { ctx.fillStyle = okColor(); ctx.font = fs(14, true); ctx.fillText('✓ 진단 리포트를 저장했어요 (인쇄·보관용)', LW / 2, 512); }
     else if (r.toast < 0) { ctx.fillStyle = badColor(); ctx.font = fs(14, true); ctx.fillText('이 환경에서는 내보낼 수 없어요 (브라우저에서 시도)', LW / 2, 512); }
-    else { ctx.fillStyle = '#777'; ctx.font = fs(13); ctx.fillText('Z: 리포트 내보내기(.txt/클립보드) · ◀▶ 학생 전환 · X: 닫기', LW / 2, 512); }
+    else { ctx.fillStyle = '#777'; ctx.font = fs(13); ctx.fillText('↑↓ 페이지 · ◀▶ 학생 전환 · Z 내보내기 · X 닫기', LW / 2, 512); }
     ctx.textAlign = 'left';
   }
 
@@ -12217,7 +12353,7 @@
     const st = (meta && meta.streak) || 0;
     if ([3, 7, 14].includes(st) && meta.lastMilestone !== st) {
       meta.lastMilestone = st;
-      try { localStorage.setItem(metaKey(slot), JSON.stringify(meta)); } catch (e) { /* 무시 */ }
+      try { localStorage.setItem(metaKey(slot), JSON.stringify(meta)); } catch (e) { noteStorageFail(); }
       fanfare(`🔥 연속 출석 ${st}일! 대단해요.`);
       return;
     }
@@ -12260,9 +12396,9 @@
 
     if (game.titleScreen === 'delete') {
       if (justPressed('action')) {
-        deleteSlot(game.slotCursor);
+        const deleted = deleteSlot(game.slotCursor);
         game.titleScreen = 'slots';
-        Sound.wrong();
+        if (deleted) Sound.wrong(); else Sound.blip();
       } else if (justPressed('cancel') || justPressed('menu')) {
         game.titleScreen = 'slots';
         Sound.blip();
@@ -12326,7 +12462,7 @@
   function updateEnding() {
     game.endingT += 1;
     if (game.endingType === 'true') {
-      if (game.endingT > 150 && justPressed('action')) {
+      if (endingContinueReady() && justPressed('action')) {
         game.mode = 'world';
         game.map = 'village';
         game.player.x = 13; game.player.y = 16;
@@ -12343,7 +12479,7 @@
         };
       }
     } else {
-      if (game.endingT > 120 && justPressed('action')) {
+      if (endingContinueReady() && justPressed('action')) {
         game.mode = 'world';
         Sound.playMapBgm(MAPS[game.map].song);
       }
@@ -12436,8 +12572,21 @@
     return [e.title].concat(e.lines).filter(Boolean).join('. ');
   }
 
+  function endingContinueReady() {
+    return game.endingT > (game.endingType === 'true' ? 150 : 120);
+  }
+
+  function endingContinuationAnnouncement() {
+    if (endingContinueReady()) {
+      return game.endingType === 'true'
+        ? 'A 버튼 또는 Z·스페이스를 누르면 마을로 돌아갑니다.'
+        : 'A 버튼 또는 Z·스페이스를 누르면 모험이 계속됩니다.';
+    }
+    return '엔딩을 보고 있어요. 잠시 후 계속할 수 있어요.';
+  }
+
   function announceEnding(id) {
-    Speech.speak(endingAnnouncement(id || game.flags.endingId));
+    Speech.speak(endingAnnouncement(id || game.flags.endingId) + '. ' + endingContinuationAnnouncement());
   }
 
   function drawEnding() {
@@ -12481,11 +12630,13 @@
         const bob2 = game.reduceFx ? 0 : Math.sin(game.time / 14 + 1.5) * 5;
         drawMon(ctx, 'bandi', 164, 434 + bob2, 2);
       }
-      if (game.endingT > 150) {
-        ctx.fillStyle = game.reduceFx || Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
-        ctx.font = fs(15);
-        ctx.fillText('Z·스페이스를 누르면 마을로 돌아갑니다', LW / 2, 510);
-      }
+      ctx.fillStyle = endingContinueReady()
+        ? (game.reduceFx || Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822')
+        : '#777788';
+      ctx.font = fs(15);
+      ctx.fillText(endingContinueReady()
+        ? 'Z·스페이스를 누르면 마을로 돌아갑니다'
+        : '잠시 후 마을로 돌아갈 수 있어요', LW / 2, 510);
       ctx.textAlign = 'left';
       return;
     }
@@ -12530,11 +12681,13 @@
       drawMon(ctx, ids[i], bx, by, 2);
     }
 
-    if (game.endingT > 120) {
-      ctx.fillStyle = game.reduceFx || Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
-      ctx.font = fs(15); // 엔딩에서 다음 행동 안내 — 큰 글씨 모드 적용
-      ctx.fillText('Z·스페이스를 누르면 모험이 계속됩니다', LW / 2, 516);
-    }
+    ctx.fillStyle = endingContinueReady()
+      ? (game.reduceFx || Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822')
+      : '#777788';
+    ctx.font = fs(15); // 엔딩에서 다음 행동 안내 — 큰 글씨 모드 적용
+    ctx.fillText(endingContinueReady()
+      ? 'Z·스페이스를 누르면 모험이 계속됩니다'
+      : '잠시 후 모험을 계속할 수 있어요', LW / 2, 516);
     ctx.textAlign = 'left';
   }
 
@@ -12578,8 +12731,10 @@
       }
     } else if (game.mode === 'journal') {
       txt = journalAnnouncement();
+    } else if (game.mode === 'report') {
+      txt = reportPageAnnouncement();
     } else if (game.mode === 'ending' && game.endingType === 'true') {
-      txt = endingAnnouncement(game.flags.endingId);
+      txt = endingAnnouncement(game.flags.endingId) + '. ' + endingContinuationAnnouncement();
     } else if (game.dialog && game.dialog.lines && typeof game.dialog.lines[game.dialog.idx] === 'string') {
       txt = game.dialog.lines[game.dialog.idx];
     } else if (game.notice && game.notice.t > 0 && game.notice.text) {
@@ -12777,6 +12932,7 @@
       // 터치 기기는 키보드 T가 없어 「선생님 방」에 못 들어간다 — 타이틀(슬롯 화면)일 때만
       // 작은 DOM 버튼을 보여 준다(battle-hint와 같은 body class 토글 패턴).
       document.body.classList.toggle('title-slots', game.mode === 'title' && game.titleScreen === 'slots');
+      document.body.classList.toggle('pause-open', game.mode === 'pause');
     } catch (err) {
       crashed = true;
       try { console.error('[AI윤리어드벤처] 프레임 오류:', err); } catch (e) { /* 무시 */ }
@@ -12818,6 +12974,7 @@
     document.addEventListener('visibilitychange', () => {
       try {
         if (document.hidden) {
+          releaseAllInputs();
           bgmBeforeHide = Sound.songName;
           Sound.stopSong();
           Speech.stop();
@@ -12858,8 +13015,11 @@
   window.__onNewVersion = () => {
     try {
       game.newVersionReady = true;
-      game.notice = { text: '⟳ 새 버전이 준비됐어요 — 새로고침 한 번이면 적용돼요.', t: 480 };
+      game.notice = { text: '⟳ 새 버전이 준비됐어요 — 타이틀이나 메뉴에서 적용할 수 있어요.', t: 480 };
     } catch (e) { /* 무시 */ }
+  };
+  window.__prepareVersionReload = () => {
+    if (game.mode === 'pause' && game.flags) save();
   };
   if (window.__newVersionReady) window.__onNewVersion();
   // 읽어주기 한국어 음성 준비 (목록이 비동기로 채워지면 다시 고른다)

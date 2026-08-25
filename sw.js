@@ -1,7 +1,7 @@
 // AI 윤리 어드벤처 — 오프라인 서비스워커
 // 모든 정적 자원을 처음 방문 때 캐시해, 이후 네트워크 없이도 실행되게 한다.
 // 게임 코드/콘텐츠가 바뀌면 CACHE 버전을 올리면 된다.
-const CACHE = 'ai-ethics-adventure-c7f356e5';
+const CACHE = 'ai-ethics-adventure-bfacd52a';
 const ASSETS = [
   './',
   './index.html',
@@ -15,11 +15,14 @@ const ASSETS = [
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
 ];
+const CORE_ASSETS = ASSETS.filter((asset) => !asset.startsWith('./icons/'));
+const OPTIONAL_ASSETS = ASSETS.filter((asset) => asset.startsWith('./icons/'));
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE)
-      .then((c) => c.addAll(ASSETS))
+      .then((c) => c.addAll(CORE_ASSETS)
+        .then(() => Promise.allSettled(OPTIONAL_ASSETS.map((asset) => c.add(asset)))))
       .then(() => self.skipWaiting())
   );
 });
@@ -59,11 +62,17 @@ self.addEventListener('fetch', (e) => {
   );
 
   if (isCore) {
+    const fallback = () => caches.match(e.request, { ignoreSearch: true })
+      .then((hit) => hit || (isNav ? caches.match('./index.html') : undefined));
     e.respondWith(
       fetch(e.request, { cache: 'no-store' })
-        .then((response) => remember(e.request, response))
-        .catch(() => caches.match(e.request, { ignoreSearch: true })
-          .then((hit) => hit || (isNav ? caches.match('./index.html') : undefined)))
+        .then((response) => {
+          if (response && response.status >= 200 && response.status < 400) {
+            return remember(e.request, response);
+          }
+          return fallback().then((hit) => hit || response);
+        })
+        .catch(fallback)
     );
     return;
   }
