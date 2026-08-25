@@ -15,11 +15,14 @@ const ASSETS = [
   './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
 ];
+const CORE_ASSETS = ASSETS.filter((asset) => !asset.startsWith('./icons/'));
+const OPTIONAL_ASSETS = ASSETS.filter((asset) => asset.startsWith('./icons/'));
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE)
-      .then((c) => c.addAll(ASSETS))
+      .then((c) => c.addAll(CORE_ASSETS)
+        .then(() => Promise.allSettled(OPTIONAL_ASSETS.map((asset) => c.add(asset)))))
       .then(() => self.skipWaiting())
   );
 });

@@ -59,6 +59,17 @@ function loadWorker(options = {}) {
   return { listeners, writes };
 }
 
+async function dispatchInstall(listener) {
+  let completion;
+  listener({ waitUntil(value) { completion = Promise.resolve(value); } });
+  try {
+    await completion;
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 async function dispatchFetch(listener, request) {
   let response;
   listener({
@@ -81,6 +92,24 @@ async function dispatchFetch(listener, request) {
     url: 'https://example.test/src/game.js',
   });
   check('HTTP 503 core 응답 대신 마지막 정상 캐시를 반환', result === cached);
+
+  console.log('[SW-2] optional icon 실패가 core shell 설치를 막지 않음');
+  const batches = [];
+  const workerWithMissingIcon = loadWorker({
+    addAll: (assets) => {
+      batches.push(Array.from(assets));
+      return assets.some((asset) => /icons\//.test(asset))
+        ? Promise.reject(new Error('optional icon missing'))
+        : Promise.resolve();
+    },
+    add: (asset) => /icons\//.test(asset)
+      ? Promise.reject(new Error('optional icon missing'))
+      : Promise.resolve(),
+  });
+  const installed = await dispatchInstall(workerWithMissingIcon.listeners.install);
+  check('optional icon 1개가 없어도 worker 설치 완료', installed);
+  check('core shell batch에는 index와 game.js가 포함',
+    batches.some((assets) => assets.includes('./index.html') && assets.includes('./src/game.js')));
 
   if (fail) {
     console.error(`\n서비스워커 테스트: ${pass} 통과 / ${fail} 실패`);

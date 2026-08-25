@@ -541,6 +541,41 @@ async function canvasColorProfile(page, rect) {
   }
 
   {
+    console.log('[service-worker-optional-asset] 선택 아이콘 404 중에도 core shell 설치');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    serverFaults.set('/icons/apple-touch-icon.png', 404);
+    await page.goto(base, { waitUntil: 'load' });
+    let shellReady = false;
+    for (let i = 0; i < 60 && !shellReady; i++) {
+      shellReady = await page.evaluate(async () => {
+        if (!navigator.serviceWorker.controller) return false;
+        const keys = await caches.keys();
+        for (const key of keys) {
+          const cache = await caches.open(key);
+          if (await cache.match('./src/game.js')) return true;
+        }
+        return false;
+      }).catch(() => false);
+      if (!shellReady) await page.waitForTimeout(250);
+    }
+    serverFaults.delete('/icons/apple-touch-icon.png');
+    check('선택 아이콘 404 중에도 core shell과 controller 준비', shellReady);
+    let offlineReady = false;
+    if (shellReady) {
+      await ctx.setOffline(true);
+      try {
+        await page.goto(base + '?optional-icon=missing', { waitUntil: 'load' });
+        await page.waitForFunction(() => !!window.__test, { timeout: 8000 });
+        offlineReady = true;
+      } catch (e) {}
+      await ctx.setOffline(false);
+    }
+    check('선택 아이콘 없이 설치된 core shell로 오프라인 재진입', offlineReady);
+    await ctx.close();
+  }
+
+  {
     console.log('[service-worker-upgrade] 기준 버전 캐시에서 최신 게임으로 자동 전환');
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     await ctx.addInitScript(() => {
