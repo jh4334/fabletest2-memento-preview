@@ -25,6 +25,7 @@ const MIME = {
   '.json': 'application/json', '.webmanifest': 'application/manifest+json',
   '.png': 'image/png', '.css': 'text/css', '.svg': 'image/svg+xml', '.ico': 'image/png',
 };
+const serverFaults = new Map();
 
 function startServer() {
   return new Promise((resolve) => {
@@ -32,6 +33,12 @@ function startServer() {
       let p = decodeURIComponent(req.url.split('?')[0]);
       if (p === '/') p = '/index.html';
       if (p === '/favicon.ico') p = '/icons/icon-192.png'; // 파비콘 404 잡음 방지
+      const forcedStatus = serverFaults.get(p);
+      if (forcedStatus) {
+        res.statusCode = forcedStatus;
+        res.end('forced failure');
+        return;
+      }
       const fp = path.join(ROOT, p);
       if (!fp.startsWith(ROOT) || !fs.existsSync(fp) || fs.statSync(fp).isDirectory()) {
         res.statusCode = 404; res.end('not found'); return;
@@ -514,6 +521,22 @@ async function canvasColorProfile(page, rect) {
     check('스틱: 방향 입력 인식', r.stickRight === true);
     check('스틱: 둘째 손가락 탈취에도 이동 유지', r.stickSurvivesSteal === true);
     check('스틱: 원래 손가락 떼면 정지', r.stickReleased === true);
+    await ctx.close();
+  }
+
+  {
+    console.log('[service-worker-http-error] core 503 응답의 마지막 정상 캐시 폴백');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && navigator.serviceWorker.controller), { timeout: 8000 });
+    serverFaults.set('/src/game.js', 503);
+    const fallback = await page.evaluate(async () => {
+      const response = await fetch('src/game.js?fault=503', { cache: 'no-store' });
+      return { status: response.status, text: await response.text() };
+    });
+    serverFaults.delete('/src/game.js');
+    check('core 503 대신 캐시된 game.js 200 응답', fallback.status === 200 && /window\.__game/.test(fallback.text));
     await ctx.close();
   }
 

@@ -59,11 +59,17 @@ self.addEventListener('fetch', (e) => {
   );
 
   if (isCore) {
+    const fallback = () => caches.match(e.request, { ignoreSearch: true })
+      .then((hit) => hit || (isNav ? caches.match('./index.html') : undefined));
     e.respondWith(
       fetch(e.request, { cache: 'no-store' })
-        .then((response) => remember(e.request, response))
-        .catch(() => caches.match(e.request, { ignoreSearch: true })
-          .then((hit) => hit || (isNav ? caches.match('./index.html') : undefined)))
+        .then((response) => {
+          if (response && response.status >= 200 && response.status < 400) {
+            return remember(e.request, response);
+          }
+          return fallback().then((hit) => hit || response);
+        })
+        .catch(fallback)
     );
     return;
   }
