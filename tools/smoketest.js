@@ -3598,7 +3598,7 @@ console.log('[X-1~X-8] X라운드 — 반응 선택·정서 아크·메타·회�
   g.flags.classSession = false;
   check('X-8 일반 세션 배너 접두는 "목표: "', T.objectiveBannerPrefix() === '목표: ');
 
-  // X-5 고요의 뜰 진입 — 반디의 회수 안내(★N명 + 7 미만이면 덧붙임).
+  // X-5 고요의 뜰 진입 — 비상 정지 복선 + 회수 안내(★N명 + 7 미만이면 덧붙임).
   g.dialog = null; g.mode = 'world';
   g.flags.bandiRevealed = false; g.flags.bandiJoined = true;
   g.flags.mercyGuideShown = false; g.flags.bandiAnswer = null;
@@ -3608,8 +3608,8 @@ console.log('[X-1~X-8] X라운드 — 반응 선택·정서 아크·메타·회�
   g.notice = { text: '', t: 0 };
   g.map = 'cozyhome'; g.warpCooldownFrames = 0; g.pendingWarpRecheck = false;
   setPos(31, 19, 'down'); hold('ArrowDown', 14);
-  check('X-5 고요의 뜰 진입 시 회수 안내(★3명)', g.map === 'quietyard' && !!g.notice &&
-    /★3명/.test(g.notice.text) && /돌아가서 안아 줄 수 있는/.test(g.notice.text));
+  check('X-5 고요의 뜰 진입 시 비상 정지 복선과 회수 안내(★3명)', g.map === 'quietyard' && !!g.notice &&
+    /비상 정지/.test(g.notice.text) && /★3명/.test(g.notice.text) && /돌아가서 안아 줄 수 있는/.test(g.notice.text));
   check('X-5 안내는 1회성(mercyGuideShown 기록)', g.flags.mercyGuideShown === true);
 
   // X-4 영이 메타 인식 — 재도전(persuadeMemory)/2회차(ng) 인트로 한 줄.

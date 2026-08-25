@@ -379,11 +379,20 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
       await page.evaluate(() => {
         window.__game.reduceFx = true;
         window.__game.endingT = 600;
-        window.requestAnimationFrame = () => 0;
       });
       await page.waitForTimeout(100);
+      const promptPixels = await page.evaluate(() => {
+        const canvas = document.getElementById('game');
+        const pixels = canvas.getContext('2d').getImageData(80, 494, 560, 28).data;
+        let count = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (pixels[i] > 200 && pixels[i + 1] > 150 && pixels[i + 2] < 120 && pixels[i + 3] > 0) count++;
+        }
+        return count;
+      });
       check(`${id}: 기존 엔딩 화면 ID 렌더`, state.mode === 'ending' && !!state.title);
       check(`${id}: 결과·통계 문구가 화면 높이에 들어감`, state.lines <= 11);
+      check(`${id}: 최종 복귀 안내가 캔버스 하단에 렌더`, promptPixels > 20);
       await page.screenshot({ path: path.join(endingShotsDir, `${id}.png`) });
       await page.close();
     }

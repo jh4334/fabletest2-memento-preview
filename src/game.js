@@ -4337,7 +4337,7 @@
       if (isTouchDevice) introLines = introLines.map((t) => t.replace('막히면 H', '막히면 「힌트」 버튼'));
       startDialog(introLines);
     }
-    // 파이널 직전(quietyard 진입) 반디의 두 안내를 한 말풍선으로 묶는다:
+    // 파이널 직전(quietyard 진입) 반디의 안내를 한 말풍선으로 묶는다:
     //   • U-3③ 콜백 — 2장에서 저장한 답(bandiAnswer)을 기억해 준다(기억해 주는 친구).
     //   • X-5 회수 안내 — 지금까지 안아 준 마음 수를 은유로 알려 주고, 7 미만이면 되돌아가
     //     안아 줄 수 있는 마음이 남았음을 덧붙인다(강요 없음, 안내만 — home 엔딩 접근성).
@@ -4348,6 +4348,10 @@
         msg = game.flags.bandiAnswer === 'together'
           ? '반디: 전에 네가 "여럿이 있는 게 좋다"고 했지.\n…나도 그래. 그래서 여기까지 온 거야.'
           : '반디: 전에 네가 "혼자가 편할 때도 있다"고 했지.\n…나도 그래. 그래도 지금은, 곁에 있을게.';
+      }
+      if (!(game.flags.bandiSaid && game.flags.bandiSaid.quietyard)) {
+        const clue = COMPANION_LINES.quietyard;
+        msg = msg ? (msg + '\n\n' + clue) : clue;
       }
       if (!game.flags.mercyGuideShown) {
         game.flags.mercyGuideShown = true;
