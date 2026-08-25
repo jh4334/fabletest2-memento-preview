@@ -42,8 +42,8 @@ function loadWorker(options = {}) {
     caches: {
       open: () => Promise.resolve(cache),
       match: options.match || (() => Promise.resolve(undefined)),
-      keys: () => Promise.resolve([]),
-      delete: () => Promise.resolve(true),
+      keys: options.cacheKeys || (() => Promise.resolve([])),
+      delete: options.cacheDelete || (() => Promise.resolve(true)),
     },
     self: {
       location: { origin: 'https://example.test' },
@@ -79,6 +79,12 @@ async function dispatchFetch(listener, request) {
   return response;
 }
 
+async function dispatchActivate(listener) {
+  let completion;
+  listener({ waitUntil(value) { completion = Promise.resolve(value); } });
+  await completion;
+}
+
 (async () => {
   console.log('[SW-1] core 요청이 HTTP 오류면 마지막 정상 캐시로 폴백');
   const cached = fakeResponse('cached-game');
@@ -112,6 +118,19 @@ async function dispatchFetch(listener, request) {
     batches.some((assets) => assets.includes('./index.html') && assets.includes('./src/game.js')));
   check('core shell batch에는 data와 memento가 순서대로 포함',
     batches.some((assets) => assets.indexOf('./src/data.js') + 1 === assets.indexOf('./src/memento.js')));
+
+  console.log('[SW-3] preview cache cleanup does not claim production caches');
+  const deletedCaches = [];
+  const activationWorker = loadWorker({
+    cacheKeys: () => Promise.resolve([
+      'fabletest2-memento-preview-old',
+      'ai-ethics-adventure-production-cache',
+    ]),
+    cacheDelete: (key) => { deletedCaches.push(key); return Promise.resolve(true); },
+  });
+  await dispatchActivate(activationWorker.listeners.activate);
+  check('old preview cache is deleted', deletedCaches.includes('fabletest2-memento-preview-old'));
+  check('production cache is preserved', !deletedCaches.includes('ai-ethics-adventure-production-cache'));
 
   if (fail) {
     console.error(`\n서비스워커 테스트: ${pass} 통과 / ${fail} 실패`);

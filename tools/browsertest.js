@@ -480,10 +480,10 @@ async function canvasColorProfile(page, rect) {
     // 반 순위표 — 백업 두 개를 합산 상태로 넣고 화면을 연다
     const lbMode = await page.evaluate(() => {
       const g = window.__game, T = window.__test;
-      const mk = (name, mercy, done) => ({ app: 'ai-ethics-adventure', version: 1, data: {
-        'ai-ethics-adventure-slot-0': JSON.stringify({ v: 8, name, flags: { mercy, defeated: done ? { yeongi: true } : {} } }),
-        'ai-ethics-adventure-stats-0': JSON.stringify({ privacy: { correct: 7, total: 10 } }),
-        'ai-ethics-adventure-meta-0': JSON.stringify({ bossRank: { sujipmon: 'S' } }),
+      const mk = (name, mercy, done) => ({ app: 'ai-ethics-adventure-memento-preview', version: 1, data: {
+        'fabletest2-memento-preview-slot-0': JSON.stringify({ v: 8, name, flags: { mercy, defeated: done ? { yeongi: true } : {} } }),
+        'fabletest2-memento-preview-stats-0': JSON.stringify({ privacy: { correct: 7, total: 10 } }),
+        'fabletest2-memento-preview-meta-0': JSON.stringify({ bossRank: { sujipmon: 'S' } }),
       } });
       g.leaderboard.rows = T.backupSlotRows(mk('가온', 8, true)).concat(T.backupSlotRows(mk('나래', 3, false)));
       g.leaderboard.files = 2;
@@ -522,11 +522,11 @@ async function canvasColorProfile(page, rect) {
       ];
       const stats = {};
       for (const topic of topics) stats[topic] = { correct: 0, total: 3 };
-      localStorage.setItem('ai-ethics-adventure-slot-0', JSON.stringify({
+      localStorage.setItem('fabletest2-memento-preview-slot-0', JSON.stringify({
         v: 9, name: '긴보고서', map: 'village', x: 13, y: 16,
         flags: { defeated: {}, mercy: 0, visited: {} },
       }));
-      localStorage.setItem('ai-ethics-adventure-stats-0', JSON.stringify(stats));
+      localStorage.setItem('fabletest2-memento-preview-stats-0', JSON.stringify(stats));
       window.__game.mode = 'report';
       window.__game.report.ret = 'title';
       window.__game.report.slot = 0;
@@ -568,11 +568,11 @@ async function canvasColorProfile(page, rect) {
       ];
       const stats = {};
       for (const topic of topics) stats[topic] = { correct: 0, total: 3 };
-      localStorage.setItem('ai-ethics-adventure-slot-0', JSON.stringify({
+      localStorage.setItem('fabletest2-memento-preview-slot-0', JSON.stringify({
         v: 9, name: '모바일보고서', map: 'village', x: 13, y: 16,
         flags: { defeated: {}, mercy: 0, visited: {} },
       }));
-      localStorage.setItem('ai-ethics-adventure-stats-0', JSON.stringify(stats));
+      localStorage.setItem('fabletest2-memento-preview-stats-0', JSON.stringify(stats));
       window.__game.mode = 'report';
       window.__game.report.slot = 0;
       window.__game.report.page = 0;
@@ -708,12 +708,12 @@ async function canvasColorProfile(page, rect) {
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
     await page.evaluate(() => {
-      localStorage.setItem('ai-ethics-adventure-slot-2', JSON.stringify({ v: 9, name: '보존아이', flags: { defeated: {} } }));
-      localStorage.setItem('ai-ethics-adventure-stats-2', JSON.stringify({ privacy: { correct: 2, total: 3 } }));
+      localStorage.setItem('fabletest2-memento-preview-slot-2', JSON.stringify({ v: 9, name: '보존아이', flags: { defeated: {} } }));
+      localStorage.setItem('fabletest2-memento-preview-stats-2', JSON.stringify({ privacy: { correct: 2, total: 3 } }));
       const original = Storage.prototype.setItem;
       window.__restoreStorageSetItem = () => { Storage.prototype.setItem = original; };
       Storage.prototype.setItem = function setItem(key, value) {
-        if (key === 'ai-ethics-adventure-deleted-slot') throw new Error('snapshot unavailable');
+        if (key === 'fabletest2-memento-preview-deleted-slot') throw new Error('snapshot unavailable');
         return original.call(this, key, value);
       };
       window.__game.mode = 'title';
@@ -725,8 +725,8 @@ async function canvasColorProfile(page, rect) {
     const result = await page.evaluate(() => {
       window.__restoreStorageSetItem();
       return {
-        slot: !!localStorage.getItem('ai-ethics-adventure-slot-2'),
-        stats: !!localStorage.getItem('ai-ethics-adventure-stats-2'),
+        slot: !!localStorage.getItem('fabletest2-memento-preview-slot-2'),
+        stats: !!localStorage.getItem('fabletest2-memento-preview-stats-2'),
         screen: window.__game.titleScreen,
         notice: window.__game.notice && window.__game.notice.text,
       };
@@ -744,10 +744,10 @@ async function canvasColorProfile(page, rect) {
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
     const fixture = await page.evaluate(() => {
-      const undoKey = 'ai-ethics-adventure-deleted-slot';
-      const slotKey = 'ai-ethics-adventure-slot-2';
-      const statsKey = 'ai-ethics-adventure-stats-2';
-      const oldUndo = JSON.stringify({ slot: 1, ts: Date.now(), 'ai-ethics-adventure-slot-1': '{"name":"이전 삭제"}' });
+      const undoKey = 'fabletest2-memento-preview-deleted-slot';
+      const slotKey = 'fabletest2-memento-preview-slot-2';
+      const statsKey = 'fabletest2-memento-preview-stats-2';
+      const oldUndo = JSON.stringify({ slot: 1, ts: Date.now(), 'fabletest2-memento-preview-slot-1': '{"name":"이전 삭제"}' });
       const oldSlot = JSON.stringify({ v: 9, name: '부분삭제방지', flags: { defeated: {} } });
       const oldStats = JSON.stringify({ privacy: { correct: 4, total: 5 } });
       localStorage.setItem(undoKey, oldUndo);
@@ -793,12 +793,12 @@ async function canvasColorProfile(page, rect) {
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
     const fixture = await page.evaluate(() => {
-      const slotKey = 'ai-ethics-adventure-slot-2';
-      const statsKey = 'ai-ethics-adventure-stats-2';
-      const undoKey = 'ai-ethics-adventure-restore-undo';
+      const slotKey = 'fabletest2-memento-preview-slot-2';
+      const statsKey = 'fabletest2-memento-preview-stats-2';
+      const undoKey = 'fabletest2-memento-preview-restore-undo';
       const priorUndo = JSON.stringify({
-        app: 'ai-ethics-adventure', version: 1, savedAt: Date.now() - 1000,
-        data: { 'ai-ethics-adventure-stats-0': '{"privacy":{"correct":3,"total":3}}' },
+        app: 'ai-ethics-adventure-memento-preview', version: 1, savedAt: Date.now() - 1000,
+        data: { 'fabletest2-memento-preview-stats-0': '{"privacy":{"correct":3,"total":3}}' },
       });
       const oldSlot = JSON.stringify({ v: 9, name: '복원전', flags: { defeated: {} } });
       const oldStats = JSON.stringify({ privacy: { correct: 1, total: 2 } });
@@ -818,7 +818,7 @@ async function canvasColorProfile(page, rect) {
       return {
         slotKey, statsKey, undoKey, priorUndo, oldSlot, oldStats,
         backup: JSON.stringify({
-          app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+          app: 'ai-ethics-adventure-memento-preview', version: 1, savedAt: Date.now(),
           data: {
             [slotKey]: JSON.stringify({ v: 9, name: '복원후', flags: { defeated: {} } }),
             [statsKey]: JSON.stringify({ privacy: { correct: 9, total: 9 } }),
@@ -862,10 +862,10 @@ async function canvasColorProfile(page, rect) {
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!window.__test, { timeout: 8000 });
     const result = await page.evaluate(() => {
-      const key = 'ai-ethics-adventure-cosmetic-2';
+      const key = 'fabletest2-memento-preview-cosmetic-2';
       localStorage.removeItem(key);
       const restored = window.__test.applyBackup(JSON.stringify({
-        app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+        app: 'ai-ethics-adventure-memento-preview', version: 1, savedAt: Date.now(),
         data: { [key]: '{"theme":"night"}' },
       }));
       const presentAfterRestore = !!localStorage.getItem(key);
@@ -891,7 +891,7 @@ async function canvasColorProfile(page, rect) {
       const original = Storage.prototype.setItem;
       window.__restoreStorageSetItem = () => { Storage.prototype.setItem = original; };
       Storage.prototype.setItem = function setItem(key, value) {
-        if (key === 'ai-ethics-adventure-stats-0') throw new Error('learning data unavailable');
+        if (key === 'fabletest2-memento-preview-stats-0') throw new Error('learning data unavailable');
         return original.call(this, key, value);
       };
       window.__test.recordTopicResult(0, 'privacy', true);

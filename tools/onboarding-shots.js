@@ -7,14 +7,14 @@ const env = createGameSandbox();
 const { storage } = env;
 
 // ---- 세이브 시드 (스크립트 로드 전에 심어야 함) ----
-storage.set('ai-ethics-adventure-slot-0', JSON.stringify({
+storage.set('fabletest2-memento-preview-slot-0', JSON.stringify({
   v: 3, name: '도도', map: 'freestreet', x: 18, y: 21, flags: v3Flags(), updatedAt: Date.now(),
 }));
-storage.set('ai-ethics-adventure-slot-1', JSON.stringify({
+storage.set('fabletest2-memento-preview-slot-1', JSON.stringify({
   v: 3, name: '하늘', map: 'village', x: 13, y: 16,
   flags: { talkedProf: true, bandiJoined: true, defeated: {}, mercy: 1, visited: {} }, updatedAt: Date.now(),
 }));
-storage.set('ai-ethics-adventure-endings', JSON.stringify({ home: true }));
+storage.set('fabletest2-memento-preview-endings', JSON.stringify({ home: true }));
 
 const g = env.boot();
 const { step, dispatch, tap, advanceDialog, shot, setPlayer } = env;
@@ -82,7 +82,7 @@ shot('onboarding-5-mercy.png');
 // 6) 리포트 — 교사용 학생 진단 리포트(약점 주제 → 추천 차시 연결)
 g.battle = null; g.dialog = null;
 g.currentSlot = 0; g.playerName = '수호자';
-storage.set('ai-ethics-adventure-stats-0', JSON.stringify({
+storage.set('fabletest2-memento-preview-stats-0', JSON.stringify({
   privacy: { correct: 6, total: 6 }, copyright: { correct: 5, total: 6 },
   fake: { correct: 4, total: 5 }, bias: { correct: 2, total: 5 },
   balance: { correct: 3, total: 4 }, manners: { correct: 5, total: 5 },

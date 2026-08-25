@@ -11,7 +11,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const ROOT = path.join(__dirname, '..');
-const PREFIX = 'ai-ethics-adventure-';
+const PREFIX = 'fabletest2-memento-preview-';
 
 // 캐시 버전에 반영할 자산 — sw.js의 ASSETS 목록과 같은 파일들
 function assetFiles() {

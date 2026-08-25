@@ -137,7 +137,7 @@ if (has('unlockDamagedRecord')) {
   g.flags = T.newFlags();
   T.unlockDamagedRecord(1);
   T.unlockDamagedRecord(1);
-  const saved = JSON.parse(env.storage.get('ai-ethics-adventure-slot-0') || 'null');
+  const saved = JSON.parse(env.storage.get('fabletest2-memento-preview-slot-0') || 'null');
   check('1장 기록은 중복 없이 한 번 해금',
     g.flags.damagedRecords.length === 1 && g.flags.damagedRecords[0] === 'reset_after');
   check('해금 직후 pendingRecord와 슬롯 저장이 함께 남음',
@@ -155,7 +155,7 @@ if (has('startDamagedRecord') && has('unlockDamagedRecord')) {
   check('최초 공개는 본문 전에 복원 여부를 고르는 발견 단계로 진입',
     g.record && g.record.discovery === true);
   env.tap('x');
-  const skippedSave = JSON.parse(env.storage.get('ai-ethics-adventure-slot-0') || 'null');
+  const skippedSave = JSON.parse(env.storage.get('fabletest2-memento-preview-slot-0') || 'null');
   check('X 건너뛰기 뒤 월드로 복귀하고 완료·건너뜀 상태 저장',
     g.mode === 'world' && g.flags.viewedRecords.reset_after === true &&
     g.flags.skippedRecords.reset_after === true && g.flags.pendingRecord === null &&
@@ -206,7 +206,7 @@ if (has('startTimelineRestoration')) {
     g.flags.timelineMerged === true && g.mode === 'record' && g.record && g.record.restored === true &&
     g.record.ids.join(',') === CHRONOLOGICAL_IDS.join(','));
   env.tap('x');
-  const finalSave = JSON.parse(env.storage.get('ai-ethics-adventure-slot-0') || 'null');
+  const finalSave = JSON.parse(env.storage.get('fabletest2-memento-preview-slot-0') || 'null');
   check('복원 건너뛰기도 완료 상태 저장 후 다음 흐름으로 복귀',
     g.flags.timelineRestored === true && g.mode === 'world' && finalSave && finalSave.flags.timelineRestored === true);
 }
@@ -239,7 +239,10 @@ if (has('migrateSlotV9')) {
 const fresh = has('newFlags') ? T.newFlags() : {};
 check('신규 세이브의 기록 상태 기본값', Array.isArray(fresh.damagedRecords) && fresh.damagedRecords.length === 0 &&
   fresh.viewedRecords && fresh.skippedRecords && fresh.pendingRecord === null &&
-  fresh.timelineMerged === false && fresh.timelineRestored === false);
+  fresh.timelineMerged === false && fresh.timelineRestored === false && fresh.storyRoute === 'original' &&
+  Array.isArray(fresh.recordEvidence) && fresh.recordEvidence.length === 0 &&
+  fresh.administratorTerminalSolved === false && Array.isArray(fresh.timelineOrderDraft) &&
+  fresh.timelineOrderDraft.length === 0 && fresh.timelineOrderWrong === 0);
 
 console.log('[M-6b] 손상 기록 진행은 첫 장부터 HUD와 다시보기 동선에 드러난다');
 check('손상 기록 HUD 문구 API 존재', has('recordHudText'));

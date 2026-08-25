@@ -22,6 +22,9 @@ function makeCanvas(w, h) {
 
 // 미리 옛 단일 세이브를 심어 둔다 (스테이지 6 진행 중인 저장본)
 const storage = new Map();
+const productionSlotKey = 'ai-ethics-adventure-slot-2';
+const productionSlotBytes = JSON.stringify({ v: 9, name: 'production-only', flags: { defeated: {} } });
+storage.set(productionSlotKey, productionSlotBytes);
 const oldSave = {
   map: 'serverroom', x: 7, y: 9,
   flags: {
@@ -31,9 +34,10 @@ const oldSave = {
     mercy: 11, visited: {}, trueEnding: false, correctCount: 40, battleCount: 18,
   },
 };
-storage.set('ai-ethics-adventure-v1', JSON.stringify(oldSave));
+storage.set('fabletest2-memento-preview-v1', JSON.stringify(oldSave));
 
 const listeners = {};
+const storageAccesses = [];
 let rafCb = null;
 const windowObj = {
   addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
@@ -50,9 +54,9 @@ const sandbox = {
     body: { classList: { add() {}, remove() {}, toggle() {} } },
   },
   localStorage: {
-    getItem: (k) => (storage.has(k) ? storage.get(k) : null),
-    setItem: (k, v) => storage.set(k, String(v)),
-    removeItem: (k) => storage.delete(k),
+    getItem: (k) => { storageAccesses.push(['get', k]); return storage.has(k) ? storage.get(k) : null; },
+    setItem: (k, v) => { storageAccesses.push(['set', k]); storage.set(k, String(v)); },
+    removeItem: (k) => { storageAccesses.push(['remove', k]); storage.delete(k); },
   },
   requestAnimationFrame: windowObj.requestAnimationFrame,
   console, Math, Set, Map, JSON, Object, setTimeout, clearTimeout,
@@ -66,7 +70,7 @@ const g = windowObj.__game;
 function step(n = 1) { for (let i = 0; i < n; i++) { const cb = rafCb; rafCb = null; cb(); } }
 function dispatch(ev, obj) { for (const fn of (listeners[ev] || []).slice()) fn(Object.assign({ preventDefault() {} }, obj)); }
 function tap(key) { dispatch('keydown', { key }); step(2); dispatch('keyup', { key }); }
-function slot(i) { const r = storage.get('ai-ethics-adventure-slot-' + i); return r ? JSON.parse(r) : null; }
+function slot(i) { const r = storage.get('fabletest2-memento-preview-slot-' + i); return r ? JSON.parse(r) : null; }
 
 let passed = 0;
 function check(name, cond) {
@@ -76,11 +80,31 @@ function check(name, cond) {
 
 console.log('[1] 기존 단일 세이브 → 슬롯 0 이전(마이그레이션)');
 step(5);
-check('옛 세이브 키는 제거됨', !storage.get('ai-ethics-adventure-v1'));
+const storageTest = windowObj.__test;
+check('preview storage ignores a production-prefixed slot', storageTest.loadSlot(2) === null);
+check('preview storage leaves production bytes unchanged', storage.get(productionSlotKey) === productionSlotBytes);
+check('preview runtime never accesses a production-prefixed key',
+  storageAccesses.every((entry) => !entry[1].startsWith('ai-ethics-adventure-')));
+check('V10 migration API exists', typeof storageTest.migrateSlotV10 === 'function');
+check('옛 세이브 키는 제거됨', !storage.get('fabletest2-memento-preview-v1'));
 check('슬롯 0으로 이전됨', !!slot(0));
 check('이전된 진행도 보존 (스테이지 6)', slot(0).flags.defeated.finalboss === true);
 check('이전된 이름 기본값', slot(0).name === '수호자');
 check('타이틀에서 슬롯 0이 채워져 보임', g.mode === 'title' && g.titleScreen === 'slots');
+const previewSlotZeroBytes = storage.get('fabletest2-memento-preview-slot-0');
+storage.delete('fabletest2-memento-preview-slot-0');
+const productionSlots = [0, 1, 2].map((i) => [
+  'ai-ethics-adventure-slot-' + i,
+  JSON.stringify({ v: 9, name: 'production-' + i, flags: { defeated: {} } }),
+]);
+for (const [key, value] of productionSlots) storage.set(key, value);
+check('production slots do not populate any of the three preview slots',
+  [0, 1, 2].every((i) => storageTest.loadSlot(i) === null));
+check('all three production slots remain byte-for-byte unchanged',
+  productionSlots.every(([key, value]) => storage.get(key) === value));
+storage.set('fabletest2-memento-preview-slot-0', previewSlotZeroBytes);
+storage.delete('ai-ethics-adventure-slot-0');
+storage.delete('ai-ethics-adventure-slot-1');
 
 console.log('[2] 슬롯 0 이어하기');
 tap('z'); // 슬롯 0(채워짐) → 이어하기
@@ -119,7 +143,7 @@ check('슬롯 0은 영향 없음', !!slot(0));
 console.log('[6] 막힌 위치에 저장된 세이브 → 안전 칸 보정 (갇힘 방지)');
 const { MAPS, WALKABLE } = vm.runInContext('({ MAPS, WALKABLE })', sandbox);
 // village (0,0)은 'T'(나무, 이동 불가). 손상/구버전 세이브를 흉내 낸다.
-storage.set('ai-ethics-adventure-slot-2', JSON.stringify({
+storage.set('fabletest2-memento-preview-slot-2', JSON.stringify({
   name: '테스트', map: 'village', x: 0, y: 0,
   flags: { talkedProf: true, badges: {}, defeated: {}, mercy: 0, visited: {} }, updatedAt: Date.now(),
 }));
@@ -135,7 +159,7 @@ console.log('[7] 플래그 없는 손상 세이브 → 예외 없이 처리 (로
 // 마이그레이터는 flags 없는 행을 그대로 통과시킨다(if (!data || !data.flags) return data).
 // 타이틀은 slotSummary가 null이라 빈 슬롯 취급하지만, 「선생님 방 > 학급 모드」는
 // loadSlot 결과를 직접 읽어 s.flags.defeated 접근에서 TypeError가 날 수 있었다.
-storage.set('ai-ethics-adventure-slot-2', JSON.stringify({ v: 1, name: '깨진세이브', map: 'village', x: 13, y: 16 }));
+storage.set('fabletest2-memento-preview-slot-2', JSON.stringify({ v: 1, name: '깨진세이브', map: 'village', x: 13, y: 16 }));
 g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 2;
 tap('z'); // 빈 슬롯 취급 → 이름 입력(크래시 아님)
 check('손상 세이브는 새 모험 안내로 진입', g.titleScreen === 'name');
@@ -151,19 +175,19 @@ check('학급 모드 예외 없이 진입', g.mode !== 'teacher');
 check('flags가 새로 채워짐', !!g.flags && typeof g.flags.defeated === 'object');
 
 // ── W-1 세이브 마이그레이션 골든 픽스처 테스트 ──
-// v3·v5·v8 세대의 "골든 세이브"를 심고, loadSlot의 V9 마이그레이션 사슬이 (a) 필수 플래그를
+// v3·v5·v8 세대의 "골든 세이브"를 심고, loadSlot의 V10 마이그레이션 사슬이 (a) 필수 플래그를
 // 모두 채우고 (b) talkedProf 파생 추론이 정확하며 (c) defeated 승계가 유지되고
-// (d) v9 미래 필드가 roundtrip에서 사라지지 않는지 검사한다.
-console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8→v9·v9 미래필드)');
+// (d) v10 미래 필드가 roundtrip에서 사라지지 않는지 검사한다.
+console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9→v10·미래필드)');
 {
   const T = windowObj.__test;
-  const put = (i, obj) => storage.set('ai-ethics-adventure-slot-' + i, JSON.stringify(obj));
+  const put = (i, obj) => storage.set('fabletest2-memento-preview-slot-' + i, JSON.stringify(obj));
 
   // (v3 골든) — 옛 세대. V4~V8 사슬을 전부 거친다.
   put(0, { v: 3, name: '골든3', map: 'village', x: 13, y: 16,
     flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true }, mercy: 5, visited: {} } });
   const s3 = T.loadSlot(0);
-  check('W-1 v3→최신 버전 상승(v=9)', s3.v === 9);
+  check('W-1 v3→최신 버전 상승(v=10)', s3.v === 10);
   check('W-1 v3 필수 플래그 채워짐(introClue1·prologueClosed·privacyLeak 정의)',
     s3.flags.introClue1 !== undefined && s3.flags.prologueClosed !== undefined && s3.flags.privacyLeak === 0);
   check('W-1 v3 talkedProf 파생 추론 — introClue1 = !!talkedProf = true', s3.flags.introClue1 === true);
@@ -175,7 +199,7 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8→v
     flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true }, mercy: 8, visited: {},
       introClue1: true, introClue2: true, introClue3: true, introDoorOpen: true, introForestTrace: true } });
   const s5 = T.loadSlot(1);
-  check('W-1 v5→최신 버전 상승(v=9)', s5.v === 9);
+  check('W-1 v5→최신 버전 상승(v=10)', s5.v === 10);
   check('W-1 v5 ttaraFirstEncounter 파생 = !!defeated.bekkyeomon = true', s5.flags.ttaraFirstEncounter === true);
   check('W-1 v5 defeated 3인 승계 유지', s5.flags.defeated.pyeonhyangmon === true);
   check('W-1 v5 privacy 필드 기본값 채워짐', s5.flags.privacyLeak === 0 && s5.flags.privacyRecoveryActive === false);
@@ -188,25 +212,47 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8→v
       chapter1Clear: true, chapter2Clear: true, chapter3Clear: true, chapter4Clear: true, chapter5Clear: true,
       endingId: 'home' } });
   const s8 = T.loadSlot(2);
-  check('W-1 v8→v9 + endingId 보존', s8.v === 9 && s8.flags.endingId === 'home');
-  check('W-1 v8→v9 완료 장 기록 보충', Array.isArray(s8.flags.damagedRecords) &&
+  check('W-1 v8→v10 + endingId 보존', s8.v === 10 && s8.flags.endingId === 'home');
+  check('W-1 v8→v10 완료 장 기록 보충', Array.isArray(s8.flags.damagedRecords) &&
     s8.flags.damagedRecords.length === 5 && s8.flags.pendingRecord === null &&
     s8.flags.timelineMerged === false && s8.flags.timelineRestored === false);
   check('W-1 v8 클리어 슬롯 요약 — done/endingId 노출', (() => { const sm = T.slotSummary(2); return sm && sm.done === true && sm.endingId === 'home'; })());
 
-  // (v9 미래 필드 roundtrip) — 알려지지 않은 상위·flags 필드가 load→write→load에서 살아남아야 한다.
-  // 마이그레이터가 손대지 않도록 각 세대 가드 플래그를 갖춰 v9를 '이미 최신'으로 통과시킨다.
+  // (v9→v10) — 증거는 열람했고 건너뛰지 않은 기록에서만 파생한다.
   put(0, { v: 9, name: '미래', map: 'village', x: 13, y: 16, futureTop: 'KEEP_ME',
     flags: { talkedProf: true, defeated: {}, mercy: 0, visited: {},
       introClue1: true, introForestTrace: true, ttaraFirstEncounter: true, privacyLeak: 0, prologueClosed: true,
-      futureFlag: 42 } });
+      viewedRecords: { reset_after: true, reset_before: true, unknown: true },
+      skippedRecords: { reset_before: true }, storyRoute: 'invalid',
+      administratorTerminalSolved: 1,
+      timelineOrderDraft: ['reset_before', 'unknown', 'reset_before', 'reset_after'],
+      timelineOrderWrong: -4.5, futureFlag: 42 } });
   const s9 = T.loadSlot(0);
-  // 참고: 마이그레이션 사슬은 v를 알려진 최신(9)으로 정규화하지만, '모르는 필드'는 지우지 않는다.
+  check('W-1 v9→v10 증거·경로·단말·정렬 필드 정규화', s9.v === 10 &&
+    s9.flags.storyRoute === 'original' && s9.flags.recordEvidence.join(',') === 'reset_after' &&
+    s9.flags.administratorTerminalSolved === true &&
+    s9.flags.timelineOrderDraft.join(',') === 'reset_before,reset_after' && s9.flags.timelineOrderWrong === 0);
   check('W-1 v9 미래 상위 필드 보존(load)', s9.futureTop === 'KEEP_ME');
   check('W-1 v9 미래 flags 필드 보존(load)', s9.flags.futureFlag === 42);
   T.writeSlot(0, s9); // roundtrip — 다시 저장 후 재로드
   const s9b = T.loadSlot(0);
   check('W-1 v9 roundtrip — 미래 필드가 사라지지 않음', s9b.futureTop === 'KEEP_ME' && s9b.flags.futureFlag === 42);
+
+  put(0, { v: 10, futureTop: 'V10_KEEP', flags: {
+    storyRoute: 'memento', recordEvidence: ['city_failure', 'unknown', 'city_failure', 'reset_after'],
+    administratorTerminalSolved: 0,
+    timelineOrderDraft: ['first_approval', 'first_approval', 'unknown', 'yeongi_warning'],
+    timelineOrderWrong: 3.9, futureFlag: 'V10_FLAG',
+  } });
+  const s10 = T.loadSlot(0);
+  check('W-1 v10 필드 정규화와 순서 보존', s10.flags.storyRoute === 'memento' &&
+    s10.flags.recordEvidence.join(',') === 'city_failure,reset_after' &&
+    s10.flags.administratorTerminalSolved === false &&
+    s10.flags.timelineOrderDraft.join(',') === 'first_approval,yeongi_warning' && s10.flags.timelineOrderWrong === 3);
+  T.writeSlot(0, s10);
+  const s10b = T.loadSlot(0);
+  check('W-1 v10 draft·미래필드 roundtrip', s10b.futureTop === 'V10_KEEP' &&
+    s10b.flags.futureFlag === 'V10_FLAG' && s10b.flags.timelineOrderDraft.join(',') === 'first_approval,yeongi_warning');
 
   put(1, { v: 9, name: '복원중', map: 'coreroom', x: 14, y: 12,
     flags: { talkedProf: true, defeated: {}, mercy: 7, visited: {}, shrineDone: true,
@@ -215,13 +261,19 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8→v
       viewedRecords: { reset_after: true }, skippedRecords: {}, pendingRecord: null,
       timelineMerged: true, timelineRestored: false } });
   const interrupted = T.loadSlot(1);
-  check('W-1 V9 복원 중 새로고침 — timelineRestored=false 보존',
-    interrupted.v === 9 && interrupted.flags.timelineMerged === true && interrupted.flags.timelineRestored === false);
+  check('W-1 V9 복원 중 새로고침 — V10에서도 timelineRestored=false 보존',
+    interrupted.v === 10 && interrupted.flags.timelineMerged === true && interrupted.flags.timelineRestored === false);
+  const completedV9 = T.migrateSlotV10(T.migrateSlotV9({
+    v: 9, flags: { shrineDone: true, defeated: { yeongi: true }, timelineMerged: true, timelineRestored: true },
+  }));
+  check('W-1 완료된 V9 shrine는 V10에서도 완료되어 final replay를 요구하지 않음',
+    completedV9.v === 10 && completedV9.flags.shrineDone === true &&
+    completedV9.flags.timelineMerged === true && completedV9.flags.timelineRestored === true);
 
   // 정리 — 다음 블록(U-5)이 슬롯을 재사용하므로 비운다
-  storage.delete('ai-ethics-adventure-slot-0');
-  storage.delete('ai-ethics-adventure-slot-1');
-  storage.delete('ai-ethics-adventure-slot-2');
+  storage.delete('fabletest2-memento-preview-slot-0');
+  storage.delete('fabletest2-memento-preview-slot-1');
+  storage.delete('fabletest2-memento-preview-slot-2');
 }
 
 // ── U-5 NG+ 타이틀 흐름 — 클리어 슬롯에서 두 번째 모험 선택 ──
@@ -229,11 +281,11 @@ console.log('[U-5] NG+ 타이틀 흐름 — 클리어 슬롯 선택 → 이어�
 {
   const T = windowObj.__test;
   // 클리어 세이브를 슬롯 0에, 진행 중(미클리어) 세이브를 슬롯 1에 둔다
-  storage.set('ai-ethics-adventure-slot-0', JSON.stringify({ v: 8, name: '클리어아이', map: 'village', x: 13, y: 16,
+  storage.set('fabletest2-memento-preview-slot-0', JSON.stringify({ v: 8, name: '클리어아이', map: 'village', x: 13, y: 16,
     flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true, hwangakmon: true, yuhokmon: true, hollimmon: true, finalboss: true, yeongi: true },
       mercy: 8, visited: {}, introClue1: true, introForestTrace: true, ttaraFirstEncounter: true,
       privacyLeak: 0, prologueClosed: true, forestClearingRead: true, endingId: 'home' }, updatedAt: Date.now() }));
-  storage.set('ai-ethics-adventure-slot-1', JSON.stringify({ v: 8, name: '진행중아이', map: 'village', x: 13, y: 16,
+  storage.set('fabletest2-memento-preview-slot-1', JSON.stringify({ v: 8, name: '진행중아이', map: 'village', x: 13, y: 16,
     flags: { talkedProf: true, defeated: { bekkyeomon: true }, mercy: 1, visited: {}, introClue1: true,
       introForestTrace: true, ttaraFirstEncounter: true, privacyLeak: 0, prologueClosed: true }, updatedAt: Date.now() }));
 
@@ -253,7 +305,7 @@ console.log('[U-5] NG+ 타이틀 흐름 — 클리어 슬롯 선택 → 이어�
 
   // 취소 흐름 — ngchoice에서 X면 슬롯 화면으로 복귀
   // (앞서 startNewGame이 슬롯 0을 새 NG 세이브로 덮어썼으므로 클리어 세이브를 다시 심는다)
-  storage.set('ai-ethics-adventure-slot-0', JSON.stringify({ v: 8, name: '클리어아이', map: 'village', x: 13, y: 16,
+  storage.set('fabletest2-memento-preview-slot-0', JSON.stringify({ v: 8, name: '클리어아이', map: 'village', x: 13, y: 16,
     flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true, hwangakmon: true, yuhokmon: true, hollimmon: true, finalboss: true, yeongi: true },
       mercy: 8, visited: {}, introClue1: true, introForestTrace: true, ttaraFirstEncounter: true,
       privacyLeak: 0, prologueClosed: true, forestClearingRead: true, endingId: 'home' }, updatedAt: Date.now() }));
@@ -269,8 +321,8 @@ console.log('[U-5] NG+ 타이틀 흐름 — 클리어 슬롯 선택 → 이어�
   check('U-5 미클리어 슬롯은 ngchoice 없이 바로 이어하기', g.titleScreen !== 'ngchoice' &&
     (g.mode === 'world' || g.mode === 'dialog') && g.flags.ng !== true);
 
-  storage.delete('ai-ethics-adventure-slot-0');
-  storage.delete('ai-ethics-adventure-slot-1');
+  storage.delete('fabletest2-memento-preview-slot-0');
+  storage.delete('fabletest2-memento-preview-slot-1');
 }
 
 console.log('[X-round] 세이브 스키마 — 신규 플래그 기본값·수업 세션 무누출·반응 선택 보존');
@@ -290,40 +342,40 @@ console.log('[X-round] 세이브 스키마 — 신규 플래그 기본값·수�
   const loaded = T.loadSlot(2);
   check('X 반응/요청 선택 플래그 세이브 왕복 보존', loaded.flags.playerVoice.ttara === 1 &&
     loaded.flags.playerVoice.yeongi === 0 && loaded.flags.damaAsked === 'think' && loaded.flags.banjjakAsked === 'watch');
-  storage.delete('ai-ethics-adventure-slot-2');
+  storage.delete('fabletest2-memento-preview-slot-2');
 
   // 이슈6: classSession=true로 저장된 슬롯을 '일반 이어하기'로 열면 세션 플래그가 꺼져야 한다
   //        (수업 배너·마무리 안내가 슬롯에 영구 잔존하지 않게). 미클리어 슬롯이라 ngchoice 없이 바로 진입.
-  storage.set('ai-ethics-adventure-slot-1', JSON.stringify({ v: 9, name: '수업아이', map: 'village', x: 13, y: 16,
+  storage.set('fabletest2-memento-preview-slot-1', JSON.stringify({ v: 9, name: '수업아이', map: 'village', x: 13, y: 16,
     flags: Object.assign(T.newFlags(), { talkedProf: true, prologueClosed: true, classSession: true }), updatedAt: Date.now() }));
   g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 1; g.flags = null;
   tap('z'); // 슬롯 1 이어하기(미클리어) → continueGame
   check('이슈6 일반 이어하기 진입 시 classSession 해제(배너 영구 잔존 방지)',
     (g.mode === 'world' || g.mode === 'dialog') && g.flags && g.flags.classSession === false);
-  storage.delete('ai-ethics-adventure-slot-1');
+  storage.delete('fabletest2-memento-preview-slot-1');
 }
 
 // ── Y-17b 되돌리기 스냅샷 30일 자동 정리 (타임스탬프 필드) ──
 console.log('[Y-17b] 오래된 되돌리기 스냅샷 자동 정리 (SLOT_UNDO·BACKUP_UNDO)');
 {
   const T = windowObj.__test;
-  const SLOT_UNDO = 'ai-ethics-adventure-deleted-slot';
-  const BACKUP_UNDO = 'ai-ethics-adventure-restore-undo';
+  const SLOT_UNDO = 'fabletest2-memento-preview-deleted-slot';
+  const BACKUP_UNDO = 'fabletest2-memento-preview-restore-undo';
   const DAY = 24 * 60 * 60 * 1000;
   const now = Date.now();
 
   // (1) 신선한(오늘) 스냅샷은 유지된다
-  storage.set(SLOT_UNDO, JSON.stringify({ slot: 1, ts: now - DAY, 'ai-ethics-adventure-slot-1': '{}' }));
+  storage.set(SLOT_UNDO, JSON.stringify({ slot: 1, ts: now - DAY, 'fabletest2-memento-preview-slot-1': '{}' }));
   T.cleanStaleUndoSnapshots(now);
   check('Y-17b 신선한(1일) SLOT_UNDO 스냅샷 유지', !!storage.get(SLOT_UNDO));
 
   // (2) 30일 넘은 스냅샷은 지워진다
-  storage.set(SLOT_UNDO, JSON.stringify({ slot: 1, ts: now - 40 * DAY, 'ai-ethics-adventure-slot-1': '{}' }));
+  storage.set(SLOT_UNDO, JSON.stringify({ slot: 1, ts: now - 40 * DAY, 'fabletest2-memento-preview-slot-1': '{}' }));
   T.cleanStaleUndoSnapshots(now);
   check('Y-17b 40일 지난 SLOT_UNDO 스냅샷 자동 삭제', !storage.get(SLOT_UNDO));
 
   // (3) 타임스탬프 없는 구 스냅샷은 즉시 삭제하지 않고 지금 시각으로 도장만 찍는다(하위 호환)
-  storage.set(SLOT_UNDO, JSON.stringify({ slot: 2, 'ai-ethics-adventure-slot-2': '{}' }));
+  storage.set(SLOT_UNDO, JSON.stringify({ slot: 2, 'fabletest2-memento-preview-slot-2': '{}' }));
   T.cleanStaleUndoSnapshots(now);
   const stamped = JSON.parse(storage.get(SLOT_UNDO) || 'null');
   check('Y-17b ts 없는 구 스냅샷은 보존 + 지금 시각으로 도장', stamped && stamped.ts === now);
@@ -332,28 +384,28 @@ console.log('[Y-17b] 오래된 되돌리기 스냅샷 자동 정리 (SLOT_UNDO·
   check('Y-17b 도장된 구 스냅샷도 30일 후엔 정리됨', !storage.get(SLOT_UNDO));
 
   // (4) BACKUP_UNDO는 백업 텍스트(savedAt 포함)로 나이를 잰다
-  storage.set(BACKUP_UNDO, JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: now - DAY, data: {} }));
+  storage.set(BACKUP_UNDO, JSON.stringify({ app: 'ai-ethics-adventure-memento-preview', version: 1, savedAt: now - DAY, data: {} }));
   T.cleanStaleUndoSnapshots(now);
   check('Y-17b 신선한 BACKUP_UNDO 유지', !!storage.get(BACKUP_UNDO));
-  storage.set(BACKUP_UNDO, JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: now - 40 * DAY, data: {} }));
+  storage.set(BACKUP_UNDO, JSON.stringify({ app: 'ai-ethics-adventure-memento-preview', version: 1, savedAt: now - 40 * DAY, data: {} }));
   T.cleanStaleUndoSnapshots(now);
   check('Y-17b 40일 지난 BACKUP_UNDO 자동 삭제', !storage.get(BACKUP_UNDO));
 
   // (5) deleteSlot이 새 스냅샷에 ts를 심는지 (스키마 변경 확인)
-  storage.set('ai-ethics-adventure-slot-1', JSON.stringify({ v: 8, name: '지울아이', flags: { defeated: {} } }));
+  storage.set('fabletest2-memento-preview-slot-1', JSON.stringify({ v: 8, name: '지울아이', flags: { defeated: {} } }));
   T.deleteSlot(1);
   const del = JSON.parse(storage.get(SLOT_UNDO) || 'null');
   check('Y-17b deleteSlot 스냅샷에 ts 타임스탬프 존재', del && typeof del.ts === 'number');
   storage.delete(SLOT_UNDO);
-  storage.delete('ai-ethics-adventure-slot-1');
+  storage.delete('fabletest2-memento-preview-slot-1');
 }
 
 console.log('[P-3] 삭제 안전망 저장 실패 시 원본 슬롯 보존');
 {
   const T = windowObj.__test;
-  const SLOT_UNDO = 'ai-ethics-adventure-deleted-slot';
-  const slotKey = 'ai-ethics-adventure-slot-2';
-  const statsKey = 'ai-ethics-adventure-stats-2';
+  const SLOT_UNDO = 'fabletest2-memento-preview-deleted-slot';
+  const slotKey = 'fabletest2-memento-preview-slot-2';
+  const statsKey = 'fabletest2-memento-preview-stats-2';
   storage.set(slotKey, JSON.stringify({ v: 9, name: '보존아이', flags: { defeated: {} } }));
   storage.set(statsKey, JSON.stringify({ privacy: { correct: 2, total: 3 } }));
   const realSet = sandbox.localStorage.setItem;
@@ -374,10 +426,10 @@ console.log('[P-3] 삭제 안전망 저장 실패 시 원본 슬롯 보존');
 console.log('[P-3b] 슬롯 데이터 삭제 중 실패하면 전체 원상 복구');
 {
   const T = windowObj.__test;
-  const SLOT_UNDO = 'ai-ethics-adventure-deleted-slot';
-  const slotKey = 'ai-ethics-adventure-slot-2';
-  const statsKey = 'ai-ethics-adventure-stats-2';
-  const oldUndo = JSON.stringify({ slot: 1, ts: Date.now(), 'ai-ethics-adventure-slot-1': '{"name":"이전 삭제"}' });
+  const SLOT_UNDO = 'fabletest2-memento-preview-deleted-slot';
+  const slotKey = 'fabletest2-memento-preview-slot-2';
+  const statsKey = 'fabletest2-memento-preview-stats-2';
+  const oldUndo = JSON.stringify({ slot: 1, ts: Date.now(), 'fabletest2-memento-preview-slot-1': '{"name":"이전 삭제"}' });
   const oldSlot = JSON.stringify({ v: 9, name: '부분삭제방지', flags: { defeated: {} } });
   const oldStats = JSON.stringify({ privacy: { correct: 4, total: 5 } });
   storage.set(SLOT_UNDO, oldUndo);

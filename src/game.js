@@ -37,7 +37,9 @@
   canvas.addEventListener('mousedown', () => { try { canvas.focus(); } catch (e) {} });
   try { canvas.focus(); } catch (e) {}
 
-  const SAVE_KEY = 'ai-ethics-adventure-v1';
+  const STORAGE_PREFIX = 'fabletest2-memento-preview-';
+  const BACKUP_APP_ID = 'ai-ethics-adventure-memento-preview';
+  const SAVE_KEY = STORAGE_PREFIX + 'v1';
 
   const REVERSE_TONES = {
     dark: '#0b0e1a', surface: '#17191d', floor: '#444444', light: '#c7c9cc',
@@ -270,11 +272,16 @@
       pendingRecord: null,
       timelineMerged: false,
       timelineRestored: false,
+      storyRoute: 'original',
+      recordEvidence: [],
+      administratorTerminalSolved: false,
+      timelineOrderDraft: [],
+      timelineOrderWrong: 0,
     };
   }
 
   // ---------- 세이브 슬롯 (3개) ----------
-  function slotKey(i) { return 'ai-ethics-adventure-slot-' + i; }
+  function slotKey(i) { return STORAGE_PREFIX + 'slot-' + i; }
 
   // v3 마이그레이션 — 구 세이브(v1 필드·증표·구 세계 진행)에서 챕터 진행만 승계한다.
   // 사라진 맵에 서 있던 세이브는 마을 입구로 옮긴다. (v1 콘텐츠 무손상 원칙은 v3에서 공식 폐기)
@@ -386,10 +393,37 @@
     return data;
   }
 
+  function migrateSlotV10(data) {
+    if (!data || !data.flags) return data;
+    const f = data.flags;
+    const fromVersion = Number(data.v) || 0;
+    const known = new Set(MEMENTO_RECORDS.map((record) => record.id));
+    const uniqueKnown = (value) => {
+      if (!Array.isArray(value)) return [];
+      const seen = new Set();
+      return value.filter((id) => {
+        if (!known.has(id) || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+    };
+    f.storyRoute = f.storyRoute === 'memento' ? 'memento' : 'original';
+    f.recordEvidence = fromVersion < 10
+      ? MEMENTO_RECORDS.filter((record) => f.viewedRecords && f.viewedRecords[record.id] &&
+        !(f.skippedRecords && f.skippedRecords[record.id])).map((record) => record.id)
+      : uniqueKnown(f.recordEvidence);
+    f.administratorTerminalSolved = !!f.administratorTerminalSolved;
+    f.timelineOrderDraft = uniqueKnown(f.timelineOrderDraft);
+    const wrong = Number(f.timelineOrderWrong);
+    f.timelineOrderWrong = Number.isFinite(wrong) ? Math.max(0, Math.floor(wrong)) : 0;
+    data.v = Math.max(fromVersion, 10);
+    return data;
+  }
+
   function loadSlot(i) {
     try {
       const raw = localStorage.getItem(slotKey(i));
-      return raw ? migrateSlotV9(migrateSlotV8(migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw)))))))) : null;
+      return raw ? migrateSlotV10(migrateSlotV9(migrateSlotV8(migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw))))))))) : null;
     } catch (e) { return null; }
   }
 
@@ -398,7 +432,7 @@
     catch (e) { noteStorageFail(); }
   }
 
-  const SLOT_UNDO_KEY = 'ai-ethics-adventure-deleted-slot';
+  const SLOT_UNDO_KEY = STORAGE_PREFIX + 'deleted-slot';
   function slotAllKeys(i) {
     return [slotKey(i), statsKey(i), mistakesKey(i), metaKey(i), puzzleKey(i)];
   }
@@ -465,7 +499,7 @@
     }
   }
 
-  const SAVE_VERSION = 9;
+  const SAVE_VERSION = 10;
   function save() {
     writeSlot(game.currentSlot, {
       v: SAVE_VERSION,
@@ -503,7 +537,7 @@
   }
 
   // 발견한 엔딩 기록 — 세이브와 별개로, 게임을 다시 시작해도 남는다
-  const ENDINGS_KEY = 'ai-ethics-adventure-endings';
+  const ENDINGS_KEY = STORAGE_PREFIX + 'endings';
   function getEndingsSeen() {
     try { return JSON.parse(localStorage.getItem(ENDINGS_KEY)) || {}; }
     catch (e) { return {}; }
@@ -517,7 +551,7 @@
   }
 
   // 설정(자막 속도) — 세이브와 별개로, 게임을 다시 시작해도 남는다
-  const SETTINGS_KEY = 'ai-ethics-adventure-settings';
+  const SETTINGS_KEY = STORAGE_PREFIX + 'settings';
   // 음량 3단계 — 교실에서 여러 대가 동시에 돌 때 '작게'가 필요하다
   const VOLUME_LEVELS = { normal: 1, low: 0.5, quiet: 0.2 };
   const VOLUME_ORDER = ['normal', 'low', 'quiet'];
@@ -675,7 +709,7 @@
   }
 
   // 오답 복습 노트 — 틀린 문제를 슬롯별로 기록
-  const MISTAKES_KEY = 'ai-ethics-adventure-mistakes';
+  const MISTAKES_KEY = STORAGE_PREFIX + 'mistakes';
   function mistakesKey(slot) { return MISTAKES_KEY + '-' + slot; }
   function getMistakes(slot) {
     try { return JSON.parse(localStorage.getItem(mistakesKey(slot))) || {}; }
@@ -699,7 +733,7 @@
   function mistakeCount(slot) { return Object.keys(getMistakes(slot)).length; }
 
   // 학습 진척도 — 주제별 정답/시도를 슬롯별로 누적
-  const STATS_KEY = 'ai-ethics-adventure-stats';
+  const STATS_KEY = STORAGE_PREFIX + 'stats';
   function statsKey(slot) { return STATS_KEY + '-' + slot; }
   // 주제 키 → 짧은 한글 라벨. 단일 출처는 data.js의 TOPIC_LABEL.
   function topicLabel(t) { return TOPIC_LABEL[t] || t; }
@@ -743,7 +777,7 @@
   }
 
   // 챌린지·도전과제용 슬롯별 메타 (최고 점수, 완주 횟수)
-  const META_KEY = 'ai-ethics-adventure-meta';
+  const META_KEY = STORAGE_PREFIX + 'meta';
   function metaKey(slot) { return META_KEY + '-' + slot; }
   function getMeta(slot) {
     try { return JSON.parse(localStorage.getItem(metaKey(slot))) || {}; }
@@ -826,7 +860,7 @@
 
   // ---------- 커스텀 퀴즈 (선생님이 추가한 문제) ----------
   // 기기 공용으로 저장한다. 'custom' 주제로 챌린지·맞춤·일일 문제에 함께 쓰인다.
-  const CUSTOM_QUIZ_KEY = 'ai-ethics-adventure-customquiz';
+  const CUSTOM_QUIZ_KEY = STORAGE_PREFIX + 'customquiz';
   function getCustomQuizzes() {
     try {
       const arr = JSON.parse(localStorage.getItem(CUSTOM_QUIZ_KEY));
@@ -961,7 +995,7 @@
 
   // ---------- 수집·꾸미기 보상 (칭호 · 테마) ----------
   // 학생(슬롯)마다 따로 모으고 고른다. 해금 조건은 도전과제와 같은 학습 컨텍스트로 판정.
-  const COSMETIC_KEY = 'ai-ethics-adventure-cosmetic';
+  const COSMETIC_KEY = STORAGE_PREFIX + 'cosmetic';
   function cosmeticKey(slot) { return COSMETIC_KEY + '-' + slot; }
   function getCosmetic(slot) {
     try { return JSON.parse(localStorage.getItem(cosmeticKey(slot))) || {}; }
@@ -1129,7 +1163,7 @@
       const v = localStorage.getItem(k);
       if (v != null) data[k] = v;
     }
-    return JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(), data });
+    return JSON.stringify({ app: BACKUP_APP_ID, version: 1, savedAt: Date.now(), data });
   }
   function buildRestoreSnapshot(keys) {
     const data = {};
@@ -1139,13 +1173,13 @@
       if (v == null) absent.push(k);
       else data[k] = v;
     }
-    return JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(), data, absent });
+    return JSON.stringify({ app: BACKUP_APP_ID, version: 1, savedAt: Date.now(), data, absent });
   }
-  const BACKUP_UNDO_KEY = 'ai-ethics-adventure-restore-undo';
+  const BACKUP_UNDO_KEY = STORAGE_PREFIX + 'restore-undo';
   function applyBackup(text, recordUndo = true) {
     let obj;
     try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: 'parse' }; }
-    if (!obj || obj.app !== 'ai-ethics-adventure' || !obj.data) return { ok: false, error: 'format' };
+    if (!obj || obj.app !== BACKUP_APP_ID || !obj.data) return { ok: false, error: 'format' };
     const valid = new Set(allBackupKeys());
     const incoming = Object.keys(obj.data).filter((k) => valid.has(k));
     const absent = recordUndo || !Array.isArray(obj.absent)
@@ -1255,7 +1289,7 @@
     } catch (e) { return false; }
   }
   // 친구 수첩 — 만난 아이의 기록. 세이브와 별개로 누적 보존된다.
-  const DEX_KEY = 'ai-ethics-adventure-dex';
+  const DEX_KEY = STORAGE_PREFIX + 'dex';
   function getDexSeen() {
     try { return JSON.parse(localStorage.getItem(DEX_KEY)) || {}; }
     catch (e) { return {}; }
@@ -2131,7 +2165,7 @@
 
   // ---------- 방탈출 퍼즐 (T2 프레임워크) ----------
   // 퍼즐 로그: 슬롯별 localStorage. { <puzzleId>: { done, clears, hintsUsed:{단계:횟수}, wrongTries, timeFrames } }
-  const PUZZLE_KEY = 'ai-ethics-adventure-puzzle';
+  const PUZZLE_KEY = STORAGE_PREFIX + 'puzzle';
   function puzzleKey(slot) { return PUZZLE_KEY + '-' + slot; }
   // 슬롯별 메모이즈 캐시 — { slot, raw(캐시 당시의 localStorage 원문), data(파싱 결과) }.
   // raw 문자열이 그대로면 JSON.parse를 건너뛴다(자주 호출되는 isPuzzleCleared 등의 비용 절감).
@@ -9353,7 +9387,7 @@
           reader.onload = () => {
             let obj = null;
             try { obj = JSON.parse(String(reader.result)); } catch (e) { obj = null; }
-            if (obj && obj.app === 'ai-ethics-adventure') {
+            if (obj && obj.app === BACKUP_APP_ID) {
               const rows = backupSlotRows(obj);
               const fresh = rows.filter((r) => !seen.has(r.key));
               skipped += rows.length - fresh.length;
@@ -13039,7 +13073,7 @@
   window.__game = game; // 디버그/테스트용
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
-    migrateSlotV6, migrateSlotV7, migrateSlotV8, migrateSlotV9,
+    migrateSlotV6, migrateSlotV7, migrateSlotV8, migrateSlotV9, migrateSlotV10,
     loadSlot, writeSlot, slotSummary, // W-1 골든 세이브 픽스처·roundtrip 검증용
     buildBackupText, applyBackup, undoRestore, hasRestoreUndo,
     cleanStaleUndoSnapshots, noteStorageFail, UNDO_TTL_MS, // Y-17 쿼터·스냅샷 정리 검증용
