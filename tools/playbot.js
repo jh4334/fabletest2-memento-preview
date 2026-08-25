@@ -49,7 +49,7 @@ const sandbox = {
   console, Math, Set, Map, JSON, Object, setTimeout, clearTimeout, Date,
 };
 vm.createContext(sandbox);
-for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
+for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/memento.js', 'src/game.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), sandbox, { filename: f });
 }
 const g = windowObj.__game;

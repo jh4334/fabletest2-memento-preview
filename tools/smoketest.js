@@ -55,7 +55,7 @@ vm.createContext(sandbox);
 let _seed = 1234567;
 Math.random = () => { _seed = (_seed * 1103515245 + 12345) & 0x7fffffff; return _seed / 0x7fffffff; };
 
-for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
+for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/memento.js', 'src/game.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), sandbox, { filename: f });
 }
 

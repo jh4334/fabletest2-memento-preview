@@ -1,4 +1,6 @@
 const { createGameSandbox } = require('./lib/game-sandbox');
+const fs = require('fs');
+const path = require('path');
 
 const env = createGameSandbox();
 const g = env.boot();
@@ -30,6 +32,85 @@ function has(name) { return typeof T[name] === 'function'; }
 
 const REVEAL_IDS = ['reset_after', 'reset_before', 'city_failure', 'yeongi_warning', 'first_approval'];
 const CHRONOLOGICAL_IDS = REVEAL_IDS.slice().reverse();
+
+console.log('[M-0] 메멘토 순수 모듈은 클래식 스크립트 순서와 독립 계약을 지킨다');
+const indexPath = path.resolve(process.env.MEMENTO_INDEX_PATH || path.join(__dirname, '..', 'index.html'));
+const indexSource = fs.readFileSync(indexPath, 'utf8');
+const scriptSources = Array.from(indexSource.matchAll(/<script\s+src="([^"]+)"><\/script>/g), (match) => match[1]);
+const dataIndex = scriptSources.indexOf('src/data.js');
+const mementoIndex = scriptSources.indexOf('src/memento.js');
+const gameIndex = scriptSources.indexOf('src/game.js');
+check('Memento script missing or ordered incorrectly',
+  dataIndex >= 0 && mementoIndex === dataIndex + 1 && gameIndex === mementoIndex + 1);
+
+const pureModule = data(`({
+  routes: typeof MEMENTO_ROUTES === 'undefined' ? null : MEMENTO_ROUTES,
+  terminal: typeof MEMENTO_TERMINAL === 'undefined' ? null : MEMENTO_TERMINAL,
+  chronologicalIds: typeof MEMENTO_CHRONOLOGICAL_IDS === 'undefined' ? null : MEMENTO_CHRONOLOGICAL_IDS,
+  recordForChapter: typeof mementoRecordForChapter,
+  axisProjection: typeof mementoAxisProjection,
+  orderingCards: typeof mementoOrderingCards,
+  chronologicalOrder: typeof isMementoChronologicalOrder
+})`, {}) || {};
+check('순수 메멘토 상수와 투영 API가 존재',
+  pureModule.recordForChapter === 'function' && pureModule.axisProjection === 'function' &&
+  pureModule.orderingCards === 'function' && pureModule.chronologicalOrder === 'function');
+check('두 시작 경로는 ID와 표시 이름을 고정한다',
+  JSON.stringify(pureModule.routes) === JSON.stringify([
+    { id: 'original', label: '원래 모험 시작' },
+    { id: 'memento', label: '메멘토 시간선 체험' },
+  ]));
+check('현재 관리자 단말 계약은 하나의 정답과 재시도 문구를 가진다',
+  pureModule.terminal && pureModule.terminal.id === 'admin-terminal' &&
+  pureModule.terminal.title === '현재 · 관리자 단말' &&
+  pureModule.terminal.choices && pureModule.terminal.choices.filter((choice) => choice.correct).length === 1 &&
+  pureModule.terminal.choices.find((choice) => choice.correct).id === 'author-unknown' &&
+  /빈칸/.test(pureModule.terminal.locked) && /출구 잠금/.test(pureModule.terminal.correctText) &&
+  /다시 보자/.test(pureModule.terminal.wrongText));
+check('시간순 ID는 가장 오래된 기록부터 정확히 다섯 개다',
+  JSON.stringify(pureModule.chronologicalIds) === JSON.stringify(CHRONOLOGICAL_IDS));
+
+if (pureModule.recordForChapter === 'function') {
+  check('장→기록 순수 매핑은 유효 장만 공개 순서로 반환한다',
+    JSON.stringify(data('[0, 1, 2, 3, 4, 5, 6, null].map(mementoRecordForChapter)', [])) ===
+      JSON.stringify([null].concat(REVEAL_IDS, [null, null])));
+}
+if (pureModule.axisProjection === 'function') {
+  const axis = data("mementoAxisProjection(['reset_after', 'reset_after', 'unknown', 'city_failure'])", null);
+  check('축 투영은 중복·알 수 없는 ID를 무시하고 다섯 노드를 안정적으로 남긴다',
+    axis && axis.direction === 'present-to-past' && axis.label === '현재 ◀ ●1 · ○2 · ●3 · ○5 · ○7일 ◀ 과거' &&
+    JSON.stringify(axis.nodes.map((node) => [node.id, node.daysAgo, node.unlocked])) === JSON.stringify([
+      ['reset_after', 1, true], ['reset_before', 2, false], ['city_failure', 3, true],
+      ['yeongi_warning', 5, false], ['first_approval', 7, false],
+    ]));
+  check('축 투영은 입력을 바꾸지 않고 매 호출에 새 구조를 만든다',
+    data(`(() => {
+      const ids = ['reset_after']; const before = JSON.stringify(ids);
+      const first = mementoAxisProjection(ids); const second = mementoAxisProjection(ids);
+      first.nodes[0].unlocked = false;
+      return before === JSON.stringify(ids) && first !== second && first.nodes !== second.nodes && second.nodes[0].unlocked;
+    })()`, false) === true);
+}
+if (pureModule.orderingCards === 'function' && pureModule.chronologicalOrder === 'function') {
+  check('정렬 카드는 시간순 날짜·제목을 새 배열과 객체로 반환한다',
+    data(`(() => {
+      const first = mementoOrderingCards(); const second = mementoOrderingCards();
+      first[0].title = 'changed';
+      return JSON.stringify(second.map((card) => [card.id, card.daysAgo, card.title])) === JSON.stringify([
+        ['first_approval', 7, '편리함 승인'], ['yeongi_warning', 5, '한 번만 더'],
+        ['city_failure', 3, '닫힌 문이 막은 것'], ['reset_before', 2, '잠근 사람'],
+        ['reset_after', 1, '남겨 둔 한 문장'],
+      ]);
+    })()`, false) === true);
+  check('정렬 판정은 정확한 다섯 장만 받고 인접 교환·중복·미지·부분을 거절한다',
+    data(`[
+      isMementoChronologicalOrder(${JSON.stringify(CHRONOLOGICAL_IDS)}),
+      isMementoChronologicalOrder(['first_approval', 'city_failure', 'yeongi_warning', 'reset_before', 'reset_after']),
+      isMementoChronologicalOrder(['first_approval', 'first_approval', 'city_failure', 'reset_before', 'reset_after']),
+      isMementoChronologicalOrder(['first_approval', 'yeongi_warning', 'city_failure', 'reset_before', 'unknown']),
+      isMementoChronologicalOrder(['first_approval', 'yeongi_warning'])
+    ]`, []) .join(',') === 'true,false,false,false,false');
+}
 
 console.log('[M-1] 장 종료 기록은 과거 시간상 역순으로 공개된다');
 const records = data('typeof MEMENTO_RECORDS === "undefined" ? null : MEMENTO_RECORDS', []) || [];

@@ -110,6 +110,8 @@ async function dispatchFetch(listener, request) {
   check('optional icon 1개가 없어도 worker 설치 완료', installed);
   check('core shell batch에는 index와 game.js가 포함',
     batches.some((assets) => assets.includes('./index.html') && assets.includes('./src/game.js')));
+  check('core shell batch에는 data와 memento가 순서대로 포함',
+    batches.some((assets) => assets.indexOf('./src/data.js') + 1 === assets.indexOf('./src/memento.js')));
 
   if (fail) {
     console.error(`\n서비스워커 테스트: ${pass} 통과 / ${fail} 실패`);
