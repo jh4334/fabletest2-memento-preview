@@ -1450,6 +1450,11 @@
       el.addEventListener('touchend', up);
       el.addEventListener('touchcancel', up);
       el.addEventListener('touchmove', move);
+      el.addEventListener('click', (e) => {
+        if (e.detail !== 0) return;
+        Sound.resume();
+        if (!held.has(key)) pressed.add(key);
+      });
     };
     bind('t-a', 'action');
     bind('t-menu', 'menu');
@@ -1464,6 +1469,7 @@
         if (game.mode === 'title' && game.titleScreen === 'slots') openTeacherRoom();
       };
       teacherBtn.addEventListener('touchstart', onTeacher);
+      teacherBtn.addEventListener('click', (e) => { if (e.detail === 0) onTeacher(e); });
     }
 
     // 가상 스틱 (이동) — 손가락 방향으로 상하좌우를 누른 효과를 낸다.
@@ -1536,6 +1542,7 @@
         if (game.mode === 'battle' && game.battle && game.battle.phase === 'menu') battleHint();
       };
       hintBtn.addEventListener('touchstart', onHint);
+      hintBtn.addEventListener('click', (e) => { if (e.detail === 0) onHint(e); });
     }
   }
 

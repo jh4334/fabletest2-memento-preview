@@ -482,6 +482,45 @@ async function canvasColorProfile(page, rect) {
 
   // 멀티터치: 같은 버튼 두 손가락 → 하나만 떼도 유지, 스틱은 둘째 손가락이 탈취 못 함
   {
+    console.log('[accessible-touch-buttons] 네이티브 의미와 키보드 활성화');
+    const ctx = await browser.newContext({
+      viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true,
+    });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    const semantics = await page.evaluate(() => {
+      const ids = ['t-a', 't-hint', 't-menu', 't-pause', 't-teacher'];
+      return ids.every((id) => {
+        const el = document.getElementById(id);
+        return el && el.tagName === 'BUTTON' && el.type === 'button';
+      });
+    });
+    check('터치 동작 5종이 기본 포커스를 가진 button 요소', semantics);
+    await page.evaluate(() => {
+      window.addEventListener('keydown', (event) => event.stopImmediatePropagation(), true);
+      window.addEventListener('keyup', (event) => event.stopImmediatePropagation(), true);
+    });
+    await page.locator('#t-a').focus();
+    const focused = await page.evaluate(() => document.activeElement && document.activeElement.id);
+    check('A 터치 버튼에 키보드 포커스 진입', focused === 't-a');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+    check('A 버튼 Enter로 새 모험 이름 화면 진입',
+      (await page.evaluate(() => window.__game.titleScreen)) === 'name');
+    await page.evaluate(() => {
+      window.__game.mode = 'title';
+      window.__game.titleScreen = 'slots';
+    });
+    await page.locator('#t-a').focus();
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(200);
+    check('A 버튼 Space로 새 모험 이름 화면 진입',
+      (await page.evaluate(() => window.__game.titleScreen)) === 'name');
+    await ctx.close();
+  }
+
+  {
     console.log('[multitouch] 태블릿 멀티터치 입력');
     const ctx = await browser.newContext({
       viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true,
