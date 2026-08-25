@@ -405,18 +405,38 @@
   function deleteSlot(i) {
     // 되살리기 안전망 — 지우기 직전 이 슬롯의 모든 데이터를 스냅샷해 둔다.
     // 공용 태블릿에서 다른 학생의 세이브를 실수로 지워도 1회 복구할 수 있다.
+    const keys = slotAllKeys(i);
+    let previousUndo = null;
+    let snap;
     try {
       // ts — Y-17b 스냅샷 나이 표시(로드 시 30일 지나면 자동 정리). 구 스냅샷(ts 없음)은
       // 삭제하지 않고 첫 로드 때 지금 시각으로 도장 찍는다(migrateSlotV3식 하위 호환).
-      const snap = { slot: i, ts: Date.now() };
-      for (const k of slotAllKeys(i)) { const v = localStorage.getItem(k); if (v != null) snap[k] = v; }
+      snap = { slot: i, ts: Date.now() };
+      for (const k of keys) { const v = localStorage.getItem(k); if (v != null) snap[k] = v; }
+      previousUndo = localStorage.getItem(SLOT_UNDO_KEY);
       localStorage.setItem(SLOT_UNDO_KEY, JSON.stringify(snap));
     } catch (e) {
       noteStorageFail();
       return false;
     }
-    try { localStorage.removeItem(slotKey(i)); } catch (e) { /* 무시 */ }
-    clearSlotLearning(i); // 학생을 지우면 학습 기록(일지·복습·도전과제)도 함께 지운다
+    try {
+      localStorage.removeItem(slotKey(i));
+      clearSlotLearning(i);
+    } catch (e) {
+      for (const k of keys) {
+        try {
+          if (Object.prototype.hasOwnProperty.call(snap, k)) localStorage.setItem(k, snap[k]);
+          else localStorage.removeItem(k);
+        } catch (rollbackError) {}
+      }
+      try {
+        if (previousUndo == null) localStorage.removeItem(SLOT_UNDO_KEY);
+        else localStorage.setItem(SLOT_UNDO_KEY, previousUndo);
+      } catch (rollbackError) {}
+      if (puzzleLogCache && puzzleLogCache.slot === i) puzzleLogCache = null;
+      noteStorageFail();
+      return false;
+    }
     return true;
   }
   function undoDeleteSlot() {
@@ -741,14 +761,12 @@
 
   // 슬롯 삭제 시 학습 데이터도 함께 지운다 (방탈출 퍼즐 진행 로그 포함)
   function clearSlotLearning(slot) {
-    try {
-      localStorage.removeItem(statsKey(slot));
-      localStorage.removeItem(mistakesKey(slot));
-      localStorage.removeItem(metaKey(slot));
-      localStorage.removeItem(puzzleKey(slot));
-      // 지운 슬롯이 메모이즈 캐시에 남아 있으면 무효화(다음 getPuzzleLog가 빈 값을 반환하게)
-      if (puzzleLogCache && puzzleLogCache.slot === slot) puzzleLogCache = null;
-    } catch (e) { noteStorageFail(); }
+    localStorage.removeItem(statsKey(slot));
+    localStorage.removeItem(mistakesKey(slot));
+    localStorage.removeItem(metaKey(slot));
+    localStorage.removeItem(puzzleKey(slot));
+    // 지운 슬롯이 메모이즈 캐시에 남아 있으면 무효화(다음 getPuzzleLog가 빈 값을 반환하게)
+    if (puzzleLogCache && puzzleLogCache.slot === slot) puzzleLogCache = null;
   }
 
   // 기존 전역 학습 데이터(이전 버전)를 슬롯 0으로 1회 이전한다
@@ -1113,6 +1131,16 @@
     }
     return JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(), data });
   }
+  function buildRestoreSnapshot(keys) {
+    const data = {};
+    const absent = [];
+    for (const k of keys) {
+      const v = localStorage.getItem(k);
+      if (v == null) absent.push(k);
+      else data[k] = v;
+    }
+    return JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(), data, absent });
+  }
   const BACKUP_UNDO_KEY = 'ai-ethics-adventure-restore-undo';
   function applyBackup(text, recordUndo = true) {
     let obj;
@@ -1120,14 +1148,22 @@
     if (!obj || obj.app !== 'ai-ethics-adventure' || !obj.data) return { ok: false, error: 'format' };
     const valid = new Set(allBackupKeys());
     const incoming = Object.keys(obj.data).filter((k) => valid.has(k));
+    const absent = recordUndo || !Array.isArray(obj.absent)
+      ? []
+      : obj.absent.filter((k) => typeof k === 'string' && valid.has(k) && !incoming.includes(k));
+    const touched = Array.from(new Set(incoming.concat(absent)));
     // 인식 가능한 데이터가 하나도 없으면 덮어쓰지 않는다 — 잘못된/빈 파일에 '완료' 오표시 방지
-    if (incoming.length === 0) return { ok: false, error: 'empty' };
+    if (touched.length === 0) return { ok: false, error: 'empty' };
     if (incoming.some((k) => typeof obj.data[k] !== 'string')) return { ok: false, error: 'value' };
     const previous = {};
+    let previousUndo = null;
     // 되돌리기 안전망 — 덮어쓰기 직전 현재 상태를 스냅샷해 둔다 (실수 복원 1회 취소용)
     try {
-      for (const k of incoming) previous[k] = localStorage.getItem(k);
-      if (recordUndo) localStorage.setItem(BACKUP_UNDO_KEY, buildBackupText());
+      for (const k of touched) previous[k] = localStorage.getItem(k);
+      if (recordUndo) {
+        previousUndo = localStorage.getItem(BACKUP_UNDO_KEY);
+        localStorage.setItem(BACKUP_UNDO_KEY, buildRestoreSnapshot(touched));
+      }
     } catch (e) {
       noteStorageFail();
       return { ok: false, error: 'snapshot' };
@@ -1138,16 +1174,20 @@
         localStorage.setItem(k, obj.data[k]);
         count++;
       }
+      for (const k of absent) localStorage.removeItem(k);
     } catch (e) {
       let rolledBack = true;
-      for (const k of incoming) {
+      for (const k of touched) {
         try {
           if (previous[k] == null) localStorage.removeItem(k);
           else localStorage.setItem(k, previous[k]);
         } catch (rollbackError) { rolledBack = false; }
       }
       if (recordUndo) {
-        try { localStorage.removeItem(BACKUP_UNDO_KEY); } catch (removeError) { rolledBack = false; }
+        try {
+          if (previousUndo == null) localStorage.removeItem(BACKUP_UNDO_KEY);
+          else localStorage.setItem(BACKUP_UNDO_KEY, previousUndo);
+        } catch (restoreUndoError) { rolledBack = false; }
       }
       puzzleLogCache = null;
       noteStorageFail();

@@ -371,6 +371,39 @@ console.log('[P-3] 삭제 안전망 저장 실패 시 원본 슬롯 보존');
   storage.delete(statsKey);
 }
 
+console.log('[P-3b] 슬롯 데이터 삭제 중 실패하면 전체 원상 복구');
+{
+  const T = windowObj.__test;
+  const SLOT_UNDO = 'ai-ethics-adventure-deleted-slot';
+  const slotKey = 'ai-ethics-adventure-slot-2';
+  const statsKey = 'ai-ethics-adventure-stats-2';
+  const oldUndo = JSON.stringify({ slot: 1, ts: Date.now(), 'ai-ethics-adventure-slot-1': '{"name":"이전 삭제"}' });
+  const oldSlot = JSON.stringify({ v: 9, name: '부분삭제방지', flags: { defeated: {} } });
+  const oldStats = JSON.stringify({ privacy: { correct: 4, total: 5 } });
+  storage.set(SLOT_UNDO, oldUndo);
+  storage.set(slotKey, oldSlot);
+  storage.set(statsKey, oldStats);
+  const realRemove = sandbox.localStorage.removeItem;
+  let failedOnce = false;
+  sandbox.localStorage.removeItem = (key) => {
+    if (key === statsKey && !failedOnce) {
+      failedOnce = true;
+      throw new Error('learning delete unavailable');
+    }
+    return realRemove(key);
+  };
+  const deleted = T.deleteSlot(2);
+  sandbox.localStorage.removeItem = realRemove;
+  check('P-3b 중간 삭제 실패를 호출자에게 반환', deleted === false);
+  check('P-3b 중간 삭제 실패 뒤 슬롯·학습 기록 전체 보존',
+    storage.get(slotKey) === oldSlot && storage.get(statsKey) === oldStats);
+  check('P-3b 실패한 삭제가 이전 되살리기 기록을 덮어쓰지 않음', storage.get(SLOT_UNDO) === oldUndo);
+  T.probeStorage();
+  storage.delete(SLOT_UNDO);
+  storage.delete(slotKey);
+  storage.delete(statsKey);
+}
+
 // ── Y-17a 저장공간 쿼터 초과(QuotaExceededError) → noteStorageFail 경고 승격 ──
 console.log('[Y-17a] 쿼터 초과 모의 스토리지 — noteStorageFail 경고 승격');
 {

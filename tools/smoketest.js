@@ -948,8 +948,14 @@ console.log('[P-4] 백업 복원 중간 실패 원자 롤백');
 {
   const slotKey = 'ai-ethics-adventure-slot-2';
   const statsKey = 'ai-ethics-adventure-stats-2';
+  const undoKey = 'ai-ethics-adventure-restore-undo';
+  const priorUndo = JSON.stringify({
+    app: 'ai-ethics-adventure', version: 1, savedAt: Date.now() - 1000,
+    data: { 'ai-ethics-adventure-stats-0': '{"privacy":{"correct":3,"total":3}}' },
+  });
   const oldSlot = JSON.stringify({ v: 9, name: '복원전', flags: { defeated: {} } });
   const oldStats = JSON.stringify({ privacy: { correct: 1, total: 2 } });
+  storage.set(undoKey, priorUndo);
   storage.set(slotKey, oldSlot);
   storage.set(statsKey, oldStats);
   const incoming = JSON.stringify({
@@ -973,14 +979,35 @@ console.log('[P-4] 백업 복원 중간 실패 원자 롤백');
   check('P-4 중간 쓰기 실패를 복원 실패로 반환', failedRestore.ok === false && failedRestore.error === 'write');
   check('P-4 중간 쓰기 실패 뒤 기존 슬롯·통계 모두 보존',
     storage.get(slotKey) === oldSlot && storage.get(statsKey) === oldStats);
-  check('P-4 실패한 복원은 되돌리기 항목을 남기지 않음', T.hasRestoreUndo() === false);
+  check('P-4 실패한 복원이 기존 되돌리기 항목을 보존', storage.get(undoKey) === priorUndo);
   const badValue = T.applyBackup(JSON.stringify({
     app: 'ai-ethics-adventure', version: 1, data: { [slotKey]: { not: 'serialized' } },
   }));
   check('P-4 문자열이 아닌 백업 값은 쓰기 전에 거부', badValue.ok === false && badValue.error === 'value');
   T.probeStorage();
+  storage.delete(undoKey);
   storage.delete(slotKey);
   storage.delete(statsKey);
+}
+
+console.log('[P-4b] 복원 취소는 새로 들어온 키도 제거');
+{
+  const cosmeticKey = 'ai-ethics-adventure-cosmetic-2';
+  const undoKey = 'ai-ethics-adventure-restore-undo';
+  storage.delete(cosmeticKey);
+  storage.delete(undoKey);
+  const incoming = JSON.stringify({
+    app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+    data: { [cosmeticKey]: '{"theme":"night"}' },
+  });
+  const restored = T.applyBackup(incoming);
+  check('P-4b 없던 키를 포함한 복원 성공', restored.ok === true && !!storage.get(cosmeticKey));
+  const undone = T.undoRestore();
+  check('P-4b 복원 취소 성공', undone.ok === true);
+  check('P-4b 복원 전 없던 키를 취소 시 제거', !storage.get(cosmeticKey));
+  check('P-4b 취소 뒤 되돌리기 항목 소진', T.hasRestoreUndo() === false);
+  storage.delete(cosmeticKey);
+  storage.delete(undoKey);
 }
 
 console.log('[36b] 교사용 반 현황 CSV 내보내기');

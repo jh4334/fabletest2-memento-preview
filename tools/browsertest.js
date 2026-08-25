@@ -738,6 +738,55 @@ async function canvasColorProfile(page, rect) {
   }
 
   {
+    console.log('[slot-delete-mid-failure] 삭제 중간 실패 시 전체 롤백');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    const fixture = await page.evaluate(() => {
+      const undoKey = 'ai-ethics-adventure-deleted-slot';
+      const slotKey = 'ai-ethics-adventure-slot-2';
+      const statsKey = 'ai-ethics-adventure-stats-2';
+      const oldUndo = JSON.stringify({ slot: 1, ts: Date.now(), 'ai-ethics-adventure-slot-1': '{"name":"이전 삭제"}' });
+      const oldSlot = JSON.stringify({ v: 9, name: '부분삭제방지', flags: { defeated: {} } });
+      const oldStats = JSON.stringify({ privacy: { correct: 4, total: 5 } });
+      localStorage.setItem(undoKey, oldUndo);
+      localStorage.setItem(slotKey, oldSlot);
+      localStorage.setItem(statsKey, oldStats);
+      const original = Storage.prototype.removeItem;
+      let failedOnce = false;
+      window.__restoreStorageRemoveItem = () => { Storage.prototype.removeItem = original; };
+      Storage.prototype.removeItem = function removeItem(key) {
+        if (key === statsKey && !failedOnce) {
+          failedOnce = true;
+          throw new Error('learning delete unavailable');
+        }
+        return original.call(this, key);
+      };
+      window.__game.mode = 'title';
+      window.__game.titleScreen = 'delete';
+      window.__game.slotCursor = 2;
+      return { undoKey, slotKey, statsKey, oldUndo, oldSlot, oldStats };
+    });
+    await page.keyboard.press('z');
+    await page.waitForTimeout(200);
+    const result = await page.evaluate((expected) => {
+      window.__restoreStorageRemoveItem();
+      return {
+        intact: localStorage.getItem(expected.slotKey) === expected.oldSlot &&
+          localStorage.getItem(expected.statsKey) === expected.oldStats,
+        undoPreserved: localStorage.getItem(expected.undoKey) === expected.oldUndo,
+        screen: window.__game.titleScreen,
+        notice: window.__game.notice && window.__game.notice.text,
+      };
+    }, fixture);
+    check('삭제 중간 실패 뒤 슬롯·학습·이전 되살리기 전체 보존', result.intact && result.undoPreserved);
+    check('삭제 중간 실패를 성공으로 표시하지 않음',
+      result.screen === 'slots' && /저장되지 않/.test(result.notice || ''));
+    await ctx.close();
+  }
+
+  {
     console.log('[backup-restore-write-failure] 파일 복원 중간 실패 원자 롤백');
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();
@@ -746,8 +795,14 @@ async function canvasColorProfile(page, rect) {
     const fixture = await page.evaluate(() => {
       const slotKey = 'ai-ethics-adventure-slot-2';
       const statsKey = 'ai-ethics-adventure-stats-2';
+      const undoKey = 'ai-ethics-adventure-restore-undo';
+      const priorUndo = JSON.stringify({
+        app: 'ai-ethics-adventure', version: 1, savedAt: Date.now() - 1000,
+        data: { 'ai-ethics-adventure-stats-0': '{"privacy":{"correct":3,"total":3}}' },
+      });
       const oldSlot = JSON.stringify({ v: 9, name: '복원전', flags: { defeated: {} } });
       const oldStats = JSON.stringify({ privacy: { correct: 1, total: 2 } });
+      localStorage.setItem(undoKey, priorUndo);
       localStorage.setItem(slotKey, oldSlot);
       localStorage.setItem(statsKey, oldStats);
       const original = Storage.prototype.setItem;
@@ -761,7 +816,7 @@ async function canvasColorProfile(page, rect) {
         return original.call(this, key, value);
       };
       return {
-        slotKey, statsKey, oldSlot, oldStats,
+        slotKey, statsKey, undoKey, priorUndo, oldSlot, oldStats,
         backup: JSON.stringify({
           app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
           data: {
@@ -784,18 +839,45 @@ async function canvasColorProfile(page, rect) {
     const chooser = await chooserPromise;
     await chooser.setFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(fixture.backup) });
     await page.waitForFunction(() => window.__game.backup.toast < 0, { timeout: 8000 });
-    const result = await page.evaluate(({ slotKey, statsKey, oldSlot, oldStats }) => {
+    const result = await page.evaluate(({ slotKey, statsKey, undoKey, priorUndo, oldSlot, oldStats }) => {
       window.__restoreStorageSetItem();
       return {
         intact: localStorage.getItem(slotKey) === oldSlot && localStorage.getItem(statsKey) === oldStats,
+        undoPreserved: localStorage.getItem(undoKey) === priorUndo,
         mode: window.__game.mode,
         toast: window.__game.backup.toast,
         notice: window.__game.notice && window.__game.notice.text,
       };
     }, fixture);
-    check('파일 복원 중간 실패 뒤 기존 데이터 모두 보존', result.intact);
+    check('파일 복원 중간 실패 뒤 기존 데이터와 이전 취소 모두 보존', result.intact && result.undoPreserved);
     check('복원 실패를 성공 전환 없이 화면과 경고로 표시',
       result.mode === 'backup' && result.toast < 0 && /저장되지 않/.test(result.notice || ''));
+    await ctx.close();
+  }
+
+  {
+    console.log('[backup-undo-absent-key] 복원 전 없던 키까지 정확히 취소');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!window.__test, { timeout: 8000 });
+    const result = await page.evaluate(() => {
+      const key = 'ai-ethics-adventure-cosmetic-2';
+      localStorage.removeItem(key);
+      const restored = window.__test.applyBackup(JSON.stringify({
+        app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+        data: { [key]: '{"theme":"night"}' },
+      }));
+      const presentAfterRestore = !!localStorage.getItem(key);
+      const undone = window.__test.undoRestore();
+      return {
+        restored, presentAfterRestore, undone,
+        absentAfterUndo: !localStorage.getItem(key),
+        undoConsumed: !window.__test.hasRestoreUndo(),
+      };
+    });
+    check('복원 전 없던 키도 취소 시 제거', result.restored.ok && result.presentAfterRestore &&
+      result.undone.ok && result.absentAfterUndo && result.undoConsumed);
     await ctx.close();
   }
 
