@@ -159,7 +159,7 @@
     leaderboard: { ret: 'title', cursor: 0, toast: 0, rows: [], files: 0, skipped: 0 }, // Y-20 반 순위표(백업 여러 개 합산)
     classmode: { ret: 'world', sel: 0, confirm: false, toast: 0 }, // 수업 모드(챕터 바로 시작)
     prepost: null, // Y-18 사전/사후 점검 런타임 { ret, ch, kind, quizzes, idx, qCursor, choiceOrder, score, phase, feedback }
-    report: { ret: 'world', slot: 0, toast: 0 }, // 교사용 학생 진단 리포트
+    report: { ret: 'world', slot: 0, page: 0, toast: 0 }, // 교사용 학생 진단 리포트
     quizedit: { ret: 'title', cursor: 0, toast: 0, confirm: false }, // 커스텀 퀴즈 편집·가져오기
     cards: { ret: 'title', slot: 0, scroll: 0 },     // 학습 카드 컬렉션
     cert: { ret: 'title', slot: 0, toast: 0 },       // 수료증·진도 인증서
@@ -1382,6 +1382,13 @@
     if (!action || !cancel) return;
     const actionSub = action.querySelector('.sub');
     const setActionSub = (text) => { if (actionSub) actionSub.textContent = text; };
+    if (game.mode === 'report') {
+      action.setAttribute('aria-label', '진단 리포트 내보내기');
+      setActionSub('내보내기');
+      cancel.setAttribute('aria-label', '진단 리포트 닫기');
+      cancel.textContent = '닫기';
+      return;
+    }
     if (game.mode === 'ending') {
       const ready = endingContinueReady();
       action.setAttribute('aria-label', ready ? '마을로 돌아가기' : '엔딩이 끝날 때까지 잠시 기다리기');
@@ -10012,6 +10019,7 @@
   function openReport(ret) {
     game.report.ret = ret;
     game.report.slot = activeSlot();
+    game.report.page = 0;
     game.report.toast = 0;
     game.mode = 'report';
     Sound.select();
@@ -10019,13 +10027,44 @@
   function closeReport() { game.mode = game.report.ret; Sound.select(); }
   // slot 0..SLOT_COUNT-1 = 학생별, slot === SLOT_COUNT = 반 전체
   function reportView(slot) { return slot >= SLOT_COUNT ? buildClassDiagnostic() : buildDiagnosticReport(slot); }
+  const REPORT_PAGE_SIZE = 17;
+  function setReportLineStyle(line) {
+    if (line.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = fs(15, true); }
+    else if (line.startsWith('  · ')) { ctx.fillStyle = warnColor(); ctx.font = fs(13); }
+    else if (line.startsWith('추천 수업') || line.startsWith('우선 추천')) { ctx.fillStyle = okColor(); ctx.font = fs(13, true); }
+    else if (line.startsWith('──')) { ctx.fillStyle = '#444'; ctx.font = fs(13); }
+    else { ctx.fillStyle = '#ddd'; ctx.font = fs(13); }
+  }
+  function reportPageView(slot, page) {
+    const rows = [];
+    for (const source of reportView(slot).text.split('\n')) {
+      setReportLineStyle(source);
+      const wrapped = layoutLine(source, LW - 56);
+      for (const text of (wrapped.length ? wrapped : [''])) rows.push({ source, text });
+    }
+    const pages = Math.max(1, Math.ceil(rows.length / REPORT_PAGE_SIZE));
+    const current = Math.max(0, Math.min(Number(page) || 0, pages - 1));
+    return {
+      current,
+      pages,
+      rows: rows.slice(current * REPORT_PAGE_SIZE, (current + 1) * REPORT_PAGE_SIZE),
+    };
+  }
+  function reportPageAnnouncement() {
+    const view = reportPageView(game.report.slot, game.report.page);
+    return `학생 진단 리포트. 페이지 ${view.current + 1} / ${view.pages}. ` +
+      view.rows.map((row) => row.text).filter(Boolean).join('. ');
+  }
   function updateReport() {
     const r = game.report;
     const N = SLOT_COUNT + 1; // 학생 3명 + 반 전체
     if (r.toast > 0) r.toast -= 1; else if (r.toast < 0) r.toast += 1;
     // 좌우로 학생(슬롯)·반 전체 전환
-    if (justPressed('left')) { r.slot = (r.slot + N - 1) % N; Sound.blip(); }
-    if (justPressed('right')) { r.slot = (r.slot + 1) % N; Sound.blip(); }
+    if (justPressed('left')) { r.slot = (r.slot + N - 1) % N; r.page = 0; Sound.blip(); }
+    if (justPressed('right')) { r.slot = (r.slot + 1) % N; r.page = 0; Sound.blip(); }
+    const pages = reportPageView(r.slot, r.page).pages;
+    if (justPressed('up') && r.page > 0) { r.page -= 1; Sound.blip(); if (game.tts) Speech.speak(reportPageAnnouncement()); }
+    if (justPressed('down') && r.page + 1 < pages) { r.page += 1; Sound.blip(); if (game.tts) Speech.speak(reportPageAnnouncement()); }
     if (justPressed('action')) {
       const text = reportView(r.slot).text;
       const ok = downloadTextFile(text, 'ai-ethics-diagnostic-' + todayStr() + '.txt') || copyTextToClipboard(text);
@@ -10043,23 +10082,22 @@
     ctx.fillStyle = '#888'; ctx.font = fs(12);
     ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, 24, 58);
 
-    const rep = reportView(r.slot);
+    const view = reportPageView(r.slot, r.page);
+    r.page = view.current;
+    ctx.textAlign = 'right'; ctx.fillStyle = '#888'; ctx.font = fs(12);
+    ctx.fillText(`페이지 ${view.current + 1} / ${view.pages}`, LW - 24, 58);
+    ctx.textAlign = 'left';
     let y = 92;
-    const lines = rep.text.split('\n');
-    for (const ln of lines) {
-      if (ln.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = fs(15, true); }
-      else if (ln.startsWith('  · ')) { ctx.fillStyle = warnColor(); ctx.font = fs(13); }
-      else if (ln.startsWith('추천 수업') || ln.startsWith('우선 추천')) { ctx.fillStyle = okColor(); ctx.font = fs(13, true); }
-      else if (ln.startsWith('──')) { ctx.fillStyle = '#444'; ctx.font = fs(13); }
-      else { ctx.fillStyle = '#ddd'; ctx.font = fs(13); }
-      ctx.fillText(ln, 28, y);
+    for (const row of view.rows) {
+      setReportLineStyle(row.source);
+      ctx.fillText(row.text, 28, y);
       y += 22;
     }
 
     ctx.textAlign = 'center';
     if (r.toast > 0) { ctx.fillStyle = okColor(); ctx.font = fs(14, true); ctx.fillText('✓ 진단 리포트를 저장했어요 (인쇄·보관용)', LW / 2, 512); }
     else if (r.toast < 0) { ctx.fillStyle = badColor(); ctx.font = fs(14, true); ctx.fillText('이 환경에서는 내보낼 수 없어요 (브라우저에서 시도)', LW / 2, 512); }
-    else { ctx.fillStyle = '#777'; ctx.font = fs(13); ctx.fillText('Z: 리포트 내보내기(.txt/클립보드) · ◀▶ 학생 전환 · X: 닫기', LW / 2, 512); }
+    else { ctx.fillStyle = '#777'; ctx.font = fs(13); ctx.fillText('↑↓ 페이지 · ◀▶ 학생 전환 · Z 내보내기 · X 닫기', LW / 2, 512); }
     ctx.textAlign = 'left';
   }
 
@@ -12653,6 +12691,8 @@
       }
     } else if (game.mode === 'journal') {
       txt = journalAnnouncement();
+    } else if (game.mode === 'report') {
+      txt = reportPageAnnouncement();
     } else if (game.mode === 'ending' && game.endingType === 'true') {
       txt = endingAnnouncement(game.flags.endingId) + '. ' + endingContinuationAnnouncement();
     } else if (game.dialog && game.dialog.lines && typeof game.dialog.lines[game.dialog.idx] === 'string') {

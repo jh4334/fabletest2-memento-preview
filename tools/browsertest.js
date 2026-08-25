@@ -508,6 +508,86 @@ async function canvasColorProfile(page, rect) {
     await ctx.close();
   }
 
+  {
+    console.log('[teacher-report-pages] 긴 학생 진단 리포트 전체 탐색');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => {
+      const topics = [
+        'privacy', 'copyright', 'consent', 'security', 'identity', 'fake', 'genai', 'deepfake', 'rumor',
+        'bias', 'filterbubble', 'listen', 'balance', 'footprint', 'saving', 'environment', 'persuasion',
+        'manners', 'emotion', 'responsibility', 'excuse', 'safety', 'transparency', 'core',
+      ];
+      const stats = {};
+      for (const topic of topics) stats[topic] = { correct: 0, total: 3 };
+      localStorage.setItem('ai-ethics-adventure-slot-0', JSON.stringify({
+        v: 9, name: '긴보고서', map: 'village', x: 13, y: 16,
+        flags: { defeated: {}, mercy: 0, visited: {} },
+      }));
+      localStorage.setItem('ai-ethics-adventure-stats-0', JSON.stringify(stats));
+      window.__game.mode = 'report';
+      window.__game.report.ret = 'title';
+      window.__game.report.slot = 0;
+      window.__game.report.page = 0;
+    });
+    await page.waitForTimeout(200);
+    const first = await page.evaluate(() => ({
+      page: window.__game.report.page,
+      live: window.__test.srLiveText() || '',
+      image: document.getElementById('game').toDataURL(),
+    }));
+    check('긴 리포트 첫 페이지와 전체 페이지 수 안내', first.page === 0 && /페이지 1 \/ [2-9]/.test(first.live));
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(200);
+    const second = await page.evaluate(() => ({
+      page: window.__game.report.page,
+      live: window.__test.srLiveText() || '',
+      image: document.getElementById('game').toDataURL(),
+    }));
+    check('아래 방향으로 다음 리포트 페이지 이동', second.page === 1);
+    check('다음 페이지가 새 내용과 페이지 번호를 표시', second.image !== first.image && /페이지 2 \/ [2-9]/.test(second.live));
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(200);
+    check('위 방향으로 이전 리포트 페이지 복귀',
+      (await page.evaluate(() => window.__game.report.page)) === 0);
+    await ctx.close();
+
+    const mobileCtx = await browser.newContext({
+      viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true,
+    });
+    const mobilePage = await mobileCtx.newPage();
+    await mobilePage.goto(base, { waitUntil: 'load' });
+    await mobilePage.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await mobilePage.evaluate(() => {
+      const topics = [
+        'privacy', 'copyright', 'consent', 'security', 'identity', 'fake', 'genai', 'deepfake', 'rumor',
+        'bias', 'filterbubble', 'listen', 'balance', 'footprint', 'saving', 'environment', 'persuasion',
+        'manners', 'emotion', 'responsibility', 'excuse', 'safety', 'transparency', 'core',
+      ];
+      const stats = {};
+      for (const topic of topics) stats[topic] = { correct: 0, total: 3 };
+      localStorage.setItem('ai-ethics-adventure-slot-0', JSON.stringify({
+        v: 9, name: '모바일보고서', map: 'village', x: 13, y: 16,
+        flags: { defeated: {}, mercy: 0, visited: {} },
+      }));
+      localStorage.setItem('ai-ethics-adventure-stats-0', JSON.stringify(stats));
+      window.__game.mode = 'report';
+      window.__game.report.slot = 0;
+      window.__game.report.page = 0;
+    });
+    await mobilePage.waitForTimeout(200);
+    check('모바일 리포트 A·닫기 동작명이 화면에 맞게 변경',
+      (await mobilePage.locator('#t-a .sub').textContent()) === '내보내기' &&
+      (await mobilePage.locator('#t-pause').textContent()) === '닫기');
+    await mobilePage.keyboard.press('ArrowDown');
+    await mobilePage.waitForTimeout(200);
+    check('모바일 가로에서도 다음 리포트 페이지 접근',
+      (await mobilePage.evaluate(() => window.__game.report.page)) === 1);
+    await mobileCtx.close();
+  }
+
   // 멀티터치: 같은 버튼 두 손가락 → 하나만 떼도 유지, 스틱은 둘째 손가락이 탈취 못 함
   {
     console.log('[accessible-touch-buttons] 네이티브 의미와 키보드 활성화');
