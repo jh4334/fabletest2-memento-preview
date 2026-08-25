@@ -52,6 +52,7 @@ upstream DISABLED (push)
 - `feat/memento-dual-timeline`
 - 기준점 `79bdc2a`에서 분기
 - 미리보기 전용 복원 커밋 `385d463aa9d15f46c76409041866686d5d0053af`의 트리는 `c8d9719`와 정확히 같다.
+- 후속 게임플레이 가시성 보강: `fix/memento-gameplay-discoverability` (`origin/main`의 `f6eebb2`에서 분기, PR #3으로 병합)
 
 ## 7. 기존 스토리 요약
 
@@ -103,6 +104,7 @@ upstream DISABLED (push)
 - `.github/workflows/ci.yml`, `pages.yml`, `release.yml`: 액션 SHA 고정, 최소 권한, Pages 전체 게이트를 적용했다.
 - `README.md`, `CHANGELOG.md`, `package.json`: 기능·호환·릴리스 변경을 기록했다.
 - `.orchestration/evidence/`: RED/GREEN 로그와 14개 최종 화면 증거를 보존했다.
+- 후속 가시성 보강에서는 `src/game.js`의 상시 기록 HUD·최초 발견 선택·일지 직행과 V9 장 완료 보충을 추가하고, 세 기존 테스트 도구와 구현 계획·`DESIGN.md`를 갱신했다. 데스크톱·모바일의 발견 카드와 HUD 화면 6개를 추가 보존했다.
 
 ## 13. 추가한 상태 키
 
@@ -122,6 +124,7 @@ upstream DISABLED (push)
 - V4~V8 마이그레이션은 자기 버전보다 최신 세이브를 다시 낮추지 않는다. 따라서 `timelineMerged=true`, `timelineRestored=false`인 V9 중단 세이브도 새로고침 뒤 그대로 복원 화면을 계속한다.
 - 알 수 없는 미래 필드는 보존한다. 슬롯 3개, 슬롯 삭제 되살리기, 전체 백업·복원 구조는 바꾸지 않았다.
 - 건너뛴 기록도 해금·열람·건너뜀 상태가 함께 저장되며 재열람이 진행 보상을 중복하지 않는다.
+- 후속 보강에서는 기존 V8/V9 세이브의 `chapter1Clear`~`chapter5Clear`만 권위 있는 완료 근거로 사용해 해당 기록을 `새 기록`으로 보충한다. `pendingRecord`는 만들지 않아 장면을 강제하지 않는다. 일반 전투·친구 수첩에도 쓰이는 `defeated` 표식만으로는 기록을 해금하지 않으며, 이 반례를 자동 테스트로 고정했다.
 
 ## 15. 기존 엔딩과 새 주제의 대응
 
@@ -145,6 +148,8 @@ upstream DISABLED (push)
 - 본편 맵·장 흐름, 금지 화면 어휘, 실제 대사 복선
 - TTS·aria-live·reduceFx·모바일 터치 라벨
 - 기준판 캐시에서 최신 게임 자동 전환, 오프라인 쿼리 진입, 무관한 origin 캐시 보존
+- 상시 `손상 기록 0/5…5/5` HUD, 장 종료의 `복원하기 / 나중에` 발견 선택, 데스크톱 J·터치 메뉴 다시보기, 기록 보유 시 일지 기록 탭 직행
+- 장 완료 플래그 기반 구세이브 기록 보충과 `defeated`-only 비해금 반례
 
 RED에서는 새 계약이 16개 실패·5개 통과했고 기존 스모크 1205개와 슬롯 66개는 통과했다. 구현 뒤 전체가 GREEN이 되었다.
 
@@ -154,14 +159,14 @@ RED에서는 새 계약이 16개 실패·5개 통과했고 기존 스모크 1205
 |---|---|
 | `npm ci` | 성공, 취약점 0 |
 | `npm run validate` | 성공 |
-| `npm test` | 성공: smoke 1208, slot 68, Memento 46 |
+| `npm test` | 성공: smoke 1208, slot 68, Memento 54, 합계 1330 |
 | `npm run playtest` | 성공: 프롤로그부터 코어·영이·`home`까지 완주 |
-| `npm run test:browser` | 성공: Chromium 95 / 실패 0; WebKit은 미설치 선택 항목으로 건너뜀 |
+| `npm run test:browser` | 성공: Chromium 101 / 실패 0; WebKit은 미설치 선택 항목으로 건너뜀 |
 | `npm run pack` | 성공 |
 | `unzip -tq ai-ethics-adventure-offline.zip` | 성공 |
-| `npm run bump` | 성공: `ai-ethics-adventure-efd04b0e` |
+| `npm run bump` | 성공: `ai-ethics-adventure-27078776` |
 
-브라우저 14개 캡처를 모두 직접 열었고, 디자인·CJK 두 독립 시각 검수가 모두 PASS했다. 디버깅 감사에서는 입력 프레임 경합과 서비스워커 activation 중 `client.navigate()` await 교착을 실제 런타임으로 확인해 수정했으며, 포커스 손실·세이브 손상 가설은 반증했다.
+최초 통합의 브라우저 14개 캡처에 이어 가시성 보강의 최신 16개 캡처를 모두 직접 열었고, 디자인·CJK 두 독립 시각 검수가 모두 PASS했다. 최종 가시성 SHA `406b2356532acbe668518c9988ad5efd5fd79c38`에서 목표·QA·코드·보안·스토리 5개 독립 검토가 모두 PASS했다. 디버깅 감사에서는 입력 프레임 경합과 서비스워커 activation 중 `client.navigate()` await 교착을 실제 런타임으로 확인해 수정했으며, 포커스 손실·세이브 손상 가설은 반증했다.
 
 ## 18. CI 및 Pages 실행 URL
 
@@ -173,13 +178,20 @@ RED에서는 새 계약이 16개 실패·5개 통과했고 기존 스모크 1205
 - 기능 PR Pages 사전 검증: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32793282117` 성공
 - 최종 main CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32793415835` 성공
 - 최종 Pages 검증·배포: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32793415748` 성공
+- 가시성 보강 Draft PR: `https://github.com/jh4334/fabletest2-memento-preview/pull/3`
+- 가시성 보강 브랜치 push CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32828230207` 성공
+- 가시성 보강 PR CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32828256291` 성공
+- 가시성 보강 PR Pages 검증: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32828256373` 성공
+- 가시성 보강 main CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32828367829` 성공
+- 가시성 보강 Pages 검증·배포: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32828367822` 성공
 
 ## 19. 최종 미리보기 URL
 
-- 구현 merge SHA: `06daf943f8573e5da8d9e5cf769fef7998ef69c4`
-- 최종 URL: `https://jh4334.github.io/fabletest2-memento-preview/?v=06daf943f8573e5da8d9e5cf769fef7998ef69c4`
-- 최종 HTTP 200과 `마음의 문` title을 확인했다. 실제 앱 브라우저에서 새 게임 이름 입력 화면과 프롤로그에 진입했고, 1280×720·390×844·844×390에서 가로 넘침과 console warning/error가 없었다.
-- 배포된 `src/game.js`의 `timelineMerged`, `src/data.js`의 `first_approval`, `sw.js`의 `ai-ethics-adventure-efd04b0e`를 cache-busting 요청으로 직접 확인했다. 기록·일지·파이널·네 엔딩·오프라인은 동일 merge SHA의 Pages 게이트와 Chromium 95개 검증으로 통과했다.
+- 최초 통합 merge SHA: `06daf943f8573e5da8d9e5cf769fef7998ef69c4`
+- 게임플레이 가시성 보강 merge SHA: `da74f95cb98e040d3641055889eca325a34e2997`
+- 최종 URL: `https://jh4334.github.io/fabletest2-memento-preview/?v=da74f95cb98e040d3641055889eca325a34e2997`
+- 최종 HTTP 200과 `마음의 문` title을 확인했다. 실제 Chromium에서 빈 슬롯을 고르고 가상 이름으로 새 게임을 시작해 데스크톱 1280×800과 모바일 가로 844×390 모두 프롤로그 월드에 진입했다. 두 화면의 상단 HUD에서 `손상 기록 0/5 · 장 끝에서 발견`을 직접 확인했고, console/page/request 오류는 0이었다.
+- 배포된 `src/game.js`의 `recordHudText`, `새로운 손상 기록`, `복원하기`, `sw.js`의 `ai-ethics-adventure-27078776`를 cache-busting 요청으로 직접 확인했다. 서비스워커가 실제 페이지를 제어했으며 기록·일지·파이널·네 엔딩·오프라인은 동일 merge SHA의 Pages 게이트와 Chromium 101개 검증으로 통과했다.
 
 ## 20. 원본 저장소가 변경되지 않았다는 검증
 
@@ -188,14 +200,16 @@ RED에서는 새 계약이 16개 실패·5개 통과했고 기존 스모크 1205
 - 원본에서 `baseline/pre-memento-plot`, `archive/pre-memento-plot`, `feat/memento-dual-timeline` 일치 ref는 모두 0개다.
 - 원본 열린 PR은 0개다.
 - `upstream`은 push URL `DISABLED`이고 원본 대상 push·PR·설정 변경 명령을 실행하지 않았다.
-- 최종 검증 시 미리보기 기준 `archive/pre-memento-plot`과 peel한 `baseline/pre-memento-plot`은 여전히 `79bdc2a`이고, 구현만 미리보기 `main`의 merge commit `06daf94`에 존재한다.
+- 최종 검증 시 미리보기 기준 `archive/pre-memento-plot`과 peel한 `baseline/pre-memento-plot`은 여전히 `79bdc2a`이다. 최초 이중 시간선 통합 `06daf94`와 후속 게임플레이 가시성 보강 `da74f95`는 모두 미리보기 `main`에 병합됐으며 원본 `upstream` ref에는 존재하지 않는다.
 
 ## 21. 남은 스토리·UX·기술 위험
 
 - 최신 원본 main은 다른 게임이므로, 이 미리보기는 최신 SHA 기준점 위에 사용자가 선택한 역사적 `마음의 문` 트리를 복원한 preview-only 계보를 가진다.
 - macOS 기본 npm 11에서 정확한 최신-main lockfile의 선택 의존성 `fsevents` 누락이 있었으나 대상 Ubuntu CI는 동일 SHA에서 성공했다. 복원된 `마음의 문` 브랜치의 `npm ci`는 로컬과 CI 모두 성공한다.
 - WebKit은 로컬에 설치되지 않아 선택 브라우저 패스만 건너뛰었다. Chromium과 실제 앱 브라우저에서 데스크톱·세로·가로를 검증했다.
-- 서비스워커는 같은 origin의 무관한 캐시를 지우지 않도록 앱 소유 prefix만 정리한다. 기준판 캐시 전환과 무관한 캐시 보존은 자동화 테스트를 통과했고, 최종 Pages가 캐시 `efd04b0e`를 제공함을 확인했다.
+- 서비스워커는 같은 origin의 무관한 캐시를 지우지 않도록 앱 소유 prefix만 정리한다. 기준판 캐시 전환과 무관한 캐시 보존은 자동화 테스트를 통과했고, 최초 통합 Pages가 캐시 `efd04b0e`를 제공했음을 확인했다.
+- 가시성 보강 뒤 최종 Pages는 캐시 `27078776`을 제공한다. GitHub Actions가 Node.js 20 기반 액션을 Node.js 24로 강제 실행한다는 비차단 경고가 있어, 향후 공식 액션 런타임 갱신 시 핀 SHA를 다시 검토해야 한다.
+- 테스트 전용 loopback HTTP 서버의 경로 포함 검사는 기존 문자열 prefix 방식이다. 공개 게임 런타임에는 포함되지 않는 낮은 위험이지만, 테스트 도구 유지보수 시 `path.relative` 기반 검사로 바꿀 수 있다.
 
 ## 22. git status 및 커밋 목록
 
@@ -220,3 +234,14 @@ b832bc3 test: cover memento browser journeys
 ```
 
 기능 브랜치는 깨끗한 상태로만 `origin`에 push했고, PR #1의 모든 검사를 통과한 뒤 일반 merge commit `06daf943f8573e5da8d9e5cf769fef7998ef69c4`로 미리보기 `main`에 병합했다. 최종 보고서 갱신 전 `docs/memento-preview-final-report` 작업 트리는 `origin/main`과 같은 깨끗한 상태였으며, 이 보고서 파일만 후속 문서 변경으로 게시한다.
+
+사용자가 게임플레이 변화를 알아보기 어렵다고 한 뒤 다음 후속 이력을 미리보기 저장소에만 추가했다.
+
+```text
+35c77b9 fix: surface damaged records during play
+83916b8 docs: record dual-timeline discovery UX
+64b9673 fix: trust chapter completion in save migration
+406b235 docs: align record runtime state
+```
+
+`fix/memento-gameplay-discoverability`는 깨끗한 상태로만 `origin`에 push했고, Draft PR #3의 필수 검사가 모두 성공한 뒤 일반 merge commit `da74f95cb98e040d3641055889eca325a34e2997`로 미리보기 `main`에 병합했다. 원본 `upstream`에는 push하지 않았다.
