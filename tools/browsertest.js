@@ -233,21 +233,29 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
       return {
         mode: g.mode,
         id: g.record && g.record.ids[0],
+        discovery: g.record && g.record.discovery,
         live: T.srLiveText(),
       };
     });
     await page.waitForTimeout(250);
     check(`${vp.name}: 손상 기록 화면 진입`, started.mode === 'record' && started.id === 'reset_after');
-    check(`${vp.name}: 기록이 aria-live에 연결됨`, /손상된 기록/.test(await page.evaluate(() => window.__test.srLiveText() || '')));
+    check(`${vp.name}: 본문 전에 기록 발견 선택 화면 진입`, started.discovery === true);
+    check(`${vp.name}: 기록 발견 선택이 aria-live에 연결됨`, /손상 기록/.test(await page.evaluate(() => window.__test.srLiveText() || '')));
     if (vp.mobile) {
       const recordControls = await page.evaluate(() => ({
         action: document.getElementById('t-a').getAttribute('aria-label'),
         cancel: document.getElementById('t-pause').getAttribute('aria-label'),
         cancelText: document.getElementById('t-pause').textContent,
       }));
-      check(`${vp.name}: 기록 터치 조작명이 다음·건너뛰기로 바뀜`,
-        recordControls.action === '기록 다음 내용' && recordControls.cancel === '기록 건너뛰기' && recordControls.cancelText === '건너뜀');
+      check(`${vp.name}: 발견 화면 터치 조작명이 복원·나중에로 바뀜`,
+        recordControls.action === '기록 복원 시작' && recordControls.cancel === '나중에 보기' && recordControls.cancelText === '나중에');
     }
+    await page.screenshot({ path: path.join(mementoShotsDir, `record-discovery-${vp.name}.png`) });
+    if (vp.mobile) await page.tap('#t-a');
+    else await page.keyboard.press('z');
+    await page.waitForFunction(() => window.__game.record && window.__game.record.discovery === false, { timeout: 1000 });
+    check(`${vp.name}: 복원하기 뒤 기록 첫 페이지 진입`,
+      (await page.evaluate(() => window.__game.record && window.__game.record.page)) === 0);
     await page.screenshot({ path: path.join(mementoShotsDir, `record-${vp.name}.png`) });
     if (vp.name === 'desktop') {
       await page.evaluate(() => { window.__game.largeText = true; });
@@ -266,6 +274,8 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
       pending: window.__game.flags.pendingRecord,
     }));
     check(`${vp.name}: 기록 건너뛰기 저장`, skipped.mode === 'world' && skipped.skipped === true && skipped.pending === null);
+    await page.waitForTimeout(120);
+    await page.screenshot({ path: path.join(mementoShotsDir, `hud-${vp.name}.png`) });
     if (vp.mobile) {
       await page.tap('#t-pause');
       await page.waitForFunction(() => window.__game.mode === 'pause', { timeout: 1000 });
@@ -276,18 +286,6 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
       await page.keyboard.press('j');
     }
     await page.waitForFunction(() => window.__game.mode === 'journal', { timeout: 1000 });
-    if (vp.mobile) {
-      await page.evaluate(() => {
-        const el = document.getElementById('t-stick');
-        const b = el.getBoundingClientRect();
-        const x = b.left + b.width * 0.85, y = b.top + b.height / 2;
-        const touch = new Touch({ identifier: 77, target: el, clientX: x, clientY: y });
-        el.dispatchEvent(new TouchEvent('touchstart', { changedTouches: [touch], bubbles: true, cancelable: true }));
-        el.dispatchEvent(new TouchEvent('touchend', { changedTouches: [touch], bubbles: true, cancelable: true }));
-      });
-    } else {
-      await page.keyboard.press('ArrowRight');
-    }
     await page.waitForFunction(() => window.__game.journal.tab === 'records', { timeout: 1000 });
     const journal = await page.evaluate(() => ({ mode: window.__game.mode, tab: window.__game.journal.tab }));
     check(`${vp.name}: 일지 기록 탭 진입`, journal.mode === 'journal' && journal.tab === 'records');

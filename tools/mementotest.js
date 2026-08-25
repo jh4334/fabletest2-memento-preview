@@ -71,6 +71,8 @@ if (has('startDamagedRecord') && has('unlockDamagedRecord')) {
   T.unlockDamagedRecord(1);
   T.startDamagedRecord('reset_after', { ret: 'world' });
   check('최초 기록 장면은 record 모드로 진입', g.mode === 'record');
+  check('최초 공개는 본문 전에 복원 여부를 고르는 발견 단계로 진입',
+    g.record && g.record.discovery === true);
   env.tap('x');
   const skippedSave = JSON.parse(env.storage.get('ai-ethics-adventure-slot-0') || 'null');
   check('X 건너뛰기 뒤 월드로 복귀하고 완료·건너뜀 상태 저장',
@@ -90,6 +92,9 @@ if (has('startDamagedRecord') && has('unlockDamagedRecord')) {
   g.flags = T.newFlags();
   T.unlockDamagedRecord(1);
   T.startDamagedRecord('reset_after', { ret: 'world' });
+  env.tap('z');
+  check('복원하기를 고르면 같은 기록의 첫 페이지가 시작됨',
+    g.mode === 'record' && g.record && g.record.discovery === false && g.record.page === 0);
   for (let i = 0; i < 4; i++) env.tap('z');
   check('첫 기록을 읽으면 입력자 공백을 짚는 반디 복선이 실제 대화로 이어짐',
     g.mode === 'dialog' && g.dialog && /누가 쓴 문장인지는 아직 몰라/.test(g.dialog.lines[0]));
@@ -137,11 +142,28 @@ if (has('migrateSlotV9')) {
     completed.flags.timelineMerged === true && completed.flags.timelineRestored === true);
   check('완료된 구세이브는 기록이 비어 있어도 복원된 시간순 다시보기가 보임',
     has('journalRecordItems') && T.journalRecordItems(completed.flags).map((item) => item.id).join(',') === 'restored');
+  const chapterSave = T.migrateSlotV9({ v: 8, flags: {
+    chapter1Clear: true, chapter2Clear: true, shrineDone: false, defeated: {},
+  } });
+  check('완료한 장이 있는 구세이브는 해당 손상 기록을 새 기록으로 보충',
+    chapterSave.flags.damagedRecords.join(',') === 'reset_after,reset_before' &&
+    Object.keys(chapterSave.flags.viewedRecords).length === 0 && chapterSave.flags.pendingRecord === null);
 }
 const fresh = has('newFlags') ? T.newFlags() : {};
 check('신규 세이브의 기록 상태 기본값', Array.isArray(fresh.damagedRecords) && fresh.damagedRecords.length === 0 &&
   fresh.viewedRecords && fresh.skippedRecords && fresh.pendingRecord === null &&
   fresh.timelineMerged === false && fresh.timelineRestored === false);
+
+console.log('[M-6b] 손상 기록 진행은 첫 장부터 HUD와 다시보기 동선에 드러난다');
+check('손상 기록 HUD 문구 API 존재', has('recordHudText'));
+if (has('recordHudText')) {
+  check('해금 전 HUD가 장 끝의 새 기록 목표를 예고', /0\/5/.test(T.recordHudText(T.newFlags(), false)));
+  const oneRecord = Object.assign(T.newFlags(), { damagedRecords: ['reset_after'] });
+  check('해금 뒤 키보드 HUD가 기록 수와 J 다시보기를 안내',
+    /1\/5/.test(T.recordHudText(oneRecord, false)) && /J/.test(T.recordHudText(oneRecord, false)));
+  check('해금 뒤 터치 HUD가 기록 수와 메뉴 다시보기를 안내',
+    /1\/5/.test(T.recordHudText(oneRecord, true)) && /메뉴/.test(T.recordHudText(oneRecord, true)));
+}
 
 console.log('[M-7] 네 엔딩은 기존 ID와 누적 여정을 보존해 새 주제에 연결된다');
 const endingThemes = data('typeof MEMENTO_ENDING_THEMES === "undefined" ? null : MEMENTO_ENDING_THEMES', {}) || {};

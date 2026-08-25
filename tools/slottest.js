@@ -188,8 +188,8 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8→v
       endingId: 'home' } });
   const s8 = T.loadSlot(2);
   check('W-1 v8→v9 + endingId 보존', s8.v === 9 && s8.flags.endingId === 'home');
-  check('W-1 v8→v9 기록 필드 기본값', Array.isArray(s8.flags.damagedRecords) &&
-    s8.flags.damagedRecords.length === 0 && s8.flags.pendingRecord === null &&
+  check('W-1 v8→v9 완료 장 기록 보충', Array.isArray(s8.flags.damagedRecords) &&
+    s8.flags.damagedRecords.length === 5 && s8.flags.pendingRecord === null &&
     s8.flags.timelineMerged === false && s8.flags.timelineRestored === false);
   check('W-1 v8 클리어 슬롯 요약 — done/endingId 노출', (() => { const sm = T.slotSummary(2); return sm && sm.done === true && sm.endingId === 'home'; })());
 
