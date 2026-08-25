@@ -13051,7 +13051,11 @@
   function syncSrLive() {
     if (!srLiveEl) return;
     let txt = '';
-    if (game.mode === 'title' && game.titleScreen === 'routechoice') {
+    const storageWarning = game.notice && game.notice.t > 0 &&
+      /^⚠ 이 기기에서는 진행이 저장되지 않아요/.test(game.notice.text || '');
+    if (storageWarning) {
+      txt = game.notice.text;
+    } else if (game.mode === 'title' && game.titleScreen === 'routechoice') {
       const route = MEMENTO_ROUTES[game.routeCursor];
       txt = `시간선 선택. ${game.routeCursor + 1}/${MEMENTO_ROUTES.length}. ${route.label}.`;
     } else if (game.mode === 'timelineorder') {
