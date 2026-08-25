@@ -27,7 +27,10 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((keys) => {
     const replacingBaseline = keys.some((key) => key.startsWith('shadow-school-'));
-    return Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))
+    const ownedCaches = keys.filter((key) =>
+      key !== CACHE && (key.startsWith('ai-ethics-adventure-') || key.startsWith('shadow-school-'))
+    );
+    return Promise.all(ownedCaches.map((key) => caches.delete(key)))
       .then(() => self.clients.claim())
       .then(() => replacingBaseline ? self.clients.matchAll({ type: 'window', includeUncontrolled: true }) : [])
       .then((clients) => {

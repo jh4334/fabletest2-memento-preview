@@ -496,6 +496,8 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
       await oldCache.put('./index.html', new Response('<title>방과 후: 그림자 학교</title>', {
         headers: { 'Content-Type': 'text/html' },
       }));
+      const unrelatedCache = await caches.open('unrelated-preview-cache');
+      await unrelatedCache.put('./untouched', new Response('keep'));
     });
     await page.close();
     page = await ctx.newPage();
@@ -510,6 +512,8 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     check('기준 버전 캐시를 발견하면 열린 탭을 한 번 다시 탐색', upgraded.navigations >= 3);
     check('업그레이드 뒤 마음의 문 문서와 새 서비스워커가 활성',
       /마음의 문/.test(upgraded.title) && upgraded.controlled && !upgraded.caches.some((key) => key.startsWith('shadow-school-')));
+    check('서비스워커 업그레이드는 같은 origin의 무관한 캐시를 보존',
+      upgraded.caches.includes('unrelated-preview-cache'));
     await ctx.close();
   }
 
