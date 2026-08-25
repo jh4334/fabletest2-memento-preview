@@ -294,7 +294,8 @@
     const fromVersion = Number(data.v) || 0;
     const ids = MEMENTO_RECORDS.map((r) => r.id);
     const incoming = Array.isArray(f.damagedRecords) ? f.damagedRecords : [];
-    f.damagedRecords = ids.filter((id) => incoming.includes(id));
+    const cleared = ids.filter((id, i) => !!f['chapter' + (i + 1) + 'Clear']);
+    f.damagedRecords = ids.filter((id) => incoming.includes(id) || cleared.includes(id));
     const plainObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
     const viewed = plainObject(f.viewedRecords) ? f.viewedRecords : {};
     const skipped = plainObject(f.skippedRecords) ? f.skippedRecords : {};
@@ -1266,6 +1267,12 @@
     const cancel = document.getElementById('t-pause');
     if (!action || !cancel) return;
     if (game.mode === 'record') {
+      if (game.record && game.record.discovery) {
+        action.setAttribute('aria-label', '기록 복원 시작');
+        cancel.setAttribute('aria-label', '나중에 보기');
+        cancel.textContent = '나중에';
+        return;
+      }
       action.setAttribute('aria-label', '기록 다음 내용');
       cancel.setAttribute('aria-label', '기록 건너뛰기');
       cancel.textContent = '건너뜀';
@@ -6748,6 +6755,7 @@
     if (item === 'volume') return VOLUME_LABEL[game.volume];
     if (item === 'mute') return Sound.muted ? '음소거' : 'ON';
     if (item === 'review') return `${mistakeCount(game.currentSlot)}개`;
+    if (item === 'memoryroom') return `기록 ${recordCount(game.flags)}/${MEMENTO_RECORDS.length}`;
     if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
     if (item === 'cosmetics') return `${unlockedCount(game.currentSlot)}/${TITLES.length + THEMES.length}`;
     if (item === 'cards') return `${collectedCards(game.currentSlot)}/${LEARN_CARDS.length}`;
@@ -6917,8 +6925,7 @@
     if (item === 'cosmetics') return `${unlockedCount(slot)}/${TITLES.length + THEMES.length}`;
     if (item === 'halloffame') return `엔딩 ${pre.endN}/4 · S ${pre.a.sRankCount}/${pre.a.sRankTotal}`;
     if (item === 'journal') {
-      const s = pre.learn;
-      return s.attempted ? `${Math.round(s.overallRate * 100)}%` : '—';
+      return `기록 ${recordCount(game.flags)}/${MEMENTO_RECORDS.length}`;
     }
     return '';
   }
@@ -7049,6 +7056,16 @@
     return list.find((item) => (restored ? item.recordId : item.id) === id) || null;
   }
 
+  function recordCount(flags) {
+    return flags && Array.isArray(flags.damagedRecords) ? flags.damagedRecords.length : 0;
+  }
+
+  function recordHudText(flags, touch) {
+    const count = recordCount(flags);
+    const route = count > 0 ? (touch ? '메뉴에서 다시보기' : 'J 다시보기') : '장 끝에서 발견';
+    return `손상 기록 ${count}/${MEMENTO_RECORDS.length} · ${route}`;
+  }
+
   function unlockDamagedRecord(chapter) {
     if (!game.flags) return null;
     const id = recordForChapter(chapter);
@@ -7070,6 +7087,10 @@
     if (!r) return;
     const scene = recordById(r.ids[r.scene], r.restored);
     if (!scene) return;
+    if (r.discovery) {
+      Speech.speak(`새로운 손상 기록을 찾았다. 현재보다 ${scene.daysAgo}일 전. 지금 복원하기, 또는 나중에 보기.`);
+      return;
+    }
     const label = r.restored ? '복원된 시간순' : '손상된 기록';
     Speech.speak(`${label}. 현재보다 ${scene.daysAgo}일 전. ${scene.title}. ${recordPageText(scene, r.page)}`);
   }
@@ -7080,7 +7101,8 @@
     if (!options.replay && !game.flags.damagedRecords.includes(id)) return false;
     game.record = {
       ids: [id], scene: 0, page: 0, ret: options.ret || 'world',
-      replay: !!options.replay, restored: false, onEnd: options.onEnd || null,
+      replay: !!options.replay, restored: false, discovery: !options.replay,
+      onEnd: options.onEnd || null,
     };
     game.mode = 'record';
     Sound.blip(540);
@@ -7127,12 +7149,19 @@
     save();
     const ret = r.ret || 'world';
     const onEnd = r.onEnd;
+    const discovered = !r.replay && !r.restored;
     const postLine = !skipped && !r.replay && !r.restored ? MEMENTO_POST_RECORD_LINES[recordId] : null;
     game.record = null;
     Speech.stop();
     Sound.select();
     const resume = () => {
       game.mode = ret;
+      if (discovered && ret === 'world') {
+        game.notice = {
+          text: isTouchDevice ? '손상 기록은 메뉴 → 기억의 방에서 다시 볼 수 있다' : 'J 키로 손상 기록을 다시 볼 수 있다',
+          t: 300,
+        };
+      }
       if (ret === 'journal') announceJournal();
       if (onEnd) onEnd();
     };
@@ -7148,6 +7177,12 @@
     if (!r) { game.mode = 'world'; return; }
     if (justPressed('cancel') || justPressed('menu')) { finishRecord(true); return; }
     if (!justPressed('action')) return;
+    if (r.discovery) {
+      r.discovery = false;
+      Sound.blip(540);
+      speakRecordPage();
+      return;
+    }
     const scene = recordById(r.ids[r.scene], r.restored);
     if (scene && r.page + 1 < scene.pages.length) {
       r.page += 1;
@@ -7172,6 +7207,37 @@
     if (!scene) return;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
+    if (r.discovery) {
+      const found = Math.max(1, game.flags.damagedRecords.indexOf(r.ids[0]) + 1);
+      ctx.fillStyle = '#080b16';
+      roundRect(56, 84, LW - 112, 330, 8);
+      ctx.fill();
+      ctx.strokeStyle = '#8ea8d8';
+      ctx.lineWidth = 3;
+      roundRect(56, 84, LW - 112, 330, 8);
+      ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#8ea8d8';
+      ctx.font = fs(16, true);
+      ctx.fillText(`[새로운 손상 기록 · ${found}/${MEMENTO_RECORDS.length}]`, LW / 2, 126);
+      ctx.fillStyle = '#fff';
+      ctx.font = fs(25, true);
+      ctx.fillText('과거의 조각을 찾았다', LW / 2, 184);
+      ctx.fillStyle = '#bfc9e2';
+      ctx.font = fs(16);
+      ctx.fillText(`현재보다 ${scene.daysAgo}일 전`, LW / 2, 232);
+      ctx.fillStyle = '#fff';
+      ctx.font = fs(18, true);
+      ctx.fillText(`「${scene.title}」`, LW / 2, 272);
+      ctx.fillStyle = '#9da8c4';
+      ctx.font = fs(15);
+      ctx.fillText('지금 복원할까?', LW / 2, 326);
+      ctx.fillStyle = '#8ea8d8';
+      ctx.font = fs(14, true);
+      ctx.fillText(isTouchDevice ? 'Ⓐ 복원하기  ·  [나중에] 일지에 보관' : 'Z·Enter 복원하기  ·  X·Esc 나중에 보기', LW / 2, 382);
+      ctx.textAlign = 'left';
+      return;
+    }
     ctx.fillStyle = '#121424';
     roundRect(36, 76, LW - 72, 354, 8);
     ctx.fill();
@@ -7236,7 +7302,8 @@
     game.journal.slot = activeSlot();
     game.journal.scroll = 0;
     game.journal.toast = 0;
-    game.journal.tab = 'progress';
+    const flags = slotFlags(game.journal.slot);
+    game.journal.tab = recordCount(flags) > 0 || !!(flags && flags.timelineRestored) ? 'records' : 'progress';
     game.journal.recordCursor = 0;
     game.mode = 'journal';
     Sound.select();
@@ -10591,7 +10658,7 @@
     const bw = tw + 28, bh = game.largeText ? 32 : 28;
     // 퍼즐 HUD(drawPuzzleHud, by=8~최대 74px 높이)와 세로로 겹치지 않도록,
     // 방탈출 중에는 그 아래로 내려서 그린다.
-    const bx = Math.round(LW / 2 - bw / 2), by = game.puzzleRun ? 86 : 70;
+    const bx = Math.round(LW / 2 - bw / 2), by = game.puzzleRun ? 108 : 90;
     const fade = Math.min(1, game.notice.t / 40);
     ctx.globalAlpha = fade;
     utBox(bx, by, bw, bh, 6);
@@ -10848,12 +10915,15 @@
     }
     // X-8 수업 모드 — 목표 배너에 "이번 시간" 접두를 붙여 차시 목표임을 보여 준다.
     const obj = objectiveBannerPrefix() + objText;
-    const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width) + 20;
-    utBox(8, 8, w, 52, 4);
+    const recordText = recordHudText(game.flags, isTouchDevice);
+    const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width, ctx.measureText(recordText).width) + 20;
+    utBox(8, 8, w, 74, 4);
     ctx.fillStyle = '#ffd644';
-    ctx.fillText(title, 18, 28);
+    ctx.fillText(title, 18, 26);
     ctx.fillStyle = '#fff';
-    ctx.fillText(obj, 18, 50);
+    ctx.fillText(obj, 18, 47);
+    ctx.fillStyle = '#8ea8d8';
+    ctx.fillText(recordText, 18, 68);
 
     // 안아 준 마음 (자비)
     if (game.flags.mercy > 0) {
@@ -12161,8 +12231,10 @@
       const r = game.record;
       const scene = recordById(r.ids[r.scene], r.restored);
       if (scene) {
-        txt = (r.restored ? '복원된 시간순' : '손상된 기록') + '. 현재보다 ' +
-          scene.daysAgo + '일 전. ' + scene.title + '. ' + recordPageText(scene, r.page);
+        txt = r.discovery
+          ? `새로운 손상 기록. 현재보다 ${scene.daysAgo}일 전. 지금 복원하기, 또는 나중에 보기.`
+          : (r.restored ? '복원된 시간순' : '손상된 기록') + '. 현재보다 ' +
+            scene.daysAgo + '일 전. ' + scene.title + '. ' + recordPageText(scene, r.page);
       }
     } else if (game.mode === 'journal') {
       txt = journalAnnouncement();
@@ -12509,7 +12581,7 @@
     dailyDoneToday, surfaceDailyAndStreak,
     // X라운드 신규 — 재대결(기억의 방)·수업 배너·반응 선택 검증용
     newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
-    recordForChapter, unlockDamagedRecord, startDamagedRecord, startTimelineRestoration,
+    recordForChapter, recordHudText, unlockDamagedRecord, startDamagedRecord, startTimelineRestoration,
     journalRecordStage, journalRecordItems, journalAnnouncement, announceJournal, finishRecord, revealBandiAtShrine,
     endingScene, endingAnnouncement, announceEnding,
     objectiveBannerPrefix, bossWasSpared, bossClearedInSlot,
