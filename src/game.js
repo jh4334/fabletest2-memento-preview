@@ -12892,6 +12892,7 @@
       // 터치 기기는 키보드 T가 없어 「선생님 방」에 못 들어간다 — 타이틀(슬롯 화면)일 때만
       // 작은 DOM 버튼을 보여 준다(battle-hint와 같은 body class 토글 패턴).
       document.body.classList.toggle('title-slots', game.mode === 'title' && game.titleScreen === 'slots');
+      document.body.classList.toggle('pause-open', game.mode === 'pause');
     } catch (err) {
       crashed = true;
       try { console.error('[AI윤리어드벤처] 프레임 오류:', err); } catch (e) { /* 무시 */ }
@@ -12974,8 +12975,11 @@
   window.__onNewVersion = () => {
     try {
       game.newVersionReady = true;
-      game.notice = { text: '⟳ 새 버전이 준비됐어요 — 새로고침 한 번이면 적용돼요.', t: 480 };
+      game.notice = { text: '⟳ 새 버전이 준비됐어요 — 타이틀이나 메뉴에서 적용할 수 있어요.', t: 480 };
     } catch (e) { /* 무시 */ }
+  };
+  window.__prepareVersionReload = () => {
+    if (game.mode === 'pause' && game.flags) save();
   };
   if (window.__newVersionReady) window.__onNewVersion();
   // 읽어주기 한국어 음성 준비 (목록이 비동기로 채워지면 다시 고른다)

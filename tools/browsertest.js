@@ -863,6 +863,57 @@ async function canvasColorProfile(page, rect) {
   }
 
   {
+    console.log('[service-worker-update-confirmation] 플레이 중 유지 후 사용자 적용');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await ctx.addInitScript(() => {
+      const key = '__confirmedUpdateNavigations';
+      localStorage.setItem(key, String((Number(localStorage.getItem(key)) || 0) + 1));
+    });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && navigator.serviceWorker.controller), { timeout: 8000 });
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && navigator.serviceWorker.controller), { timeout: 8000 });
+    const before = await page.evaluate(() => Number(localStorage.getItem('__confirmedUpdateNavigations')));
+    await page.evaluate(() => {
+      window.__game.mode = 'world';
+      window.__game.map = 'village';
+      navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+    });
+    await page.waitForTimeout(500);
+    const pending = await page.evaluate(() => {
+      const button = document.getElementById('update-ready');
+      return {
+        navigations: Number(localStorage.getItem('__confirmedUpdateNavigations')),
+        mode: window.__game && window.__game.mode,
+        ready: window.__newVersionReady === true,
+        button: !!button,
+        visible: !!button && getComputedStyle(button).display !== 'none',
+      };
+    });
+    check('controllerchange가 플레이 중 페이지를 자동 새로고침하지 않음',
+      pending.navigations === before && pending.mode === 'world');
+    check('플레이 중 업데이트는 준비 상태만 알리고 적용 버튼을 숨김',
+      pending.ready && pending.button && pending.visible === false);
+    let visibleInPause = false;
+    let applied = false;
+    if (pending.button) {
+      await page.evaluate(() => { window.__game.mode = 'pause'; });
+      await page.waitForTimeout(200);
+      visibleInPause = await page.locator('#update-ready').isVisible();
+      await page.locator('#update-ready').click();
+      try {
+        await page.waitForFunction((count) =>
+          Number(localStorage.getItem('__confirmedUpdateNavigations')) > count, before, { timeout: 8000 });
+        applied = true;
+      } catch (e) {}
+    }
+    check('업데이트 적용 버튼은 일시정지 메뉴에서 표시', visibleInPause);
+    check('사용자가 적용 버튼을 누른 뒤에만 새 문서로 이동', applied);
+    await ctx.close();
+  }
+
+  {
     console.log('[service-worker-upgrade] 기준 버전 캐시에서 최신 게임으로 자동 전환');
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     await ctx.addInitScript(() => {
