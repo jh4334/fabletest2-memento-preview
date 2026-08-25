@@ -200,7 +200,7 @@ RED에서는 새 계약이 16개 실패·5개 통과했고 기존 스모크 1205
 - 원본에서 `baseline/pre-memento-plot`, `archive/pre-memento-plot`, `feat/memento-dual-timeline` 일치 ref는 모두 0개다.
 - 원본 열린 PR은 0개다.
 - `upstream`은 push URL `DISABLED`이고 원본 대상 push·PR·설정 변경 명령을 실행하지 않았다.
-- 최종 검증 시 미리보기 기준 `archive/pre-memento-plot`과 peel한 `baseline/pre-memento-plot`은 여전히 `79bdc2a`이고, 구현만 미리보기 `main`의 merge commit `06daf94`에 존재한다.
+- 최종 검증 시 미리보기 기준 `archive/pre-memento-plot`과 peel한 `baseline/pre-memento-plot`은 여전히 `79bdc2a`이다. 최초 이중 시간선 통합 `06daf94`와 후속 게임플레이 가시성 보강 `da74f95`는 모두 미리보기 `main`에만 존재한다.
 
 ## 21. 남은 스토리·UX·기술 위험
 
