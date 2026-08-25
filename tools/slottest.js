@@ -389,6 +389,14 @@ console.log('[Y-17a] 쿼터 초과 모의 스토리지 — noteStorageFail 경�
   // 안내 문구가 게임 notice로 뜬다(교사·학생에게 백업 유도)
   check('Y-17a 저장 불가 안내 notice 표시', !!(g.notice && /저장되지 않/.test(g.notice.text)));
   sandbox.localStorage.setItem = realSet; // 스토리지 원복
+
+  T.probeStorage();
+  g.notice = null;
+  sandbox.localStorage.setItem = () => { throw new Error('learning data unavailable'); };
+  T.recordTopicResult(0, 'privacy', true);
+  sandbox.localStorage.setItem = realSet;
+  check('P-5 학습 진척도 저장 실패도 storageOk=false로 승격', T.getStorageOk() === false);
+  check('P-5 학습 진척도 저장 실패도 사용자 안내 표시', !!(g.notice && /저장되지 않/.test(g.notice.text)));
 }
 
 console.log(`\n✔ 슬롯 테스트 통과 (${passed}개 검사)`);

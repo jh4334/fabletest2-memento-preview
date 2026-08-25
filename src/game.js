@@ -493,7 +493,7 @@
       const seen = getEndingsSeen();
       seen[id] = true;
       localStorage.setItem(ENDINGS_KEY, JSON.stringify(seen));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
 
   // 설정(자막 속도) — 세이브와 별개로, 게임을 다시 시작해도 남는다
@@ -667,14 +667,14 @@
       const m = getMistakes(slot);
       m[q._qid] = { topic: q._topic, q: q.q, a: q.a, c: q.c, why: q.why };
       localStorage.setItem(mistakesKey(slot), JSON.stringify(m));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
   function clearMistake(slot, qid) {
     try {
       const m = getMistakes(slot);
       delete m[qid];
       localStorage.setItem(mistakesKey(slot), JSON.stringify(m));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
   function mistakeCount(slot) { return Object.keys(getMistakes(slot)).length; }
 
@@ -696,7 +696,7 @@
       if (correct) e.correct += 1;
       s[topic] = e;
       localStorage.setItem(statsKey(slot), JSON.stringify(s));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
   // 학습 데이터를 한 화면 분량으로 정리한다 (일지·리포트 공용)
   function buildLearningSummary(slot) {
@@ -736,7 +736,7 @@
       m.challengeBest = Math.max(m.challengeBest || 0, score);
       m.challengeBestTotal = total;
       localStorage.setItem(metaKey(slot), JSON.stringify(m));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
 
   // 슬롯 삭제 시 학습 데이터도 함께 지운다 (방탈출 퍼즐 진행 로그 포함)
@@ -748,7 +748,7 @@
       localStorage.removeItem(puzzleKey(slot));
       // 지운 슬롯이 메모이즈 캐시에 남아 있으면 무효화(다음 getPuzzleLog가 빈 값을 반환하게)
       if (puzzleLogCache && puzzleLogCache.slot === slot) puzzleLogCache = null;
-    } catch (e) { /* 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
 
   // 기존 전역 학습 데이터(이전 버전)를 슬롯 0으로 1회 이전한다
@@ -764,7 +764,7 @@
         localStorage.setItem(mistakesKey(0), oldMist);
         localStorage.removeItem(MISTAKES_KEY);
       }
-    } catch (e) { /* 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
 
 
@@ -789,7 +789,7 @@
     m.streak = diff === 1 ? (m.streak || 0) + 1 : 1; // 이어서 오면 +1, 아니면 1부터
     m.lastPlayDay = day;
     m.bestStreak = Math.max(m.bestStreak || 0, m.streak);
-    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { /* 무시 */ }
+    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { noteStorageFail(); }
     return m;
   }
   function dailyDoneToday(slot, day) {
@@ -802,7 +802,7 @@
     m.dailyRuns = (m.dailyRuns || 0) + 1;
     m.dailyBest = Math.max(m.dailyBest || 0, score);
     m.dailyTotal = total;
-    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { /* 무시 */ }
+    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { noteStorageFail(); }
     return m;
   }
 
@@ -843,11 +843,11 @@
       why: clampQuizStr(q.why, WHY_MAX),
     })).filter((q) => q.q && q.a.every((x) => x) && q.why); // 정리 후 빈 항목 제거
     if (clean.length === 0) return { ok: false, error: 'empty' };
-    try { localStorage.setItem(CUSTOM_QUIZ_KEY, JSON.stringify(clean)); } catch (e) { return { ok: false, error: 'save' }; }
+    try { localStorage.setItem(CUSTOM_QUIZ_KEY, JSON.stringify(clean)); } catch (e) { noteStorageFail(); return { ok: false, error: 'save' }; }
     return { ok: true, count: clean.length };
   }
   function clearCustomQuizzes() {
-    try { localStorage.removeItem(CUSTOM_QUIZ_KEY); } catch (e) { /* 무시 */ }
+    try { localStorage.removeItem(CUSTOM_QUIZ_KEY); } catch (e) { noteStorageFail(); }
   }
   // 커스텀 문제 양식(템플릿) 텍스트
   function customQuizTemplate() {
@@ -950,7 +950,7 @@
     catch (e) { return {}; }
   }
   function setCosmetic(slot, data) {
-    try { localStorage.setItem(cosmeticKey(slot), JSON.stringify(data)); } catch (e) { /* 무시 */ }
+    try { localStorage.setItem(cosmeticKey(slot), JSON.stringify(data)); } catch (e) { noteStorageFail(); }
   }
   const TITLES = [
     { id: 'rookie', name: '새내기 수호자', desc: '모험을 시작한 모두에게', check: () => true },
@@ -1225,7 +1225,7 @@
       const seen = getDexSeen();
       seen[monId] = { seen: true, mercy: mercyKind || (seen[monId] && seen[monId].mercy) || null };
       localStorage.setItem(DEX_KEY, JSON.stringify(seen));
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
   function dexSeenCount() {
     const seen = getDexSeen();
@@ -5042,7 +5042,7 @@
         m.bossRank[id] = rank;
         localStorage.setItem(metaKey(slot), JSON.stringify(m));
       }
-    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+    } catch (e) { noteStorageFail(); }
   }
   // 승리 대사 lines 뒤에 판정 한 줄을 얹고, 최고 등급을 기록한다.
   function appendRankLine(b, lines, id) {
@@ -9748,7 +9748,7 @@
       m.prepost[ch] = m.prepost[ch] || {};
       m.prepost[ch][kind] = { score, total, at: Date.now() };
       localStorage.setItem(metaKey(slot), JSON.stringify(m));
-    } catch (e) { /* 저장 불가 환경이면 무시 — 표시는 그대로 진행 */ }
+    } catch (e) { noteStorageFail(); }
   }
   function openPrepost(kind, ch, ret) {
     const quizzes = prepostQuizzes(ch);
@@ -12247,7 +12247,7 @@
     const st = (meta && meta.streak) || 0;
     if ([3, 7, 14].includes(st) && meta.lastMilestone !== st) {
       meta.lastMilestone = st;
-      try { localStorage.setItem(metaKey(slot), JSON.stringify(meta)); } catch (e) { /* 무시 */ }
+      try { localStorage.setItem(metaKey(slot), JSON.stringify(meta)); } catch (e) { noteStorageFail(); }
       fanfare(`🔥 연속 출석 ${st}일! 대단해요.`);
       return;
     }

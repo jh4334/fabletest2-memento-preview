@@ -639,6 +639,34 @@ async function canvasColorProfile(page, rect) {
   }
 
   {
+    console.log('[learning-storage-warning] 학습 기록 저장 실패 사용자 안내');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => {
+      const original = Storage.prototype.setItem;
+      window.__restoreStorageSetItem = () => { Storage.prototype.setItem = original; };
+      Storage.prototype.setItem = function setItem(key, value) {
+        if (key === 'ai-ethics-adventure-stats-0') throw new Error('learning data unavailable');
+        return original.call(this, key, value);
+      };
+      window.__test.recordTopicResult(0, 'privacy', true);
+      window.__restoreStorageSetItem();
+    });
+    await page.waitForTimeout(200);
+    const result = await page.evaluate(() => ({
+      storageOk: window.__test.getStorageOk(),
+      notice: window.__game.notice && window.__game.notice.text,
+      live: window.__test.srLiveText(),
+    }));
+    check('학습 기록 실패가 저장 불가 상태로 승격', result.storageOk === false);
+    check('학습 기록 실패 안내가 화면 상태와 aria-live에 표시',
+      /저장되지 않/.test(result.notice || '') && /저장되지 않/.test(result.live || ''));
+    await ctx.close();
+  }
+
+  {
     console.log('[service-worker-optional-asset] 선택 아이콘 404 중에도 core shell 설치');
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();
