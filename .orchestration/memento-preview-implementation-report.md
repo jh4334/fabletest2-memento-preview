@@ -1,6 +1,6 @@
 # 마음의 문 메멘토형 이중 시간선 미리보기 구현 보고서
 
-작성 기준: 기능 브랜치 원격 게시 전 최종 검토 단계. PR·병합·최종 Pages 값은 배포 직후 이 문서에 실제 값으로 갱신한다.
+작성 기준: 기능 PR 병합과 최종 GitHub Pages 배포·실브라우저 검증 완료.
 
 ## 1. 원본 저장소 최신 main SHA
 
@@ -167,13 +167,19 @@ RED에서는 새 계약이 16개 실패·5개 통과했고 기존 스모크 1205
 
 - 기준 CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32786448015`
 - 기준 Pages: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32786447971`
-- 기능 PR CI: 원격 push 뒤 갱신 예정
-- 최종 Pages: main 병합 뒤 갱신 예정
+- 기능 Draft PR: `https://github.com/jh4334/fabletest2-memento-preview/pull/1`
+- 기능 브랜치 push CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32793261645` 성공
+- 기능 PR CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32793282114` 성공
+- 기능 PR Pages 사전 검증: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32793282117` 성공
+- 최종 main CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32793415835` 성공
+- 최종 Pages 검증·배포: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32793415748` 성공
 
 ## 19. 최종 미리보기 URL
 
-- 예정 형식: `https://jh4334.github.io/fabletest2-memento-preview/?v=<merge-sha>`
-- 실제 merge SHA는 CI 통과·병합·Pages 성공 뒤 갱신한다.
+- 구현 merge SHA: `06daf943f8573e5da8d9e5cf769fef7998ef69c4`
+- 최종 URL: `https://jh4334.github.io/fabletest2-memento-preview/?v=06daf943f8573e5da8d9e5cf769fef7998ef69c4`
+- 최종 HTTP 200과 `마음의 문` title을 확인했다. 실제 앱 브라우저에서 새 게임 이름 입력 화면과 프롤로그에 진입했고, 1280×720·390×844·844×390에서 가로 넘침과 console warning/error가 없었다.
+- 배포된 `src/game.js`의 `timelineMerged`, `src/data.js`의 `first_approval`, `sw.js`의 `ai-ethics-adventure-efd04b0e`를 cache-busting 요청으로 직접 확인했다. 기록·일지·파이널·네 엔딩·오프라인은 동일 merge SHA의 Pages 게이트와 Chromium 95개 검증으로 통과했다.
 
 ## 20. 원본 저장소가 변경되지 않았다는 검증
 
@@ -182,17 +188,18 @@ RED에서는 새 계약이 16개 실패·5개 통과했고 기존 스모크 1205
 - 원본에서 `baseline/pre-memento-plot`, `archive/pre-memento-plot`, `feat/memento-dual-timeline` 일치 ref는 모두 0개다.
 - 원본 열린 PR은 0개다.
 - `upstream`은 push URL `DISABLED`이고 원본 대상 push·PR·설정 변경 명령을 실행하지 않았다.
+- 최종 검증 시 미리보기 기준 `archive/pre-memento-plot`과 peel한 `baseline/pre-memento-plot`은 여전히 `79bdc2a`이고, 구현만 미리보기 `main`의 merge commit `06daf94`에 존재한다.
 
 ## 21. 남은 스토리·UX·기술 위험
 
 - 최신 원본 main은 다른 게임이므로, 이 미리보기는 최신 SHA 기준점 위에 사용자가 선택한 역사적 `마음의 문` 트리를 복원한 preview-only 계보를 가진다.
 - macOS 기본 npm 11에서 정확한 최신-main lockfile의 선택 의존성 `fsevents` 누락이 있었으나 대상 Ubuntu CI는 동일 SHA에서 성공했다. 복원된 `마음의 문` 브랜치의 `npm ci`는 로컬과 CI 모두 성공한다.
 - WebKit은 로컬에 설치되지 않아 선택 브라우저 패스만 건너뛰었다. Chromium과 실제 앱 브라우저에서 데스크톱·세로·가로를 검증했다.
-- 서비스워커는 같은 origin의 무관한 캐시를 지우지 않도록 앱 소유 prefix만 정리한다. 반환 방문자의 기준판 캐시 전환은 자동화 테스트와 최종 Pages에서 다시 확인한다.
+- 서비스워커는 같은 origin의 무관한 캐시를 지우지 않도록 앱 소유 prefix만 정리한다. 기준판 캐시 전환과 무관한 캐시 보존은 자동화 테스트를 통과했고, 최종 Pages가 캐시 `efd04b0e`를 제공함을 확인했다.
 
 ## 22. git status 및 커밋 목록
 
-원격 게시 전 5개 독립 검토를 시작한 기능 HEAD는 `8858730083a5065d3e08c7cb70a6328487feb51f`였다. 이후 고요의 뜰 정상 진입 경로에서 복선이 보이는지 재현하고 수정한 최종 기능 커밋은 `979a0f6`이다. 기능 브랜치에는 다음 원자적 이력이 있다.
+원격 게시 전 5개 독립 검토를 시작한 기능 HEAD는 `8858730083a5065d3e08c7cb70a6328487feb51f`였다. 이후 고요의 뜰 정상 진입 경로에서 복선이 보이는지 재현하고 수정한 최종 기능 커밋은 `979a0f6`, 검토 대상 최종 기능 브랜치 HEAD는 `6043d8b1208b6f44599b8d86f235d2085b06a9ce`다. 기능 브랜치에는 다음 원자적 이력이 있다.
 
 ```text
 385d463 chore: restore heart door preview baseline
@@ -209,6 +216,7 @@ b832bc3 test: cover memento browser journeys
 3de6e18 fix: scope preview cache cleanup
 8858730 docs: record memento preview verification
 979a0f6 fix: surface final memento clues
+6043d8b docs: update memento release evidence
 ```
 
-기능 브랜치는 아직 `origin`에 push하지 않았고, 작업 트리는 보고서·마지막 안전 수정을 커밋한 뒤 깨끗한 상태로만 게시한다.
+기능 브랜치는 깨끗한 상태로만 `origin`에 push했고, PR #1의 모든 검사를 통과한 뒤 일반 merge commit `06daf943f8573e5da8d9e5cf769fef7998ef69c4`로 미리보기 `main`에 병합했다. 최종 보고서 갱신 전 `docs/memento-preview-final-report` 작업 트리는 `origin/main`과 같은 깨끗한 상태였으며, 이 보고서 파일만 후속 문서 변경으로 게시한다.
