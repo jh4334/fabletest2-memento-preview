@@ -156,10 +156,10 @@ RED에서는 새 계약이 16개 실패·5개 통과했고 기존 스모크 1205
 | `npm run validate` | 성공 |
 | `npm test` | 성공: smoke 1208, slot 68, Memento 46 |
 | `npm run playtest` | 성공: 프롤로그부터 코어·영이·`home`까지 완주 |
-| `npm run test:browser` | 성공: Chromium 91 / 실패 0; WebKit은 미설치 선택 항목으로 건너뜀 |
+| `npm run test:browser` | 성공: Chromium 95 / 실패 0; WebKit은 미설치 선택 항목으로 건너뜀 |
 | `npm run pack` | 성공 |
 | `unzip -tq ai-ethics-adventure-offline.zip` | 성공 |
-| `npm run bump` | 성공: `ai-ethics-adventure-aa0512ec` |
+| `npm run bump` | 성공: `ai-ethics-adventure-efd04b0e` |
 
 브라우저 14개 캡처를 모두 직접 열었고, 디자인·CJK 두 독립 시각 검수가 모두 PASS했다. 디버깅 감사에서는 입력 프레임 경합과 서비스워커 activation 중 `client.navigate()` await 교착을 실제 런타임으로 확인해 수정했으며, 포커스 손실·세이브 손상 가설은 반증했다.
 
@@ -192,7 +192,7 @@ RED에서는 새 계약이 16개 실패·5개 통과했고 기존 스모크 1205
 
 ## 22. git status 및 커밋 목록
 
-원격 게시 직전 기능 HEAD는 `90efc1bb716d4d987b38c14e496c5b52c5494275`이며, 보고서·마지막 서비스워커 안전 수정은 다음 문서 커밋에 포함한다. 기능 브랜치에는 다음 원자적 이력이 있다.
+원격 게시 전 5개 독립 검토를 시작한 기능 HEAD는 `8858730083a5065d3e08c7cb70a6328487feb51f`였다. 이후 고요의 뜰 정상 진입 경로에서 복선이 보이는지 재현하고 수정한 최종 기능 커밋은 `979a0f6`이다. 기능 브랜치에는 다음 원자적 이력이 있다.
 
 ```text
 385d463 chore: restore heart door preview baseline
@@ -206,6 +206,9 @@ b832bc3 test: cover memento browser journeys
 4d86882 ci: pin release workflow actions
 71749e8 fix: show restored timeline for legacy saves
 90efc1b fix: close memento preview release gates
+3de6e18 fix: scope preview cache cleanup
+8858730 docs: record memento preview verification
+979a0f6 fix: surface final memento clues
 ```
 
 기능 브랜치는 아직 `origin`에 push하지 않았고, 작업 트리는 보고서·마지막 안전 수정을 커밋한 뒤 깨끗한 상태로만 게시한다.
