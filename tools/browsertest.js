@@ -86,6 +86,25 @@ const VIEWPORTS = [
 let pass = 0, fail = 0;
 const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { console.log('  ✘ ' + n); fail++; } };
 
+async function canvasColorProfile(page, rect) {
+  return page.evaluate((area) => {
+    const canvas = document.getElementById('game');
+    const scale = canvas.width / 720;
+    const data = canvas.getContext('2d').getImageData(
+      Math.round(area.x * scale), Math.round(area.y * scale),
+      Math.round(area.w * scale), Math.round(area.h * scale)).data;
+    let visible = 0, chromatic = 0;
+    for (let i = 0; i < data.length; i += 16) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const high = Math.max(r, g, b), low = Math.min(r, g, b);
+      if (high < 24) continue;
+      visible += 1;
+      if (high - low >= 18) chromatic += 1;
+    }
+    return { visible, chromatic, ratio: visible ? chromatic / visible : 0 };
+  }, rect);
+}
+
 (async () => {
   const server = await startServer();
   const port = server.address().port;
@@ -167,6 +186,8 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     check('월드 진입 성공', entered);
     check('렌더 후에도 월드 유지(프레임 크래시 없음)', (await page.evaluate(() => window.__game.mode)) === 'world');
     check('월드 렌더 콘솔/페이지 에러 없음', errors.length === 0);
+    const worldColor = await canvasColorProfile(page, { x: 0, y: 0, w: 720, h: 528 });
+    check(`현재 월드는 컬러 순행 팔레트(${Math.round(worldColor.ratio * 100)}%)`, worldColor.ratio > 0.08);
     errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
     await page.screenshot({ path: path.join(shotsDir, 'browser-gameplay.png') });
     await ctx.close();
@@ -244,11 +265,13 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     if (vp.mobile) {
       const recordControls = await page.evaluate(() => ({
         action: document.getElementById('t-a').getAttribute('aria-label'),
+        actionSub: document.querySelector('#t-a .sub').textContent,
         cancel: document.getElementById('t-pause').getAttribute('aria-label'),
         cancelText: document.getElementById('t-pause').textContent,
       }));
       check(`${vp.name}: 발견 화면 터치 조작명이 복원·나중에로 바뀜`,
-        recordControls.action === '기록 복원 시작' && recordControls.cancel === '나중에 보기' && recordControls.cancelText === '나중에');
+        recordControls.action === '기록 복원 시작' && recordControls.actionSub === '복원하기' &&
+        recordControls.cancel === '나중에 보기' && recordControls.cancelText === '나중에');
     }
     await page.screenshot({ path: path.join(mementoShotsDir, `record-discovery-${vp.name}.png`) });
     if (vp.mobile) await page.tap('#t-a');
@@ -256,6 +279,12 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     await page.waitForFunction(() => window.__game.record && window.__game.record.discovery === false, { timeout: 1000 });
     check(`${vp.name}: 복원하기 뒤 기록 첫 페이지 진입`,
       (await page.evaluate(() => window.__game.record && window.__game.record.page)) === 0);
+    if (vp.mobile) {
+      check(`${vp.name}: 기록 본문 A 버튼에 다음이 보임`,
+        (await page.locator('#t-a .sub').textContent()) === '다음');
+    }
+    const reverseColor = await canvasColorProfile(page, { x: 36, y: 66, w: 648, h: 160 });
+    check(`${vp.name}: 역행 비네트는 회색 명도만 사용`, reverseColor.visible > 100 && reverseColor.ratio < 0.01);
     await page.screenshot({ path: path.join(mementoShotsDir, `record-${vp.name}.png`) });
     if (vp.name === 'desktop') {
       await page.evaluate(() => { window.__game.largeText = true; });
@@ -301,11 +330,13 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     if (vp.mobile) {
       const journalControls = await page.evaluate(() => ({
         action: document.getElementById('t-a').getAttribute('aria-label'),
+        actionSub: document.querySelector('#t-a .sub').textContent,
         cancel: document.getElementById('t-pause').getAttribute('aria-label'),
         cancelText: document.getElementById('t-pause').textContent,
       }));
       check(`${vp.name}: 일지 터치 조작명이 다시보기·닫기로 바뀜`,
-        journalControls.action === '선택한 기록 다시보기' && journalControls.cancel === '모험 일지 닫기' && journalControls.cancelText === '닫기');
+        journalControls.action === '선택한 기록 다시보기' && journalControls.actionSub === '다시보기' &&
+        journalControls.cancel === '모험 일지 닫기' && journalControls.cancelText === '닫기');
     }
     await page.screenshot({ path: path.join(mementoShotsDir, `journal-${vp.name}.png`) });
 
@@ -328,6 +359,8 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     await page.waitForTimeout(250);
     check(`${vp.name}: 실제 시간순 복원 화면 진입`, restoredMode.mode === 'record' && restoredMode.restored === true &&
       restoredMode.ids.join(',') === 'first_approval,yeongi_warning,city_failure,reset_before,reset_after');
+    const restoredColor = await canvasColorProfile(page, { x: 36, y: 66, w: 648, h: 160 });
+    check(`${vp.name}: 순행 복원 비네트에 색이 돌아옴`, restoredColor.ratio > 0.08);
     await page.screenshot({ path: path.join(mementoShotsDir, `restoration-${vp.name}.png`) });
     check(`${vp.name}: 기록 화면 콘솔/페이지 에러 없음`, errors.length === 0);
     errors.slice(0, 6).forEach((e) => console.log('     · ' + e));

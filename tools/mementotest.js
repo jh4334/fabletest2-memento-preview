@@ -245,6 +245,37 @@ if (has('endingAnnouncement')) {
   check('엔딩 낭독문 API 존재', false);
 }
 
+console.log('[M-10] 순행 컬러·역행 회색 시각 문법이 시간선과 함께 움직인다');
+check('시간선 시각 모드 API 존재', has('timelineVisualMode'));
+check('기록 비네트 명세 API 존재', has('recordDioramaSpec'));
+check('월드 인물 팔레트 API 존재', has('worldFigureProfile'));
+if (has('timelineVisualMode')) {
+  const reverseMode = T.timelineVisualMode({ restored: false });
+  const restoredMode = T.timelineVisualMode({ restored: true });
+  const presentMode = T.timelineVisualMode(null);
+  check('손상 기록은 회색빛 역행 모드', reverseMode.id === 'reverse' && reverseMode.grayscale === true && reverseMode.direction === 'backward');
+  check('손상 기록 비네트는 네 단계 회색 명도만 사용',
+    new Set(['surface', 'floor', 'floorAlt', 'wall', 'mortar', 'light', 'accent', 'warm']
+      .map((key) => reverseMode[key])).size === 4);
+  check('실제 시간순 복원은 컬러 순행 모드', restoredMode.id === 'restored' && restoredMode.grayscale === false && restoredMode.direction === 'forward');
+  check('현재 월드는 컬러 순행 모드', presentMode.id === 'present' && presentMode.grayscale === false && presentMode.direction === 'forward');
+}
+if (has('recordDioramaSpec')) {
+  const ids = REVEAL_IDS.slice();
+  const reverseSpecs = ids.map((id) => T.recordDioramaSpec(id, false));
+  const restoredSpecs = ids.map((id) => T.recordDioramaSpec(id, true));
+  check('다섯 기록 모두 서로 구별되는 핵심 소품을 가짐',
+    reverseSpecs.every(Boolean) && new Set(reverseSpecs.map((spec) => spec.focus)).size === ids.length);
+  check('역행과 복원은 사건별 방 배치를 바꾸지 않고 팔레트만 바꿈',
+    reverseSpecs.every((spec, i) => spec.layout === restoredSpecs[i].layout && spec.focus === restoredSpecs[i].focus &&
+      spec.palette === 'reverse' && restoredSpecs[i].palette === 'restored'));
+}
+if (has('worldFigureProfile')) {
+  const figure = T.worldFigureProfile();
+  check('플레이어는 청록 상의·어두운 외곽·바닥 그림자로 배경과 분리',
+    /^#[0-9a-f]{6}$/i.test(figure.player.r) && figure.outline === '#0a0d12' && figure.shadow === true && figure.outlinePx >= 2);
+}
+
 if (failed > 0) {
   console.error(`\n✘ 메멘토 테스트 실패 (${failed}개 실패, ${passed}개 통과)`);
   process.exit(1);

@@ -39,6 +39,79 @@
 
   const SAVE_KEY = 'ai-ethics-adventure-v1';
 
+  const REVERSE_TONES = {
+    dark: '#0b0e1a', surface: '#17191d', floor: '#444444', light: '#c7c9cc',
+  };
+
+  const RECORD_UI = {
+    color: { page: '#000000', primary: '#ffffff', body: '#dddddd', muted: '#888888' },
+    layout: {
+      inset: 36, headerY: 44, roomY: 66, roomHeight: 160,
+      panelY: 254, panelHeight: 182, panelRadius: 8, panelPad: 22, controlsY: 486,
+      discoveryLabelY: 284, titleY: 320, promptY: 354, actionY: 416,
+      bodyTitleY: 286, bodyTextY: 322, progressY: 420,
+    },
+    type: { header: 18, meta: 12, label: 14, title: 18, body: 16, helper: 13 },
+  };
+
+  const TIMELINE_VISUALS = {
+    present: {
+      id: 'present', grayscale: false, direction: 'forward', label: '현재 순행',
+      surface: '#0b0e1a', floor: '#66617d', floorAlt: '#287b78', wall: '#1a2028',
+      mortar: '#586b96', light: '#ffffff', accent: '#ffd644', warm: '#ffd644',
+      cool: '#72d2c7', wood: '#8a603b',
+    },
+    reverse: {
+      id: 'reverse', grayscale: true, direction: 'backward', label: '과거 역행',
+      surface: REVERSE_TONES.surface, floor: REVERSE_TONES.floor, floorAlt: REVERSE_TONES.surface,
+      wall: REVERSE_TONES.dark, mortar: REVERSE_TONES.light, light: REVERSE_TONES.light,
+      accent: REVERSE_TONES.light, warm: REVERSE_TONES.light,
+    },
+    restored: {
+      id: 'restored', grayscale: false, direction: 'forward', label: '복원 순행',
+      surface: '#0b0e1a', floor: '#66617d', floorAlt: '#287b78', wall: '#1a2028',
+      mortar: '#586b96', light: '#ffffff', accent: '#72d2c7', warm: '#ffd644',
+      cool: '#72d2c7', wood: '#8a603b',
+    },
+  };
+
+  const WORLD_FIGURE = {
+    player: { h: '#493323', f: '#f2c59d', e: '#10151a', r: '#2b8790', i: '#9bd6cf', u: '#253645', k: '#0a0d12', n: '#b35c66' },
+    outline: '#0a0d12', outlinePx: 2, shadow: true,
+  };
+
+  const REVERSE_SPRITE_PAL = {
+    h: REVERSE_TONES.floor, f: REVERSE_TONES.light, e: REVERSE_TONES.dark, r: REVERSE_TONES.surface,
+    b: REVERSE_TONES.floor, w: REVERSE_TONES.light, k: REVERSE_TONES.dark, p: REVERSE_TONES.surface,
+    g: REVERSE_TONES.floor, l: REVERSE_TONES.floor, o: REVERSE_TONES.surface, n: REVERSE_TONES.floor,
+    d: REVERSE_TONES.floor, y: REVERSE_TONES.light, c: REVERSE_TONES.surface, x: REVERSE_TONES.floor,
+    q: REVERSE_TONES.floor, v: REVERSE_TONES.light, i: REVERSE_TONES.floor, u: REVERSE_TONES.floor,
+    a: REVERSE_TONES.surface, j: REVERSE_TONES.floor, m: REVERSE_TONES.floor, s: REVERSE_TONES.surface,
+    z: REVERSE_TONES.floor, t: REVERSE_TONES.surface, '|': REVERSE_TONES.floor,
+  };
+
+  const RECORD_DIORAMAS = {
+    reset_after: { layout: 'archive', focus: 'single-note', actor: 'bandi', actorX: 400 },
+    reset_before: { layout: 'archive', focus: 'locked-cabinet', actor: 'player', actorX: 410 },
+    city_failure: { layout: 'core-link', focus: 'emergency-door', actor: 'finalboss', actorX: 400 },
+    yeongi_warning: { layout: 'control', focus: 'warning-console', actor: 'yeongi', actorX: 392 },
+    first_approval: { layout: 'control', focus: 'five-switches', actor: 'player', actorX: 400 },
+  };
+
+  function timelineVisualMode(record) {
+    if (!record) return TIMELINE_VISUALS.present;
+    return record.restored ? TIMELINE_VISUALS.restored : TIMELINE_VISUALS.reverse;
+  }
+
+  function recordDioramaSpec(id, restored) {
+    const spec = RECORD_DIORAMAS[id];
+    return spec ? Object.assign({}, spec, { palette: restored ? 'restored' : 'reverse' }) : null;
+  }
+
+  function worldFigureProfile() {
+    return WORLD_FIGURE;
+  }
+
   // ---------- 상태 ----------
   const game = {
     mode: 'title', // title | world | dialog | battle | ending | dex | review | pause
@@ -546,6 +619,11 @@
   function TF() { return game.largeText ? 1.25 : 1; }
   function fs(px, bold) { return (bold ? 'bold ' : '') + Math.round(px * TF()) + 'px monospace'; }
   function lh(px) { return Math.round(px * TF()); }
+  function recordScale() {
+    return isTouchDevice && typeof window !== 'undefined' && window.innerHeight > window.innerWidth ? 1.4 : 1;
+  }
+  function recordFs(px, bold) { return fs(Math.round(px * recordScale()), bold); }
+  function recordLh(px) { return lh(Math.round(px * recordScale())); }
   // 의미 색상 — 색약 모드에서는 빨강/초록 대신 구분이 쉬운 파랑/주황(Okabe-Ito 계열)
   function monName(id) { const m = MONSTERS[id]; return (m && m.name) || id; }
   function okColor() { return game.colorBlind ? '#3b8ed0' : '#5cb85c'; }   // 정답·높음
@@ -1266,25 +1344,31 @@
     const action = document.getElementById('t-a');
     const cancel = document.getElementById('t-pause');
     if (!action || !cancel) return;
+    const actionSub = action.querySelector('.sub');
+    const setActionSub = (text) => { if (actionSub) actionSub.textContent = text; };
     if (game.mode === 'record') {
       if (game.record && game.record.discovery) {
         action.setAttribute('aria-label', '기록 복원 시작');
+        setActionSub('복원하기');
         cancel.setAttribute('aria-label', '나중에 보기');
         cancel.textContent = '나중에';
         return;
       }
       action.setAttribute('aria-label', '기록 다음 내용');
+      setActionSub('다음');
       cancel.setAttribute('aria-label', '기록 건너뛰기');
       cancel.textContent = '건너뜀';
       return;
     }
     if (game.mode === 'journal') {
       action.setAttribute('aria-label', game.journal.tab === 'records' ? '선택한 기록 다시보기' : '선택');
+      setActionSub(game.journal.tab === 'records' ? '다시보기' : '선택');
       cancel.setAttribute('aria-label', '모험 일지 닫기');
       cancel.textContent = '닫기';
       return;
     }
     action.setAttribute('aria-label', '결정·대화');
+    setActionSub('결정');
     cancel.setAttribute('aria-label', '메뉴 열기');
     cancel.textContent = '메뉴';
   }
@@ -1664,17 +1748,17 @@
         break;
       }
       case 'C': { // 동굴 바닥
-        px(0, 0, 16, 16, '#3d3850');
+        px(0, 0, 16, 16, '#303640');
         for (let i = 0; i < 7; i++) {
-          px(Math.floor(rnd(i + 9) * 15), Math.floor(rnd(i + 99) * 15), 1, 1, i % 2 ? '#4a4560' : '#322d44');
+          px(Math.floor(rnd(i + 9) * 15), Math.floor(rnd(i + 99) * 15), 1, 1, i % 2 ? '#3e4652' : '#252a32');
         }
         break;
       }
       case 'K': { // 동굴 벽
-        px(0, 0, 16, 16, '#241f33');
-        px(0, 13, 16, 3, '#16111f');
+        px(0, 0, 16, 16, '#1a2028');
+        px(0, 13, 16, 3, '#0a0d12');
         for (let i = 0; i < 4; i++) {
-          px(Math.floor(rnd(i + 21) * 13), Math.floor(rnd(i + 22) * 10), 2, 2, '#322c44');
+          px(Math.floor(rnd(i + 21) * 13), Math.floor(rnd(i + 22) * 10), 2, 2, '#2a333d');
         }
         break;
       }
@@ -1687,19 +1771,19 @@
         break;
       }
       case 'M': { // 탑 바닥
-        px(0, 0, 16, 16, '#7a749a');
-        px(0, 0, 16, 1, '#8c86ac');
-        px(0, 0, 1, 16, '#8c86ac');
-        px(15, 0, 1, 16, '#605a80');
-        px(0, 15, 16, 1, '#605a80');
-        px(8, 8, 1, 1, '#8c86ac');
+        px(0, 0, 16, 16, '#66617d');
+        px(0, 0, 16, 1, '#77718d');
+        px(0, 0, 1, 16, '#77718d');
+        px(15, 0, 1, 16, '#4d485e');
+        px(0, 15, 16, 1, '#4d485e');
+        px(7, 7, 2, 2, '#706b86');
         break;
       }
       case 'N': { // 탑 벽
-        px(0, 0, 16, 16, '#403a5e');
-        for (let y = 0; y < 16; y += 4) px(0, y, 16, 1, '#322c4e');
-        for (let x = 0; x < 16; x += 8) px(x, 0, 1, 16, '#322c4e');
-        px(1, 1, 6, 2, '#4a4468');
+        px(0, 0, 16, 16, '#1a2028');
+        for (let y = 0; y < 16; y += 4) px(0, y, 16, 1, '#0f141a');
+        for (let x = 0; x < 16; x += 8) px(x, 0, 1, 16, '#0f141a');
+        px(1, 1, 6, 2, '#2b3440');
         break;
       }
       case 'Z': { // 눈밭
@@ -1734,11 +1818,11 @@
         break;
       }
       case 'E': { // 기계실 바닥
-        px(0, 0, 16, 16, '#1f2236');
-        px(0, 0, 16, 1, '#2c3050');
-        px(0, 0, 1, 16, '#2c3050');
-        px(3, 8, 6, 1, '#34406a');
-        px(8, 8, 1, 5, '#34406a');
+        px(0, 0, 16, 16, '#1c3439');
+        px(0, 0, 16, 1, '#28515a');
+        px(0, 0, 1, 16, '#28515a');
+        px(3, 8, 6, 1, '#31636d');
+        px(8, 8, 1, 5, '#31636d');
         break;
       }
       case 'V': { // 서버 랙 (불빛 깜빡임)
@@ -1753,12 +1837,12 @@
         break;
       }
       case 'I': { // 도서관 바닥 (오래된 나무)
-        px(0, 0, 16, 16, '#7c603f');
-        px(0, 7, 16, 1, '#684e33');
-        px(0, 15, 16, 1, '#684e33');
-        px(7, 0, 1, 8, '#684e33');
-        px(12, 8, 1, 8, '#684e33');
-        px(0, 0, 16, 1, '#8a6c48');
+        px(0, 0, 16, 16, '#8a603b');
+        px(0, 7, 16, 1, '#6f482c');
+        px(0, 15, 16, 1, '#6f482c');
+        px(7, 0, 1, 8, '#6f482c');
+        px(12, 8, 1, 8, '#6f482c');
+        px(0, 0, 16, 1, '#9c7148');
         break;
       }
       case 'L': { // 책장
@@ -1856,15 +1940,15 @@
         break;
       }
       case '8': { // 기울어진 포장 (기울어진 거리) — 사선 줄무늬가 한쪽으로 쏠린 바닥
-        px(0, 0, 16, 16, '#4a4658');
+        px(0, 0, 16, 16, '#66617d');
         for (let i = -3; i < 16; i += 4) {
           for (let k = 0; k < 16; k++) {
             const x = i + Math.floor(k / 2); // 완만한 사선
-            if (x >= 0 && x < 16) px(x, k, 1, 1, '#565064');
+            if (x >= 0 && x < 16) px(x, k, 1, 1, '#77718d');
           }
         }
-        px(2, 12, 3, 1, '#3c3848'); // 갈라진 틈
-        px(10, 4, 4, 1, '#3c3848');
+        px(2, 12, 3, 1, '#4d485e'); // 갈라진 틈
+        px(10, 4, 4, 1, '#4d485e');
         break;
       }
       case '9': { // 칙칙한 문 (반짝이지 않는 문 — 메아리 골목의 출구들)
@@ -7200,76 +7284,230 @@
     finishRecord(false);
   }
 
+  function drawDioramaFrame(x, y, w, h, visual, reverse) {
+    ctx.fillStyle = visual.surface;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = visual.floor;
+    ctx.fillRect(x + 14, y + 14, w - 28, h - 28);
+    ctx.strokeStyle = visual.floorAlt;
+    ctx.lineWidth = 1;
+    for (let gx = x + 14; gx < x + w - 14; gx += 24) {
+      ctx.beginPath(); ctx.moveTo(gx + 0.5, y + 14); ctx.lineTo(gx + 0.5, y + h - 14); ctx.stroke();
+    }
+    for (let gy = y + 14; gy < y + h - 14; gy += 24) {
+      ctx.beginPath(); ctx.moveTo(x + 14, gy + 0.5); ctx.lineTo(x + w - 14, gy + 0.5); ctx.stroke();
+    }
+    ctx.fillStyle = visual.wall;
+    ctx.fillRect(x, y, w, 14);
+    ctx.fillRect(x, y + h - 14, w, 14);
+    ctx.fillRect(x, y, 14, h);
+    ctx.fillRect(x + w - 14, y, 14, h);
+    ctx.strokeStyle = visual.mortar;
+    for (let bx = x + 4; bx < x + w - 4; bx += 32) {
+      ctx.strokeRect(bx + 0.5, y + 3.5, 27, 7);
+      ctx.strokeRect(bx + 0.5, y + h - 10.5, 27, 7);
+    }
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = visual.accent;
+    if (reverse) ctx.setLineDash([8, 6]);
+    ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+    ctx.setLineDash([]);
+  }
+
+  function drawDioramaDesk(x, y, w, visual) {
+    ctx.fillStyle = visual.wall;
+    ctx.fillRect(x, y, w, 25);
+    ctx.fillStyle = visual.mortar;
+    ctx.fillRect(x + 5, y + 4, w - 10, 4);
+    ctx.fillStyle = visual.light;
+    ctx.fillRect(x + 9, y + 11, Math.max(12, w - 38), 7);
+    ctx.fillStyle = visual.accent;
+    ctx.fillRect(x + w - 22, y + 11, 10, 7);
+    ctx.fillStyle = visual.wall;
+    ctx.fillRect(x + 6, y + 25, 8, 13);
+    ctx.fillRect(x + w - 14, y + 25, 8, 13);
+  }
+
+  function drawDioramaFocus(spec, x, y, visual) {
+    if (spec.focus === 'single-note') {
+      drawDioramaDesk(x + 250, y + 78, 116, visual);
+      ctx.fillStyle = visual.light;
+      ctx.fillRect(x + 292, y + 84, 32, 16);
+      ctx.fillStyle = visual.wall;
+      ctx.fillRect(x + 298, y + 89, 20, 2);
+      ctx.fillRect(x + 298, y + 94, 14, 2);
+    } else if (spec.focus === 'locked-cabinet') {
+      ctx.fillStyle = visual.wall;
+      ctx.fillRect(x + 278, y + 42, 86, 102);
+      ctx.strokeStyle = visual.mortar;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 286, y + 50, 31, 84);
+      ctx.strokeRect(x + 325, y + 50, 31, 84);
+      ctx.fillStyle = visual.accent;
+      ctx.fillRect(x + 316, y + 88, 12, 14);
+      ctx.fillStyle = visual.wall;
+      ctx.fillRect(x + 320, y + 84, 4, 8);
+    } else if (spec.focus === 'emergency-door') {
+      ctx.fillStyle = visual.wall;
+      ctx.fillRect(x + 262, y + 28, 120, 112);
+      ctx.strokeStyle = visual.mortar;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x + 275, y + 40, 94, 94);
+      ctx.fillStyle = visual.accent;
+      ctx.fillRect(x + 285, y + 84, 74, 14);
+      ctx.fillStyle = visual.light;
+      ctx.fillRect(x + 315, y + 54, 14, 14);
+      ctx.fillStyle = visual.wall;
+      ctx.fillRect(x + 319, y + 57, 6, 8);
+    } else if (spec.focus === 'warning-console') {
+      drawDioramaDesk(x + 226, y + 48, 192, visual);
+      ctx.fillStyle = visual.accent;
+      ctx.fillRect(x + 252, y + 53, 58, 14);
+      ctx.fillStyle = visual.light;
+      ctx.fillRect(x + 318, y + 53, 70, 14);
+      ctx.fillStyle = visual.wall;
+      ctx.fillRect(x + 328, y + 58, 50, 3);
+    } else if (spec.focus === 'five-switches') {
+      drawDioramaDesk(x + 226, y + 66, 192, visual);
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = i < 3 ? visual.accent : visual.warm;
+        ctx.fillRect(x + 252 + i * 29, y + 76, 12, 10);
+        ctx.fillStyle = visual.wall;
+        ctx.fillRect(x + 256 + i * 29, y + 78, 4, 6);
+      }
+    }
+  }
+
+  function drawDioramaActors(spec, x, y, visual, reverse) {
+    const playerPal = reverse ? REVERSE_SPRITE_PAL : WORLD_FIGURE.player;
+    const py = y + 98;
+    const outline = reverse ? visual.wall : WORLD_FIGURE.outline;
+    drawFigureShadow(x + 102, py, 2, outline);
+    drawOutlinedSprite(ctx, PLAYER_SPRITES.down[0], x + 102, py, 2, playerPal, false, outline, 1);
+    if (spec.actor === 'player') return;
+    const ax = x + spec.actorX;
+    const actorPal = reverse ? REVERSE_SPRITE_PAL : (MONSTER_PAL[spec.actor] || null);
+    if (spec.actor !== 'bandi') drawFigureShadow(ax, py, 2, outline);
+    drawOutlinedSprite(ctx, MONSTER_SPRITES[spec.actor], ax, py, 2, actorPal, false, outline, 1);
+  }
+
+  function drawRecordDiorama(scene, restored) {
+    const spec = recordDioramaSpec(restored ? scene.recordId : scene.id, restored);
+    if (!spec) return;
+    const visual = timelineVisualMode({ restored });
+    const reverse = !restored;
+    const layout = RECORD_UI.layout;
+    const x = layout.inset, y = layout.roomY, w = LW - layout.inset * 2, h = layout.roomHeight;
+    drawDioramaFrame(x, y, w, h, visual, reverse);
+    if (spec.layout === 'archive') {
+      ctx.fillStyle = visual.wall;
+      ctx.fillRect(x + 198, y + 14, 14, 92);
+      ctx.fillRect(x + 198, y + 114, 14, 32);
+    } else if (spec.layout === 'core-link') {
+      ctx.fillStyle = visual.wall;
+      ctx.fillRect(x + 14, y + 28, 154, 12);
+      ctx.fillRect(x + w - 168, y + 28, 154, 12);
+    } else {
+      ctx.fillStyle = visual.floorAlt;
+      ctx.fillRect(x + 14, y + 14, w - 28, 28);
+    }
+    drawDioramaFocus(spec, x, y, visual);
+    drawDioramaActors(spec, x, y, visual, reverse);
+
+    ctx.fillStyle = visual.wall;
+    ctx.fillRect(x + 18, y + 18, w - 36, 22);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = visual.accent;
+    ctx.font = recordFs(RECORD_UI.type.meta, true);
+    const direction = reverse
+      ? `현재  ◀  ${scene.daysAgo}일 전  ◀  더 오래된 과거`
+      : `더 오래된 과거  ▶  ${scene.daysAgo}일 전  ▶  현재`;
+    ctx.fillText(direction, x + w / 2, y + 33);
+    ctx.textAlign = 'left';
+
+    if (reverse && !game.lowGraphics) {
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = visual.light;
+      for (let i = 0; i < 22; i++) {
+        const dx = x + 18 + ((i * 83) % (w - 40));
+        const dy = y + 48 + ((i * 47) % (h - 66));
+        ctx.fillRect(dx, dy, i % 3 ? 2 : 12, 1);
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawRecordPanel(visual) {
+    const layout = RECORD_UI.layout;
+    ctx.fillStyle = visual.surface;
+    roundRect(layout.inset, layout.panelY, LW - layout.inset * 2, layout.panelHeight, layout.panelRadius);
+    ctx.fill();
+    ctx.strokeStyle = visual.accent;
+    ctx.lineWidth = 3;
+    roundRect(layout.inset, layout.panelY, LW - layout.inset * 2, layout.panelHeight, layout.panelRadius);
+    ctx.stroke();
+  }
+
   function drawRecord() {
     const r = game.record;
     if (!r) return;
     const scene = recordById(r.ids[r.scene], r.restored);
     if (!scene) return;
-    ctx.fillStyle = '#000';
+    const visual = timelineVisualMode(r);
+    const color = RECORD_UI.color;
+    const layout = RECORD_UI.layout;
+    const type = RECORD_UI.type;
+    ctx.fillStyle = color.page;
     ctx.fillRect(0, 0, LW, LH);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = visual.accent;
+    ctx.font = recordFs(type.header, true);
+    ctx.fillText(r.restored ? '[복원된 시간순 · 순행]' : '[손상된 기록 · 역행]', layout.inset, layout.headerY);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = visual.accent;
+    ctx.font = recordFs(type.meta);
+    ctx.fillText(`현재보다 ${scene.daysAgo}일 전`, LW - layout.inset, layout.headerY);
+    ctx.textAlign = 'left';
+    drawRecordDiorama(scene, r.restored);
     if (r.discovery) {
       const found = Math.max(1, game.flags.damagedRecords.indexOf(r.ids[0]) + 1);
-      ctx.fillStyle = '#080b16';
-      roundRect(56, 84, LW - 112, 330, 8);
-      ctx.fill();
-      ctx.strokeStyle = '#8ea8d8';
-      ctx.lineWidth = 3;
-      roundRect(56, 84, LW - 112, 330, 8);
-      ctx.stroke();
+      drawRecordPanel(visual);
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#8ea8d8';
-      ctx.font = fs(16, true);
-      ctx.fillText(`[새로운 손상 기록 · ${found}/${MEMENTO_RECORDS.length}]`, LW / 2, 126);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(25, true);
-      ctx.fillText('과거의 조각을 찾았다', LW / 2, 184);
-      ctx.fillStyle = '#bfc9e2';
-      ctx.font = fs(16);
-      ctx.fillText(`현재보다 ${scene.daysAgo}일 전`, LW / 2, 232);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(18, true);
-      ctx.fillText(`「${scene.title}」`, LW / 2, 272);
-      ctx.fillStyle = '#9da8c4';
-      ctx.font = fs(15);
-      ctx.fillText('지금 복원할까?', LW / 2, 326);
-      ctx.fillStyle = '#8ea8d8';
-      ctx.font = fs(14, true);
-      ctx.fillText(isTouchDevice ? 'Ⓐ 복원하기  ·  [나중에] 일지에 보관' : 'Z·Enter 복원하기  ·  X·Esc 나중에 보기', LW / 2, 382);
+      ctx.fillStyle = visual.accent;
+      ctx.font = recordFs(type.label, true);
+      ctx.fillText(`[새로운 손상 기록 · ${found}/${MEMENTO_RECORDS.length}]`, LW / 2, layout.discoveryLabelY);
+      ctx.fillStyle = color.primary;
+      ctx.font = recordFs(type.title, true);
+      ctx.fillText(`「${scene.title}」`, LW / 2, layout.titleY);
+      ctx.fillStyle = color.body;
+      ctx.font = recordFs(type.label);
+      ctx.fillText('회색빛 기록을 지금 살펴볼까?', LW / 2, layout.promptY);
+      ctx.fillStyle = visual.accent;
+      ctx.font = recordFs(type.helper, true);
+      ctx.fillText(isTouchDevice ? 'Ⓐ 복원하기  ·  [나중에] 일지에 보관' : 'Z·Enter 복원하기  ·  X·Esc 나중에 보기', LW / 2, layout.actionY);
       ctx.textAlign = 'left';
       return;
     }
-    ctx.fillStyle = '#121424';
-    roundRect(36, 76, LW - 72, 354, 8);
-    ctx.fill();
-    ctx.strokeStyle = r.restored ? okColor() : '#8ea8d8';
-    ctx.lineWidth = 3;
-    roundRect(36, 76, LW - 72, 354, 8);
-    ctx.stroke();
+    drawRecordPanel(visual);
     ctx.textAlign = 'left';
-    ctx.fillStyle = r.restored ? okColor() : '#8ea8d8';
-    ctx.font = fs(18, true);
-    ctx.fillText(r.restored ? '[복원된 시간순]' : '[손상된 기록]', 56, 46);
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#888';
-    ctx.font = fs(12);
-    ctx.fillText(`현재보다 ${scene.daysAgo}일 전`, LW - 56, 46);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText(scene.title, 64, 126);
-    ctx.fillStyle = '#ddd';
-    ctx.font = fs(16);
-    drawQuestionText(recordPageText(scene, r.page), 64, 174, LW - 128, lh(28));
-    ctx.fillStyle = r.restored ? okColor() : '#586b96';
-    ctx.font = fs(13, true);
+    ctx.fillStyle = color.primary;
+    ctx.font = recordFs(type.title, true);
+    ctx.fillText(scene.title, layout.inset + layout.panelPad, layout.bodyTitleY);
+    ctx.fillStyle = color.body;
+    ctx.font = recordFs(type.body);
+    drawQuestionText(recordPageText(scene, r.page), layout.inset + layout.panelPad, layout.bodyTextY,
+      LW - (layout.inset + layout.panelPad) * 2, recordLh(27));
+    ctx.fillStyle = visual.accent;
+    ctx.font = recordFs(type.helper, true);
     const progress = r.restored
       ? `${r.scene + 1}/${r.ids.length}`
       : `${r.page + 1}/${scene.pages.length}`;
-    ctx.fillText(progress, 64, 402);
+    ctx.fillText(progress, layout.inset + layout.panelPad, layout.progressY);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#888';
-    ctx.font = fs(13);
-    ctx.fillText(isTouchDevice ? 'Ⓐ 다음  ·  [건너뜀] 기록 건너뛰기' : 'Z·Enter 다음  ·  X·Esc 건너뛰기', LW / 2, 486);
+    ctx.fillStyle = color.muted;
+    ctx.font = recordFs(type.helper);
+    ctx.fillText(isTouchDevice ? 'Ⓐ 다음  ·  [건너뜀] 기록 건너뛰기' : 'Z·Enter 다음  ·  X·Esc 건너뛰기', LW / 2, layout.controlsY);
     ctx.textAlign = 'left';
   }
 
@@ -10013,6 +10251,106 @@
     return { cx, cy };
   }
 
+  const WALL_DETAIL_TILES = new Set(['H', 'K', 'N', 'V', 'L', 'Q', 'O', '3']);
+
+  function drawMapStructure(m, cx, cy) {
+    const visual = timelineVisualMode(null);
+    const x0 = Math.max(0, Math.floor(cx / TS) - 1);
+    const y0 = Math.max(0, Math.floor(cy / TS) - 1);
+    const x1 = Math.min(m.tiles[0].length - 1, x0 + VIEW_W + 3);
+    const y1 = Math.min(m.tiles.length - 1, y0 + VIEW_H + 3);
+    ctx.save();
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const ch = m.tiles[y][x];
+        if (!SOLID(ch)) continue;
+        const sx = Math.round(x * TS - cx);
+        const sy = Math.round(y * TS - cy);
+        const openUp = WALKABLE.has(tileAt(game.map, x, y - 1));
+        const openDown = WALKABLE.has(tileAt(game.map, x, y + 1));
+        const openLeft = WALKABLE.has(tileAt(game.map, x - 1, y));
+        const openRight = WALKABLE.has(tileAt(game.map, x + 1, y));
+        ctx.fillStyle = visual.wall;
+        if (openUp) ctx.fillRect(sx, sy, TS, 6);
+        if (openDown) ctx.fillRect(sx, sy + TS - 7, TS, 7);
+        if (openLeft) ctx.fillRect(sx, sy, 6, TS);
+        if (openRight) ctx.fillRect(sx + TS - 7, sy, 7, TS);
+        ctx.fillStyle = visual.mortar;
+        if (openUp) ctx.fillRect(sx + 6, sy + 6, TS - 12, 2);
+        if (openDown) ctx.fillRect(sx + 6, sy + TS - 9, TS - 12, 2);
+        if (openLeft) ctx.fillRect(sx + 6, sy + 6, 2, TS - 12);
+        if (openRight) ctx.fillRect(sx + TS - 9, sy + 6, 2, TS - 12);
+
+        const edge = openUp || openDown || openLeft || openRight;
+        const hash = Math.abs((x * 37 + y * 67 + game.map.length * 29) % 17);
+        const detailStep = game.lowGraphics ? 13 : 7;
+        if (!edge || !WALL_DETAIL_TILES.has(ch) || hash % detailStep !== 0) continue;
+        const px = sx + 15;
+        const py = sy + (openDown ? 17 : 12);
+        ctx.fillStyle = visual.surface;
+        ctx.fillRect(px, py, 18, 14);
+        ctx.strokeStyle = visual.mortar;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px + 0.5, py + 0.5, 17, 13);
+        ctx.fillStyle = hash % 2 ? visual.cool : visual.accent;
+        ctx.fillRect(px + 4, py + 4, 5, 3);
+        ctx.fillStyle = visual.floor;
+        ctx.fillRect(px + 11, py + 4, 3, 6);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawDoorwayZones(m, cx, cy) {
+    const visual = timelineVisualMode(null);
+    const colors = game.map === 'cozyhome'
+      ? [visual.floorAlt, visual.wood, visual.floorAlt]
+      : game.map === 'arcade'
+        ? [visual.floor, visual.floorAlt, visual.wood]
+        : [visual.floorAlt, visual.wood, visual.floor];
+    const warps = (m.warps || []).filter((warp) =>
+      warp.x > 1 && warp.y > 1 && warp.x < m.tiles[0].length - 2 && warp.y < m.tiles.length - 2);
+    ctx.save();
+    ctx.globalAlpha = game.lowGraphics ? 0.28 : 0.42;
+    for (let i = 0; i < warps.length; i++) {
+      if (game.lowGraphics && i % 2 === 1) continue;
+      const warp = warps[i];
+      for (let dy = 1; dy <= 2; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const tx = warp.x + dx, ty = warp.y + dy;
+          if (!WALKABLE.has(tileAt(game.map, tx, ty))) continue;
+          const sx = Math.round(tx * TS - cx);
+          const sy = Math.round(ty * TS - cy);
+          ctx.fillStyle = colors[i % colors.length];
+          ctx.fillRect(sx + 3, sy + 3, TS - 6, TS - 6);
+          ctx.strokeStyle = i % 2 ? visual.accent : visual.cool;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(sx + 5.5, sy + 5.5, TS - 11, TS - 11);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawFigureShadow(x, y, scale, color) {
+    ctx.save();
+    ctx.globalAlpha = 0.42;
+    ctx.fillStyle = color || WORLD_FIGURE.outline;
+    ctx.beginPath();
+    ctx.ellipse(x + 8 * scale, y + 15 * scale, 5 * scale, Math.max(2, scale), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawWorldSprite(rows, x, y, scale, palette, flip) {
+    drawFigureShadow(x, y, scale);
+    drawOutlinedSprite(ctx, rows, x, y, scale, palette, flip, WORLD_FIGURE.outline, WORLD_FIGURE.outlinePx);
+  }
+
+  function drawWorldMon(id, x, y, scale, flip) {
+    drawWorldSprite(MONSTER_SPRITES[id], x, y, scale, MONSTER_PAL[id] || null, flip);
+  }
+
   // 동행자 반디 — 플레이어가 보는 방향의 반대쪽에서 둥실 떠 따라온다.
   // 옅은 광륜 + 부유 바운스. 정체 공개(bandiRevealed) 후에는 그리지 않는다.
   function drawCompanion(cx, cy) {
@@ -10032,7 +10370,7 @@
       ctx.arc(sx + 16, sy + 14, 15, 0, Math.PI * 2);
       ctx.fill();
     }
-    drawMon(ctx, 'bandi', sx, sy, 2);
+    drawOutlinedSprite(ctx, MONSTER_SPRITES.bandi, sx, sy, 2, MONSTER_PAL.bandi, false, WORLD_FIGURE.outline, 1);
   }
 
   function ch1HubVisibleMarks() {
@@ -10397,6 +10735,8 @@
         ctx.drawImage(tileCanvas(ch, frame), Math.round(x * TS - cx), Math.round(y * TS - cy));
       }
     }
+    drawDoorwayZones(m, cx, cy);
+    drawMapStructure(m, cx, cy);
 
     // A-1 숨은 워프 마커 — 문틀·소용돌이를 타일 위, 엔티티 아래에 그린다(전 맵 일괄).
     drawWarpMarkers(cx, cy);
@@ -10428,9 +10768,9 @@
       const ny = Math.round(npc.y * TS - cy - 6);
       if (npc.monSprite) {
         const bob = Math.round(Math.sin(game.time / 22) * 2);
-        drawMon(ctx, npc.monSprite, nx, ny + bob, SCALE);
+        drawWorldMon(npc.monSprite, nx, ny + bob, SCALE);
       } else {
-        drawSprite(ctx, NPC_SPRITES.down[frame], nx, ny, SCALE, NPC_PALETTES[npc.pal]);
+        drawWorldSprite(NPC_SPRITES.down[frame], nx, ny, SCALE, NPC_PALETTES[npc.pal]);
       }
       // "말을 걸 수 있어요" 말풍선 (대화 가능한 NPC 머리 위)
       drawTalkBubble(nx + TS / 2, ny - 14);
@@ -10444,7 +10784,7 @@
       if (dead && !friend) continue;
       const bob = Math.round(Math.sin(game.time / 18) * 4);
       const dx0 = Math.round(mo.x * TS - cx), dy0 = Math.round(mo.y * TS - cy - 6 + bob);
-      drawMon(ctx, mo.id, dx0, dy0, SCALE);
+      drawWorldMon(mo.id, dx0, dy0, SCALE);
       if (friend) {
         // 친구가 된 인물: 머리 위 ♥ (말을 걸 수 있어요)
         ctx.fillStyle = '#e0453a';
@@ -10482,8 +10822,8 @@
     const walking = p.px !== p.x * TS || p.py !== p.y * TS;
     const pframe = walking ? Math.floor(p.step / 6) % 2 : 0;
     const dirKey = p.dir === 'right' ? 'left' : p.dir;
-    drawSprite(ctx, PLAYER_SPRITES[dirKey][pframe],
-      Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, null, p.dir === 'right');
+    drawWorldSprite(PLAYER_SPRITES[dirKey][pframe],
+      Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, WORLD_FIGURE.player, p.dir === 'right');
 
     if (game.puzzleRun) drawStalkers(cx, cy);
     // 코어 — 여덟 개의 의자(안아 준 조각 수만큼 채워짐)
@@ -12583,6 +12923,7 @@
     newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
     recordForChapter, recordHudText, unlockDamagedRecord, startDamagedRecord, startTimelineRestoration,
     journalRecordStage, journalRecordItems, journalAnnouncement, announceJournal, finishRecord, revealBandiAtShrine,
+    timelineVisualMode, recordDioramaSpec, worldFigureProfile,
     endingScene, endingAnnouncement, announceEnding,
     objectiveBannerPrefix, bossWasSpared, bossClearedInSlot,
   };

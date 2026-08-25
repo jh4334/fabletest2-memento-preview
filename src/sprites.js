@@ -498,17 +498,17 @@ MONSTER_SPRITES.musimon = [
 MONSTER_SPRITES.bandi = [
   '................',
   '................',
-  '.......a........',
-  '......aba.......',
-  '.....abbba......',
-  '....abbbbba.....',
-  '....abbcbba.....',
-  '....abbbbba.....',
-  '.....abbba......',
-  '......aba.......',
-  '.......a........',
-  '.....d..........',
-  '........d.......',
+  '....aa....aa....',
+  '...abba..abba...',
+  '....abb..bba....',
+  '......aaaa......',
+  '.....abbbba.....',
+  '....abbccbba....',
+  '....abbbbbba....',
+  '.....abbbba.....',
+  '......abba......',
+  '.......dd.......',
+  '......d..d......',
   '................',
   '................',
   '................',
@@ -588,6 +588,34 @@ function drawSprite(ctx, rows, x, y, scale, palOverride, flip) {
     _spriteCache.set(key, cv);
   }
   ctx.drawImage(cv, x, y);
+}
+
+const _spriteOutlineCache = new Map();
+function drawOutlinedSprite(ctx, rows, x, y, scale, palOverride, flip, outlineColor, outlinePx) {
+  const color = outlineColor || '#0a0d12';
+  const width = outlinePx || 2;
+  const key = _spriteId(rows) + '|' + scale + (flip ? 'F' : '') + '|' + color;
+  let mask = _spriteOutlineCache.get(key);
+  if (!mask) {
+    mask = document.createElement('canvas');
+    mask.width = 16 * scale;
+    mask.height = 16 * scale;
+    const m = mask.getContext('2d');
+    m.fillStyle = color;
+    for (let ry = 0; ry < rows.length; ry++) {
+      const row = rows[ry];
+      for (let rx = 0; rx < row.length; rx++) {
+        if (row[rx] === '.') continue;
+        const px = flip ? (15 - rx) : rx;
+        m.fillRect(px * scale, ry * scale, scale, scale);
+      }
+    }
+    _spriteOutlineCache.set(key, mask);
+  }
+  const offsets = [[-width, 0], [width, 0], [0, -width], [0, width],
+    [-width, -width], [width, -width], [-width, width], [width, width]];
+  for (const off of offsets) ctx.drawImage(mask, x + off[0], y + off[1]);
+  drawSprite(ctx, rows, x, y, scale, palOverride, flip);
 }
 
 // 배틀 표정 오버레이(N-1) — 인물별 얼굴 기준점 (16×16 스프라이트 픽셀 좌표, 눈 근처)
