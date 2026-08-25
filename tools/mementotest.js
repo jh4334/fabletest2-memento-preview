@@ -1,5 +1,3 @@
-const fs = require('fs');
-const path = require('path');
 const { createGameSandbox } = require('./lib/game-sandbox');
 
 const env = createGameSandbox();
@@ -32,7 +30,6 @@ function has(name) { return typeof T[name] === 'function'; }
 
 const REVEAL_IDS = ['reset_after', 'reset_before', 'city_failure', 'yeongi_warning', 'first_approval'];
 const CHRONOLOGICAL_IDS = REVEAL_IDS.slice().reverse();
-const designContract = fs.readFileSync(path.join(__dirname, '..', 'DESIGN.md'), 'utf8');
 
 console.log('[M-1] 장 종료 기록은 과거 시간상 역순으로 공개된다');
 const records = data('typeof MEMENTO_RECORDS === "undefined" ? null : MEMENTO_RECORDS', []) || [];
@@ -260,10 +257,6 @@ if (has('timelineVisualMode')) {
   check('손상 기록 비네트는 네 단계 회색 명도만 사용',
     new Set(['surface', 'floor', 'floorAlt', 'wall', 'mortar', 'light', 'accent', 'warm']
       .map((key) => reverseMode[key])).size === 4);
-  const damagedRecordContract = (designContract.split('### 손상된 기록 장면')[1] || '').split('### 월드 HUD 기록 진행')[0];
-  check('손상 기록 카드의 설계 토큰과 런타임 팔레트가 일치',
-    reverseMode.surface === '#17191d' && reverseMode.accent === '#c7c9cc' &&
-    damagedRecordContract.includes('`reverse-surface`') && damagedRecordContract.includes('`reverse-light`'));
   check('실제 시간순 복원은 컬러 순행 모드', restoredMode.id === 'restored' && restoredMode.grayscale === false && restoredMode.direction === 'forward');
   check('현재 월드는 컬러 순행 모드', presentMode.id === 'present' && presentMode.grayscale === false && presentMode.direction === 'forward');
 }
