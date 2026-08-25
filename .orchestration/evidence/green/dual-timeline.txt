@@ -1,0 +1,16 @@
+2026-08-25 KST
+
+Command: npm test
+Exit: 0
+
+Results:
+- Smoke regression: 1208 passed
+- Slot/save regression: 67 passed
+- Memento contract: 41 passed
+
+Covered behavior:
+- Five damaged records unlock once in reverse chronology.
+- Skip, replay, pending resume, and journal trust phases persist.
+- The core restores the five events in real chronology before the Bandi reveal.
+- V8 saves migrate to V9; completed legacy saves do not replay the new finale.
+- The four existing ending IDs and cumulative mercy thresholds remain intact.

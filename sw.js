@@ -1,46 +1,77 @@
-// 오프라인 서비스워커 — 방과 후: 그림자 학교
-// 처음 방문에서 전부 캐시해 교실 와이파이가 끊겨도 수업이 계속되게 한다.
-// CACHE 해시는 npm run bump 가 자산에서 계산해 갱신한다(validate가 대조).
-const CACHE = 'shadow-school-7abd1fad';
+// AI 윤리 어드벤처 — 오프라인 서비스워커
+// 모든 정적 자원을 처음 방문 때 캐시해, 이후 네트워크 없이도 실행되게 한다.
+// 게임 코드/콘텐츠가 바뀌면 CACHE 버전을 올리면 된다.
+const CACHE = 'ai-ethics-adventure-efd04b0e';
 const ASSETS = [
-  './', './index.html', './manifest.webmanifest',
-  './src/art.js', './src/sound.js', './src/data.js', './src/engine.js',
-  './assets/pack/char/student.png', './assets/pack/char/teacher_blue.png',
-  './assets/pack/char/teacher_green.png', './assets/pack/char/drop_shadow.png',
-  './assets/pack/map/interior_floor.png', './assets/pack/map/wall_simple.png',
-  './assets/pack/map/floor.png', './assets/pack/map/village_abandoned.png',
-  './assets/pack/map/animated.png',
-  './assets/pack/props/crate.png', './assets/pack/props/heart.png', './assets/pack/props/pot.png',
-  './icons/icon-192.png', './icons/icon-512.png'
+  './',
+  './index.html',
+  './src/sprites.js',
+  './src/audio.js',
+  './src/data.js',
+  './src/game.js',
+  './manifest.webmanifest',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
+  './icons/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
-});
-self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
+    caches.open(CACHE)
+      .then((c) => c.addAll(ASSETS))
+      .then(() => self.skipWaiting())
   );
 });
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(caches.keys().then((keys) => {
+    const replacingBaseline = keys.some((key) => key.startsWith('shadow-school-'));
+    const ownedCaches = keys.filter((key) =>
+      key !== CACHE && (key.startsWith('ai-ethics-adventure-') || key.startsWith('shadow-school-'))
+    );
+    return Promise.all(ownedCaches.map((key) => caches.delete(key)))
+      .then(() => self.clients.claim())
+      .then(() => replacingBaseline ? self.clients.matchAll({ type: 'window', includeUncontrolled: true }) : [])
+      .then((clients) => {
+        clients.forEach((client) => { client.navigate(client.url).catch(() => {}); });
+      });
+  }));
+});
+
+function remember(request, response) {
+  if (!response || response.status !== 200 || response.type !== 'basic') return response;
+  const copy = response.clone();
+  caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
+  return response;
+}
+
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const isNav = e.request.mode === 'navigate';
+  const url = new URL(e.request.url);
+  const isLocal = url.origin === self.location.origin;
+  const isCore = isLocal && (
+    isNav ||
+    url.pathname.endsWith('/index.html') ||
+    /\/src\/[^/]+\.js$/.test(url.pathname) ||
+    url.pathname.endsWith('/manifest.webmanifest')
+  );
+
+  if (isCore) {
+    e.respondWith(
+      fetch(e.request, { cache: 'no-store' })
+        .then((response) => remember(e.request, response))
+        .catch(() => caches.match(e.request, { ignoreSearch: true })
+          .then((hit) => hit || (isNav ? caches.match('./index.html') : undefined)))
+    );
+    return;
+  }
+
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: isNav }).then((hit) => {
+    caches.match(e.request).then((hit) => {
       if (hit) return hit;
-      return fetch(e.request).then((res) => {
-        if (res && res.status === 200 && res.type === 'basic') {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
-        }
-        return res;
-      }).catch(() => {
-        // 오프라인 + 캐시 미스: 문서 요청이면 캐시된 본문으로라도 연다
-        if (isNav) return caches.match('./index.html');
-        return undefined;
-      });
+      return fetch(e.request).then((response) => remember(e.request, response)).catch(() => undefined);
     })
   );
 });

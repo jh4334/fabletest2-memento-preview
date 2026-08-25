@@ -1,23 +1,37 @@
 name: CI
+
 on:
   push:
     branches: ['**']
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 20
-      - run: npm ci --ignore-scripts
-      - name: 데이터·어휘 검증
+          cache: npm
+      - run: npm ci
+      - name: 데이터 검증
         run: npm run validate
-      - name: 스모크 테스트
+      - name: 로직 스모크/슬롯 테스트
         run: npm test
-      - name: Chromium 설치 (브라우저 스모크)
+      - name: 플레이봇 완주 (프롤로그→진엔딩 회귀)
+        run: npm run playtest
+      - name: Chromium 설치 (브라우저 스모크용)
         run: npx playwright install --with-deps chromium
-      - name: 브라우저 스모크 (렌더·터치 UI·회전 안내·실플레이)
+      - name: 브라우저 스모크 (desktop/mobile 세로·가로 + 콘솔 에러)
         run: npm run test:browser
+      - name: 실패 시 스크린샷 업로드
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-screenshots
+          path: shots/browser-*.png
+          if-no-files-found: ignore

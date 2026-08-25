@@ -1,46 +1,80 @@
-// PWA 아이콘 생성기 — 팩 팔레트만 사용, Chromium 캔버스로 1회 렌더 후 저장.
-// 실행: node tools/icons.js  (아이콘을 바꿀 때만 다시 실행해 커밋)
+// PWA 아이콘 생성기 — node-canvas로 앱 아이콘 PNG를 만든다.
+// 사용법: node tools/icons.js
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require('playwright');
+const { createCanvas } = require('canvas');
 
-const ROOT = path.resolve(__dirname, '..');
-function exe() {
-  const base = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
-  try {
-    for (const d of fs.readdirSync(base)) {
-      if (!d.startsWith('chromium-')) continue;
-      const p = path.join(base, d, 'chrome-linux', 'chrome');
-      if (fs.existsSync(p)) return p;
-    }
-  } catch (e) { }
-  return undefined;
+const ROOT = path.join(__dirname, '..');
+const OUT = path.join(ROOT, 'icons');
+fs.mkdirSync(OUT, { recursive: true });
+
+// 게임 분위기를 담은 아이콘: 검은 밤하늘 + 별 + 붉은 하트(수호자의 마음)
+function drawIcon(size, maskable) {
+  const cv = createCanvas(size, size);
+  const c = cv.getContext('2d');
+
+  // 배경
+  c.fillStyle = '#0b0b12';
+  c.fillRect(0, 0, size, size);
+
+  // 별
+  const rnd = (s) => { const v = Math.sin(s * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+  for (let i = 0; i < Math.floor(size / 6); i++) {
+    const x = rnd(i + 1) * size, y = rnd(i + 41) * size * 0.7;
+    const r = rnd(i + 7) > 0.7 ? 2 : 1;
+    c.fillStyle = `rgba(255,255,255,${0.4 + rnd(i + 13) * 0.5})`;
+    c.fillRect(Math.floor(x), Math.floor(y), r * (size / 192), r * (size / 192));
+  }
+
+  // 하트 (도트 느낌으로 블록 채움)
+  // maskable이면 안전영역(80%) 안에 들어오도록 약간 작게
+  const scale = size / 192;
+  const hs = (maskable ? 0.62 : 0.74) * size; // 하트 폭
+  const cx = size / 2, cy = size * 0.54;
+  drawPixelHeart(c, cx, cy, hs);
+
+  return cv;
 }
 
-const DRAW = String(function draw(c, S) {
-  const x = c.getContext('2d'); const u = S / 16; x.imageSmoothingEnabled = false;
-  x.fillStyle = '#241a2c'; x.fillRect(0, 0, S, S);                 // 밤의 학교 벽
-  x.fillStyle = '#181c20'; x.fillRect(u, u, S - 2 * u, S - 2 * u); // 창틀
-  x.fillStyle = '#e8783c';                                          // 노을빛 창
-  x.fillRect(2 * u, 2 * u, 5 * u, 5 * u); x.fillRect(9 * u, 2 * u, 5 * u, 5 * u);
-  x.fillRect(2 * u, 9 * u, 5 * u, 5 * u); x.fillRect(9 * u, 9 * u, 5 * u, 5 * u);
-  x.fillStyle = '#f0c86e';                                          // 불 켜진 한 칸
-  x.fillRect(9 * u, 2 * u, 5 * u, 5 * u);
-  x.fillStyle = '#2a2030';                                          // 그림자 실루엣
-  x.fillRect(10.5 * u, 3.5 * u, 2 * u, 2 * u); x.fillRect(10 * u, 5 * u, 3 * u, 2 * u);
-  x.fillStyle = '#a86ad8';                                          // 보라 눈
-  x.fillRect(10.9 * u, 4.1 * u, 0.5 * u, 0.5 * u); x.fillRect(11.7 * u, 4.1 * u, 0.5 * u, 0.5 * u);
-});
-
-(async () => {
-  const browser = await chromium.launch({ executablePath: exe() });
-  const page = await browser.newPage({ viewport: { width: 512, height: 512 } });
-  for (const size of [512, 192]) {
-    await page.setContent(`<body style="margin:0"><canvas id=c width=${size} height=${size}></canvas>`
-      + `<script>(${DRAW})(document.getElementById('c'), ${size})<\/script>`);
-    const buf = await (await page.$('#c')).screenshot();
-    fs.writeFileSync(path.join(ROOT, 'icons', `icon-${size}.png`), buf);
-    console.log(`icon-${size}.png 생성`);
+// 픽셀 하트를 비트맵 패턴으로 그린다 (언더테일 소울 느낌)
+function drawPixelHeart(c, cx, cy, w) {
+  const pat = [
+    '0110110',
+    '1111111',
+    '1111111',
+    '1111111',
+    '0111110',
+    '0011100',
+    '0001000',
+  ];
+  const cols = pat[0].length, rows = pat.length;
+  const px = w / cols;
+  const x0 = cx - w / 2, y0 = cy - (rows * px) / 2;
+  for (let r = 0; r < rows; r++) {
+    for (let q = 0; q < cols; q++) {
+      if (pat[r][q] === '1') {
+        // 위쪽은 밝게, 아래는 어둡게 살짝 음영
+        c.fillStyle = r < 2 ? '#f25c52' : r < 5 ? '#e0453a' : '#b8362d';
+        c.fillRect(Math.round(x0 + q * px), Math.round(y0 + r * px), Math.ceil(px), Math.ceil(px));
+      }
+    }
   }
-  await browser.close();
-})();
+  // 하이라이트
+  c.fillStyle = 'rgba(255,255,255,0.45)';
+  c.fillRect(Math.round(x0 + px), Math.round(y0 + px), Math.ceil(px), Math.ceil(px));
+}
+
+const targets = [
+  { name: 'icon-192.png', size: 192, maskable: false },
+  { name: 'icon-512.png', size: 512, maskable: false },
+  { name: 'icon-maskable-512.png', size: 512, maskable: true },
+  { name: 'apple-touch-icon.png', size: 180, maskable: false },
+];
+
+console.log('아이콘 생성:');
+for (const t of targets) {
+  const cv = drawIcon(t.size, t.maskable);
+  fs.writeFileSync(path.join(OUT, t.name), cv.toBuffer('image/png'));
+  console.log('  saved icons/' + t.name);
+}
+console.log('완료.');
