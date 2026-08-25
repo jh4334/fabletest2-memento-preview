@@ -108,10 +108,12 @@ function check(name, cond) {
 }
 
 // ---------- 시나리오 ----------
-console.log('[1] 타이틀 → 슬롯 선택 → 이름 입력 → 게임 시작');
+console.log('[1] 타이틀 → 원래 모험 → 슬롯 선택 → 이름 입력 → 게임 시작');
 step(5);
-check('타이틀 화면', g.mode === 'title' && g.titleScreen === 'slots');
+check('첫 타이틀 화면은 시간선 선택', g.mode === 'title' && g.titleScreen === 'routechoice');
 check('슬롯 3개 모두 비어 있음', !storage.get('fabletest2-memento-preview-slot-0'));
+tap('z');
+check('원래 모험 선택 뒤 슬롯 화면', g.mode === 'title' && g.titleScreen === 'slots');
 tap('z'); // 빈 슬롯 0 선택 → 이름 입력
 check('이름 입력 화면', g.mode === 'title' && g.titleScreen === 'name');
 // 이름 입력 중에는 게임 키가 막힌다(IME). Enter/시작 버튼은 nameConfirm으로 확정.
@@ -2964,7 +2966,13 @@ for (let i = 1; i < SHRINE_WHISPERS.length; i++) {
     check(`정답 ${i + 1} — 비차단 말풍선(${i + 1}/8)`, !!g.notice && new RegExp(`${i + 1}/8`).test(g.notice.text));
   }
 }
-check('마지막 봉헌 → 실제 시간순 복원 시작', g.mode === 'record' && g.record && g.record.restored === true);
+check('마지막 봉헌 → 다섯 카드 시간순 정렬 시작', g.mode === 'timelineorder' && g.flags.timelineMerged === false);
+tap('ArrowUp');
+for (let i = 0; i < 5; i++) tap('z');
+check('키보드로 오래된 7→5→3→2→1일 카드 배치',
+  g.flags.timelineOrderDraft.join(',') === 'first_approval,yeongi_warning,city_failure,reset_before,reset_after');
+tap('z');
+check('정답 확인 뒤 실제 시간순 복원 시작', g.mode === 'record' && g.record && g.record.restored === true);
 check('복원 장면은 최초 승인부터 시간순으로 시작', g.record.ids[0] === 'first_approval' &&
   g.record.ids[g.record.ids.length - 1] === 'reset_after');
 check('복원 시작 시 결합 상태 저장, 정체는 아직 비공개', g.flags.timelineMerged === true &&
@@ -3623,7 +3631,8 @@ console.log('[U-5] NG+ — 두 번째 모험 (대사 스왑 오버레이 + 타�
   // 타이틀 흐름 — 클리어(endingId) 슬롯에서 Z → ngchoice, "처음부터"면 startNewGame(...true)
   const tsrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
   check('U-5 클리어 슬롯 Z → 두 번째 모험 선택(ngchoice)', /sum && sum\.endingId[\s\S]*?titleScreen = 'ngchoice'/.test(tsrc));
-  check('U-5 처음부터 선택 → NG+ 새 게임(startNewGame(slot, ..., true))', /startNewGame\(slot, sum \? sum\.name : '수호자', true\)/.test(tsrc));
+  check('U-5 처음부터 선택 → 선택한 시간선의 NG+ 새 게임',
+    /startNewGame\(slot, sum \? sum\.name : '수호자', true, game\.newGameRoute\)/.test(tsrc));
   check('U-5 두 번째 모험은 V10 기록 스키마와 별개로 flags.ng에만 반영',
     /if \(ng\) game\.flags\.ng = true;/.test(tsrc) && /SAVE_VERSION = 10/.test(tsrc));
 }

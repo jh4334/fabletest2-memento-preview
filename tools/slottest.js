@@ -90,7 +90,17 @@ check('옛 세이브 키는 제거됨', !storage.get('fabletest2-memento-preview
 check('슬롯 0으로 이전됨', !!slot(0));
 check('이전된 진행도 보존 (스테이지 6)', slot(0).flags.defeated.finalboss === true);
 check('이전된 이름 기본값', slot(0).name === '수호자');
-check('타이틀에서 슬롯 0이 채워져 보임', g.mode === 'title' && g.titleScreen === 'slots');
+check('첫 타이틀 표면은 슬롯보다 앞선 시간선 선택', g.mode === 'title' && g.titleScreen === 'routechoice');
+check('시간선 선택지는 정확한 두 ID와 표시 이름', JSON.stringify(storageTest.titleRoutes()) === JSON.stringify([
+  { id: 'original', label: '원래 모험 시작' },
+  { id: 'memento', label: '메멘토 시간선 체험' },
+]));
+tap('ArrowUp');
+check('시간선 선택은 위 방향으로 끝에서 감김', g.routeCursor === 1);
+tap('ArrowDown');
+check('시간선 선택은 아래 방향으로 처음에 감김', g.routeCursor === 0);
+tap('z');
+check('원래 모험 선택 뒤 기존 세 슬롯 표면으로 이동', g.titleScreen === 'slots' && g.newGameRoute === 'original');
 const previewSlotZeroBytes = storage.get('fabletest2-memento-preview-slot-0');
 storage.delete('fabletest2-memento-preview-slot-0');
 const productionSlots = [0, 1, 2].map((i) => [
@@ -112,6 +122,7 @@ check('이어하기로 월드 진입', g.mode === 'world');
 check('사라진 v1 맵(serverroom) 세이브는 마을로 안전 이동(v3 마이그레이션)', g.map === 'village');
 check('현재 슬롯 0', g.currentSlot === 0);
 check('이어하기 시 진행도 유지', g.flags.defeated.finalboss === true && g.flags.mercy === 11);
+check('채운 슬롯 이어하기는 선택 경로로 리셋하지 않고 저장 경로를 유지', g.flags.storyRoute === 'original');
 
 console.log('[3] 진행 시 슬롯 0에만 저장, 다른 슬롯은 비어 있음');
 check('슬롯 1 비어 있음', !slot(1));
@@ -122,6 +133,10 @@ console.log('[4] 빈 슬롯에 새 모험 만들기 (슬롯 1)');
 g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 0;
 tap('ArrowDown'); // 슬롯 1로 이동
 check('커서 슬롯 1', g.slotCursor === 1);
+tap('x');
+check('빈 슬롯에서 취소하면 시간선 선택으로 돌아감', g.titleScreen === 'routechoice' && g.newGameRoute === null);
+tap('z');
+check('시간선 재선택 뒤 슬롯 위치와 세 슬롯은 유지', g.titleScreen === 'slots' && g.slotCursor === 1 && !!slot(0) && !slot(1));
 tap('z'); // 빈 슬롯 → 이름 입력
 check('이름 입력 화면', g.titleScreen === 'name');
 g.nameConfirm = true; step(2); // 기본 이름으로 시작 → 인트로 대화

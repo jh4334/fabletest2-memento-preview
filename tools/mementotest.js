@@ -33,6 +33,19 @@ function has(name) { return typeof T[name] === 'function'; }
 const REVEAL_IDS = ['reset_after', 'reset_before', 'city_failure', 'yeongi_warning', 'first_approval'];
 const CHRONOLOGICAL_IDS = REVEAL_IDS.slice().reverse();
 
+console.log('[CORE-RED] Tasks 4-9 gameplay contracts');
+check('routechoice is the first title surface before slots',
+  g.mode === 'title' && g.titleScreen === 'routechoice' && Array.isArray(T.titleRoutes && T.titleRoutes()));
+check('fast Memento start has a deterministic route-aware test seam', has('startNewGameForRoute'));
+check('record completion grants evidence only through the completion seam', has('recordEvidenceStatus'));
+check('present administrator terminal exposes locked, retry, and solved states', has('openAdministratorTerminal'));
+check('visible HUD uses the reverse-time axis and never a count',
+  has('recordHudText') && /현재/.test(T.recordHudText(T.newFlags(), false)) && !/\d\/5/.test(T.recordHudText(T.newFlags(), false)));
+check('timelineorder supports start, place, undo, and submit',
+  has('startTimelineOrdering') && has('placeTimelineCard') && has('undoTimelineCard') && has('submitTimelineOrder'));
+check('actual shrine completion enters ordering before restoration', has('interactAltar') && has('finishShrine'));
+check('finale resume matrix has a deterministic test seam', has('resumeMementoFinale'));
+
 console.log('[M-0] 메멘토 순수 모듈은 클래식 스크립트 순서와 독립 계약을 지킨다');
 const indexPath = path.resolve(process.env.MEMENTO_INDEX_PATH || path.join(__dirname, '..', 'index.html'));
 const indexSource = fs.readFileSync(indexPath, 'utf8');
@@ -78,7 +91,7 @@ if (pureModule.recordForChapter === 'function') {
 if (pureModule.axisProjection === 'function') {
   const axis = data("mementoAxisProjection(['reset_after', 'reset_after', 'unknown', 'city_failure'])", null);
   check('축 투영은 중복·알 수 없는 ID를 무시하고 다섯 노드를 안정적으로 남긴다',
-    axis && axis.direction === 'present-to-past' && axis.label === '현재 ◀ ●1 · ○2 · ●3 · ○5 · ○7일 ◀ 과거' &&
+    axis && axis.direction === 'present-to-past' && axis.label === '현재 ◀ ●D-1 · ○D-2 · ●D-3 · ○D-5 · ○D-7 ◀ 과거' &&
     JSON.stringify(axis.nodes.map((node) => [node.id, node.daysAgo, node.unlocked])) === JSON.stringify([
       ['reset_after', 1, true], ['reset_before', 2, false], ['city_failure', 3, true],
       ['yeongi_warning', 5, false], ['first_approval', 7, false],
@@ -160,6 +173,8 @@ if (has('startDamagedRecord') && has('unlockDamagedRecord')) {
     g.mode === 'world' && g.flags.viewedRecords.reset_after === true &&
     g.flags.skippedRecords.reset_after === true && g.flags.pendingRecord === null &&
     skippedSave && skippedSave.flags.skippedRecords.reset_after === true);
+  check('발견·건너뜀은 기록 증거를 주지 않음',
+    g.flags.recordEvidence.length === 0 && skippedSave.flags.recordEvidence.length === 0);
 
   g.flags.skippedRecords.reset_after = false;
   const before = g.flags.damagedRecords.slice();
@@ -179,6 +194,43 @@ if (has('startDamagedRecord') && has('unlockDamagedRecord')) {
   for (let i = 0; i < 4; i++) env.tap('z');
   check('첫 기록을 읽으면 입력자 공백을 짚는 반디 복선이 실제 대화로 이어짐',
     g.mode === 'dialog' && g.dialog && /누가 쓴 문장인지는 아직 몰라/.test(g.dialog.lines[0]));
+  const readSave = JSON.parse(env.storage.get('fabletest2-memento-preview-slot-0') || 'null');
+  check('기록을 끝까지 읽으면 증거 ID를 한 번만 저장',
+    g.flags.recordEvidence.join(',') === 'reset_after' && readSave.flags.recordEvidence.join(',') === 'reset_after');
+}
+
+console.log('[M-3b] 빠른 경로와 관리자 단말은 기록 증거를 실제로 사용한다');
+if (has('startNewGameForRoute') && has('openAdministratorTerminal')) {
+  const routeConfirmedAt = g.time;
+  T.startNewGameForRoute(2, '시간아이', 'memento');
+  const routeSave = JSON.parse(env.storage.get('fabletest2-memento-preview-slot-2') || 'null');
+  check('메멘토 새 게임은 같은 실험실에서 3600프레임 안에 첫 기록으로 진입',
+    g.mode === 'record' && g.record.ids[0] === 'reset_after' && g.time - routeConfirmedAt <= 3600 &&
+    g.map === 'introlab' && g.player.x === 14 && g.player.y === 16);
+  check('빠른 경로는 반디만 합류하고 장·증거를 자동 지급하지 않음',
+    routeSave.flags.storyRoute === 'memento' && routeSave.flags.bandiJoined === true &&
+    routeSave.flags.chapter1Clear === false && routeSave.flags.recordEvidence.length === 0);
+  env.tap('x');
+  T.openAdministratorTerminal();
+  check('건너뛴 기록의 단말은 잠겨 있고 다시보기 선택을 제공',
+    g.mode === 'choice' && /잠김/.test(g.choice.prompt) && g.choice.options[0] === '기록 다시 보기' &&
+    g.flags.introDoorOpen === false);
+  g.mode = 'world'; g.choice = null;
+  g.flags.recordEvidence = ['reset_after'];
+  T.openAdministratorTerminal();
+  check('증거가 있으면 단말이 고정 질문과 세 선택지를 표시',
+    g.mode === 'choice' && /손상된 기록과 비교/.test(g.choice.prompt) && g.choice.options.length === 3);
+  env.tap('z');
+  check('오답은 단말과 문을 잠근 채 다시 시도할 수 있음',
+    g.mode === 'dialog' && /오답/.test(g.dialog.lines[0]) && !g.flags.administratorTerminalSolved && !g.flags.introDoorOpen);
+  g.mode = 'world'; g.dialog = null;
+  T.openAdministratorTerminal();
+  g.choice.cursor = 1;
+  env.tap('z');
+  const terminalSave = JSON.parse(env.storage.get('fabletest2-memento-preview-slot-2') || 'null');
+  check('정답만 단말 해결과 출구 개방을 함께 저장',
+    g.flags.administratorTerminalSolved && g.flags.introDoorOpen &&
+    terminalSave.flags.administratorTerminalSolved && terminalSave.flags.introDoorOpen);
 }
 
 console.log('[M-4] 마음 일지는 사실의 신뢰도가 단계적으로 변한다');
@@ -196,19 +248,82 @@ if (has('journalRecordStage')) {
     final.label === '[복원된 사실]' && /나도 이 결정에 참여/.test(final.text) && /영이는 나를 멈추려/.test(final.text));
 }
 
-console.log('[M-5] 파이널은 두 시간선을 결합하고 건너뛰어도 막히지 않는다');
-check('시간순 복원 시작 API 존재', has('startTimelineRestoration'));
-if (has('startTimelineRestoration')) {
+console.log('[M-5] 다섯 카드 수동 정렬만 두 시간선을 결합한다');
+check('시간순 정렬 시작 API 존재', has('startTimelineOrdering'));
+if (has('startTimelineOrdering')) {
   g.currentSlot = 0;
-  g.flags = Object.assign(T.newFlags(), { damagedRecords: REVEAL_IDS.slice(), timelineMerged: false, timelineRestored: false });
-  T.startTimelineRestoration({ ret: 'world' });
-  check('복원 시작 시 결합 표식과 실제 시간순 record 모드',
-    g.flags.timelineMerged === true && g.mode === 'record' && g.record && g.record.restored === true &&
-    g.record.ids.join(',') === CHRONOLOGICAL_IDS.join(','));
+  g.flags = Object.assign(T.newFlags(), { damagedRecords: REVEAL_IDS.slice(), shrineDone: true });
+  T.startTimelineOrdering();
+  for (let i = 0; i < 5; i++) T.placeTimelineCard();
+  const wrongDraft = g.flags.timelineOrderDraft.slice();
+  T.submitTimelineOrder();
+  const wrongSave = JSON.parse(env.storage.get('fabletest2-memento-preview-slot-0') || 'null');
+  check('공개 역순 제출은 오답 횟수만 늘리고 배치를 보존',
+    wrongDraft.join(',') === REVEAL_IDS.join(',') && g.flags.timelineOrderWrong === 1 &&
+    !g.flags.timelineMerged && wrongSave.flags.timelineOrderDraft.join(',') === REVEAL_IDS.join(','));
+  check('오답은 아동 친화 문장으로 표시하고 해제 전 재제출을 막음',
+    /순서가 이어지지 않는다/.test(g.timelineOrder.feedback) && T.submitTimelineOrder() === false);
+  T.undoTimelineCard();
+  check('되돌리기는 오답을 해제하고 마지막 배치를 즉시 저장',
+    !g.timelineOrder.feedback && g.flags.timelineOrderDraft.length === 4 &&
+    JSON.parse(env.storage.get('fabletest2-memento-preview-slot-0')).flags.timelineOrderDraft.length === 4);
+
+  g.flags.timelineOrderDraft = [];
+  T.startTimelineOrdering();
+  [4, 3, 2, 1, 0].forEach((cursor) => { g.timelineOrder.cursor = cursor; T.placeTimelineCard(); });
+  check('오래된 7→5→3→2→1일 순서가 카드 놓기마다 초안에 저장',
+    g.flags.timelineOrderDraft.join(',') === CHRONOLOGICAL_IDS.join(',') &&
+    JSON.parse(env.storage.get('fabletest2-memento-preview-slot-0')).flags.timelineOrderDraft.join(',') === CHRONOLOGICAL_IDS.join(','));
+  T.submitTimelineOrder();
+  check('정답 제출만 결합하고 초안을 지운 뒤 색 복원 요약을 시작',
+    g.flags.timelineMerged === true && g.flags.timelineRestored === false && g.flags.timelineOrderDraft.length === 0 &&
+    g.mode === 'record' && g.record.restored === true && g.record.ids.join(',') === CHRONOLOGICAL_IDS.join(','));
   env.tap('x');
   const finalSave = JSON.parse(env.storage.get('fabletest2-memento-preview-slot-0') || 'null');
-  check('복원 건너뛰기도 완료 상태 저장 후 다음 흐름으로 복귀',
-    g.flags.timelineRestored === true && g.mode === 'world' && finalSave && finalSave.flags.timelineRestored === true);
+  check('복원 건너뛰기도 완료 상태 저장 후 반디 공개 흐름으로 복귀',
+    g.flags.timelineRestored === true && g.flags.bandiRevealed === true && g.mode === 'dialog' &&
+    finalSave && finalSave.flags.timelineRestored === true && finalSave.flags.bandiRevealed === true);
+}
+
+console.log('[M-5b] 실제 제단과 저장 재개 행렬은 각 표면을 한 번만 연다');
+if (has('interactAltar') && has('resumeMementoFinale')) {
+  const whisperAnswers = data('SHRINE_WHISPERS.map((whisper) => whisper.answer)', []);
+  g.currentSlot = 1;
+  g.flags = Object.assign(T.newFlags(), { evCards: Array.from(new Set(whisperAnswers)), shrineIdx: 0 });
+  g.mode = 'world';
+  T.interactAltar();
+  const openWhispers = g.dialog && g.dialog.onEnd;
+  g.dialog = null; g.mode = 'world';
+  openWhispers();
+  whisperAnswers.forEach((answer) => {
+    g.choice.cursor = g.flags.evCards.indexOf(answer);
+    env.tap('z');
+  });
+  check('여덟 속삭임을 실제 선택하면 제단 완료 뒤 정렬 모드로 진입',
+    g.flags.shrineIdx === 8 && g.flags.shrineDone === true && g.mode === 'timelineorder' &&
+    !g.flags.timelineMerged && !g.flags.timelineRestored);
+
+  g.flags = Object.assign(T.newFlags(), { shrineDone: true, timelineOrderDraft: ['reset_after'] });
+  g.mode = 'world';
+  T.resumeMementoFinale();
+  check('shrineDone&&!timelineMerged 재개는 저장 초안을 유지한 정렬 표면',
+    g.mode === 'timelineorder' && g.flags.timelineOrderDraft.join(',') === 'reset_after');
+  T.resumeMementoFinale();
+  check('정렬 상태 반복 재개는 초안을 복제하지 않음', g.flags.timelineOrderDraft.join(',') === 'reset_after');
+
+  g.flags = Object.assign(T.newFlags(), { shrineDone: true, timelineMerged: true, timelineRestored: false });
+  g.mode = 'world';
+  T.resumeMementoFinale();
+  check('merged&&!restored 재개는 기존 복원된 색 요약', g.mode === 'record' && g.record.restored === true);
+
+  g.flags = Object.assign(T.newFlags(), { shrineDone: true, timelineMerged: true, timelineRestored: true, bandiRevealed: false });
+  g.mode = 'world'; g.record = null;
+  T.resumeMementoFinale();
+  check('restored&&!bandiRevealed 재개만 반디 공개를 시작',
+    g.flags.bandiRevealed === true && g.mode === 'dialog' && g.dialog && /가장 오래된 날/.test(g.dialog.lines[0]));
+  const revealedDialog = g.dialog;
+  T.resumeMementoFinale();
+  check('공개 뒤 반복 재개는 대화 콜백을 중복 생성하지 않음', g.dialog === revealedDialog);
 }
 
 console.log('[M-6] 기존 세이브는 V9로 안전하게 옮겨진다');
@@ -247,12 +362,24 @@ check('신규 세이브의 기록 상태 기본값', Array.isArray(fresh.damaged
 console.log('[M-6b] 손상 기록 진행은 첫 장부터 HUD와 다시보기 동선에 드러난다');
 check('손상 기록 HUD 문구 API 존재', has('recordHudText'));
 if (has('recordHudText')) {
-  check('해금 전 HUD가 장 끝의 새 기록 목표를 예고', /0\/5/.test(T.recordHudText(T.newFlags(), false)));
+  const emptyAxis = T.recordHudText(T.newFlags(), false);
+  check('해금 전 HUD는 다섯 날짜와 현재→과거 방향을 빈 원으로 표시',
+    emptyAxis === '현재 ◀ ○D-1 · ○D-2 · ○D-3 · ○D-5 · ○D-7 ◀ 과거 · J 다시보기');
   const oneRecord = Object.assign(T.newFlags(), { damagedRecords: ['reset_after'] });
-  check('해금 뒤 키보드 HUD가 기록 수와 J 다시보기를 안내',
-    /1\/5/.test(T.recordHudText(oneRecord, false)) && /J/.test(T.recordHudText(oneRecord, false)));
-  check('해금 뒤 터치 HUD가 기록 수와 메뉴 다시보기를 안내',
-    /1\/5/.test(T.recordHudText(oneRecord, true)) && /메뉴/.test(T.recordHudText(oneRecord, true)));
+  check('해금 뒤 키보드 HUD가 채운 모양·D-날짜·J 다시보기를 안내',
+    /●D-1/.test(T.recordHudText(oneRecord, false)) && /○D-7/.test(T.recordHudText(oneRecord, false)) && /J/.test(T.recordHudText(oneRecord, false)));
+  check('해금 뒤 터치 HUD가 같은 축과 메뉴 다시보기를 안내',
+    /현재 ◀ ●D-1/.test(T.recordHudText(oneRecord, true)) && /메뉴/.test(T.recordHudText(oneRecord, true)));
+  const skippedRecord = Object.assign(T.newFlags(), {
+    damagedRecords: ['reset_after'], skippedRecords: { reset_after: true },
+  });
+  const evidenceRecord = Object.assign(T.newFlags(), {
+    damagedRecords: ['reset_after'], recordEvidence: ['reset_after'],
+  });
+  check('축은 건너뜀 △과 증거 ◆을 날짜 텍스트와 함께 구별',
+    /△D-1/.test(T.recordHudText(skippedRecord, false)) && /◆D-1/.test(T.recordHudText(evidenceRecord, false)));
+  check('보이는 손상 기록 N/5 카운터는 소스에 남지 않음',
+    !/손상 기록\s+\$?\{?[^\n]*\/5/.test(fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8')));
 }
 
 console.log('[M-7] 네 엔딩은 기존 ID와 누적 여정을 보존해 새 주제에 연결된다');

@@ -126,6 +126,7 @@ function mark(name) {
 
 // ---- 시나리오: 새 모험 → 실험실 방탈출 → 숲 → 따라 → 마을 → 1장 진입 ----
 step(5);
+tap('z');
 tap('z');                       // 슬롯 0 → 이름 입력
 g.nameConfirm = true; step(2);  // 기본 이름 시작 → 인트로(실험실) + 반디 합류
 advanceDialog();
@@ -414,6 +415,10 @@ for (let i = 0; i < SHRINE_WHISPERS.length; i++) {
   const idx = owned.indexOf(SHRINE_WHISPERS[i].answer);
   if (idx < 0) throw new Error('정답 카드 미소지: ' + SHRINE_WHISPERS[i].answer);
   pickChoice(idx); advanceDialog();
+}
+if (g.mode === 'timelineorder') {
+  tap('ArrowUp');
+  for (let i = 0; i < 6; i++) tap('z');
 }
 if (g.mode === 'record') advanceRecord();
 if (!g.flags.shrineDone || !g.flags.bandiRevealed) throw new Error('봉헌/정체 공개 실패');

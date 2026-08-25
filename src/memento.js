@@ -139,7 +139,7 @@ function mementoAxisProjection(unlockedIds) {
   }));
   return {
     direction: 'present-to-past',
-    label: `현재 ◀ ${nodes.map((node) => `${node.unlocked ? '●' : '○'}${node.daysAgo}`).join(' · ')}일 ◀ 과거`,
+    label: `현재 ◀ ${nodes.map((node) => `${node.unlocked ? '●' : '○'}D-${node.daysAgo}`).join(' · ')} ◀ 과거`,
     nodes,
   };
 }

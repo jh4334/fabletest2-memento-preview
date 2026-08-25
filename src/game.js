@@ -135,6 +135,7 @@
     review: { cursor: 0, ret: 'world', slot: 0, phase: 'list', ids: [], qCursor: 0, choiceOrder: null, feedback: null },
     journal: { ret: 'world', slot: 0, scroll: 0, toast: 0, tab: 'progress', recordCursor: 0 },
     record: null,
+    timelineOrder: null,
     awards: { ret: 'world', slot: 0, scroll: 0 },
     challenge: null, // { ret, slot, phase, topics, sel, questions, idx, cursor, choiceOrder, score, feedback }
     cosmetics: { ret: 'title', slot: 0, col: 0, rowTitle: 0, rowTheme: 0, toast: 0 },
@@ -144,7 +145,9 @@
     helpRet: 'title',
     pauseCursor: 0,
     teacherCursor: 0,    // 「선생님 방」 메뉴 커서
-    titleScreen: 'slots', // slots | name | delete
+    titleScreen: 'routechoice',
+    routeCursor: 0,
+    newGameRoute: null,
     slotCursor: 0,
     currentSlot: 0,
     playerName: '수호자',
@@ -1456,6 +1459,21 @@
     if (!action || !cancel) return;
     const actionSub = action.querySelector('.sub');
     const setActionSub = (text) => { if (actionSub) actionSub.textContent = text; };
+    if (game.mode === 'title' && game.titleScreen === 'routechoice') {
+      action.setAttribute('aria-label', '선택한 시간선 결정');
+      setActionSub('시간선 선택');
+      cancel.setAttribute('aria-label', '시간선 선택 화면');
+      cancel.textContent = '선택 중';
+      return;
+    }
+    if (game.mode === 'timelineorder') {
+      const remaining = timelineOrderRemaining();
+      action.setAttribute('aria-label', remaining.length ? '선택한 시간 카드 놓기' : '시간순 확인');
+      setActionSub(remaining.length ? '카드 놓기' : '순서 확인');
+      cancel.setAttribute('aria-label', '마지막 카드 되돌리기');
+      cancel.textContent = '되돌리기';
+      return;
+    }
     if (game.mode === 'report') {
       action.setAttribute('aria-label', '진단 리포트 내보내기');
       setActionSub('내보내기');
@@ -3298,7 +3316,7 @@
     game.choiceRet = game.mode;
     game.mode = 'choice';
     Sound.select();
-    if (game.tts) Speech.speak(prompt);
+    if (game.tts) Speech.speak(`${prompt}. 1번, ${options[0] || ''}`);
   }
   function updateChoice() {
     const c = game.choice;
@@ -4255,6 +4273,10 @@
     const standingFlagProp = (standingProp && standingProp.flag && !game.flags[standingProp.flag]) ? standingProp : null;
     const prop = facingProp || (standingTrace && standingTrace.kind === 'trace' ? standingTrace : null) || standingFlagProp;
     if (prop) {
+      if (game.map === 'introlab' && prop.kind === 'admin-terminal' && game.flags.storyRoute === 'memento') {
+        openAdministratorTerminal();
+        return;
+      }
       const lines = [];
       if (game.map === 'introlab' && prop.kind === 'exit') {
         const c = introClueCount(game.flags);
@@ -4280,7 +4302,7 @@
           lines.push('이제 노란 화살표를 따라가자.\n따라가 숲 안쪽에서 기다리고 있다.');
         }
         // 프롤로그 실험실 — 단서 3개 수집 시 문 개방
-        if (game.map === 'introlab' && !game.flags.introDoorOpen &&
+        if (game.map === 'introlab' && game.flags.storyRoute !== 'memento' && !game.flags.introDoorOpen &&
             introClueCount(game.flags) >= 3) {
           game.flags.introDoorOpen = true;
           save();
@@ -5368,15 +5390,20 @@
   }
   function finishShrine() {
     if (game.flags.bandiRevealed) return;
+    if (!game.flags.shrineDone && (game.flags.shrineIdx || 0) < SHRINE_WHISPERS.length) return;
     if (!game.flags.shrineDone) {
       game.flags.shrineDone = true;
       save();
     }
-    if (!game.flags.timelineRestored) {
-      startTimelineRestoration({ ret: 'world', onEnd: revealBandiAtShrine });
-      return;
-    }
+    resumeMementoFinale();
+  }
+
+  function resumeMementoFinale() {
+    if (!game.flags || !game.flags.shrineDone || game.flags.bandiRevealed) return false;
+    if (!game.flags.timelineMerged) return startTimelineOrdering();
+    if (!game.flags.timelineRestored) return startTimelineRestoration({ ret: 'world', onEnd: revealBandiAtShrine });
     revealBandiAtShrine();
+    return true;
   }
 
   function revealBandiAtShrine() {
@@ -7284,9 +7311,49 @@
   }
 
   function recordHudText(flags, touch) {
-    const count = recordCount(flags);
-    const route = count > 0 ? (touch ? '메뉴에서 다시보기' : 'J 다시보기') : '장 끝에서 발견';
-    return `손상 기록 ${count}/${MEMENTO_RECORDS.length} · ${route}`;
+    const axis = mementoAxisProjection(flags && flags.damagedRecords);
+    const evidence = new Set(flags && Array.isArray(flags.recordEvidence) ? flags.recordEvidence : []);
+    const skipped = flags && flags.skippedRecords ? flags.skippedRecords : {};
+    const nodes = axis.nodes.map((node) => {
+      const shape = evidence.has(node.id) ? '◆' : skipped[node.id] ? '△' : node.unlocked ? '●' : '○';
+      return `${shape}D-${node.daysAgo}`;
+    }).join(' · ');
+    const replay = touch ? '메뉴에서 다시보기' : 'J 다시보기';
+    return `현재 ◀ ${nodes} ◀ 과거 · ${replay}`;
+  }
+
+  function recordEvidenceStatus(id) {
+    return !!(game.flags && Array.isArray(game.flags.recordEvidence) && game.flags.recordEvidence.includes(id));
+  }
+
+  function openAdministratorTerminal() {
+    if (!game.flags || game.flags.storyRoute !== 'memento') return false;
+    if (game.flags.administratorTerminalSolved) {
+      startDialog([`${MEMENTO_TERMINAL.title} · 확인 완료\n${MEMENTO_TERMINAL.correctText}`], '관리자 단말');
+      return true;
+    }
+    if (!recordEvidenceStatus('reset_after')) {
+      startChoice(`${MEMENTO_TERMINAL.title} · 잠김\n${MEMENTO_TERMINAL.locked}`, ['기록 다시 보기', '돌아가기'], (index) => {
+        if (index === 0) startDamagedRecord('reset_after', { ret: 'world', replay: true, onEnd: openAdministratorTerminal });
+      });
+      return true;
+    }
+    startChoice(`${MEMENTO_TERMINAL.title} · 확인 필요\n${MEMENTO_TERMINAL.prompt}`,
+      MEMENTO_TERMINAL.choices.map((choice) => choice.label), (index) => {
+        if (index < 0) return;
+        const answer = MEMENTO_TERMINAL.choices[index];
+        if (answer.correct) {
+          game.flags.administratorTerminalSolved = true;
+          game.flags.introDoorOpen = true;
+          save();
+          Sound.correct();
+          startDialog([`정답 · ${MEMENTO_TERMINAL.correctText}`], '관리자 단말');
+          return;
+        }
+        Sound.wrong();
+        startDialog([`오답 · 다시\n${MEMENTO_TERMINAL.wrongText}`], '관리자 단말', openAdministratorTerminal);
+      });
+    return true;
   }
 
   function unlockDamagedRecord(chapter) {
@@ -7296,7 +7363,7 @@
     game.flags.damagedRecords.push(id);
     game.flags.pendingRecord = id;
     save();
-    game.notice = { text: `손상된 기록 ${game.flags.damagedRecords.length}/5을 찾았다`, t: 180 };
+    game.notice = { text: `${recordHudText(game.flags, isTouchDevice)} · 새 기록`, t: 180 };
     return id;
   }
 
@@ -7311,7 +7378,7 @@
     const scene = recordById(r.ids[r.scene], r.restored);
     if (!scene) return;
     if (r.discovery) {
-      Speech.speak(`새로운 손상 기록을 찾았다. 현재보다 ${scene.daysAgo}일 전. 지금 복원하기, 또는 나중에 보기.`);
+      Speech.speak(`새로운 손상 기록을 찾았다. 역행 시간선, 현재에서 과거 방향. 현재보다 ${scene.daysAgo}일 전. 지금 복원하기, 또는 나중에 보기.`);
       return;
     }
     const label = r.restored ? '복원된 시간순' : '손상된 기록';
@@ -7333,13 +7400,178 @@
     return true;
   }
 
+  function timelineOrderingCards() {
+    const cards = mementoOrderingCards();
+    return MEMENTO_RECORDS.map((record) => cards.find((card) => card.id === record.id));
+  }
+
+  function timelineOrderRemaining() {
+    if (!game.timelineOrder || !game.flags) return [];
+    return game.timelineOrder.cards.filter((card) => !game.flags.timelineOrderDraft.includes(card.id));
+  }
+
+  function timelineOrderAnnouncement() {
+    if (!game.timelineOrder || !game.flags) return '';
+    const remaining = timelineOrderRemaining();
+    const placed = game.flags.timelineOrderDraft.length;
+    if (game.timelineOrder.feedback) return game.timelineOrder.feedback;
+    if (!remaining.length) return `시간순 카드 ${placed}/5 배치 완료. 확인하려면 결정.`;
+    const card = remaining[Math.min(game.timelineOrder.cursor, remaining.length - 1)];
+    return `시간순 복원. ${placed}/5 배치됨. 남은 카드 ${remaining.length}개. 선택: 현재보다 ${card.daysAgo}일 전, ${card.title}.`;
+  }
+
+  function announceTimelineOrder() {
+    if (game.tts) Speech.speak(timelineOrderAnnouncement());
+  }
+
+  function startTimelineOrdering() {
+    if (!game.flags || game.flags.timelineMerged) return false;
+    game.timelineOrder = { cards: timelineOrderingCards(), cursor: 0, feedback: null };
+    game.mode = 'timelineorder';
+    announceTimelineOrder();
+    return true;
+  }
+
+  function placeTimelineCard() {
+    if (!game.timelineOrder || !game.flags || game.timelineOrder.feedback) return false;
+    const remaining = timelineOrderRemaining();
+    if (!remaining.length) return false;
+    const index = Math.min(game.timelineOrder.cursor, remaining.length - 1);
+    game.flags.timelineOrderDraft.push(remaining[index].id);
+    game.timelineOrder.cursor = Math.min(index, Math.max(0, remaining.length - 2));
+    save();
+    Sound.blip(820);
+    announceTimelineOrder();
+    return true;
+  }
+
+  function undoTimelineCard() {
+    if (!game.timelineOrder || !game.flags) return false;
+    if (game.timelineOrder.feedback) game.timelineOrder.feedback = null;
+    if (!game.flags.timelineOrderDraft.length) {
+      announceTimelineOrder();
+      return false;
+    }
+    game.flags.timelineOrderDraft.pop();
+    save();
+    Sound.blip(540);
+    announceTimelineOrder();
+    return true;
+  }
+
+  function submitTimelineOrder() {
+    if (!game.timelineOrder || !game.flags || game.timelineOrder.feedback || game.flags.timelineOrderDraft.length !== 5) return false;
+    if (!isMementoChronologicalOrder(game.flags.timelineOrderDraft)) {
+      game.flags.timelineOrderWrong += 1;
+      game.timelineOrder.feedback = '순서가 이어지지 않는다. 날짜를 다시 살펴보자.';
+      save();
+      Sound.wrong();
+      announceTimelineOrder();
+      return false;
+    }
+    game.flags.timelineMerged = true;
+    game.flags.timelineOrderDraft = [];
+    save();
+    game.timelineOrder = null;
+    Sound.correct();
+    startTimelineRestoration({ ret: 'world', onEnd: revealBandiAtShrine });
+    return true;
+  }
+
+  function updateTimelineOrder() {
+    const state = game.timelineOrder;
+    if (!state || !game.flags) { game.mode = 'world'; return; }
+    if (justPressed('menu')) {
+      save();
+      game.timelineOrder = null;
+      game.mode = 'world';
+      Speech.stop();
+      return;
+    }
+    if (justPressed('cancel')) { undoTimelineCard(); return; }
+    if (state.feedback) {
+      if (justPressed('action')) {
+        state.feedback = null;
+        Sound.blip();
+        announceTimelineOrder();
+      }
+      return;
+    }
+    const remaining = timelineOrderRemaining();
+    if (remaining.length && (justPressed('up') || justPressed('down'))) {
+      state.cursor = justPressed('up')
+        ? (state.cursor + remaining.length - 1) % remaining.length
+        : (state.cursor + 1) % remaining.length;
+      Sound.blip();
+      announceTimelineOrder();
+      return;
+    }
+    if (justPressed('action')) {
+      if (remaining.length) placeTimelineCard();
+      else submitTimelineOrder();
+    }
+  }
+
+  function drawTimelineOrder() {
+    if (!game.timelineOrder || !game.flags) return;
+    const color = RECORD_UI.color;
+    const remaining = timelineOrderRemaining();
+    ctx.fillStyle = color.page;
+    ctx.fillRect(0, 0, LW, LH);
+    ctx.fillStyle = '#72d2c7';
+    ctx.font = fs(22, true);
+    ctx.fillText('[복원된 시간순 · 카드 배치]', 28, 40);
+    ctx.fillStyle = '#dddddd';
+    ctx.font = fs(13);
+    ctx.fillText('가장 오래된 날부터 1→5번 칸에 놓자.', 28, 64);
+    for (let i = 0; i < 5; i++) {
+      const y = 88 + i * 61;
+      const id = game.flags.timelineOrderDraft[i];
+      const card = game.timelineOrder.cards.find((item) => item.id === id);
+      utBox(28, y, 390, 49, 6);
+      ctx.fillStyle = card ? '#72d2c7' : '#777777';
+      ctx.font = fs(14, true);
+      ctx.fillText(`${i + 1}. ${card ? `현재보다 ${card.daysAgo}일 전 · ${card.title}` : '○ 빈 시간순 칸'}`, 44, y + 30);
+    }
+    utBox(438, 88, 254, 232, 8);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = fs(16, true);
+    ctx.fillText(`남은 카드 ${remaining.length}개`, 458, 118);
+    if (remaining.length) {
+      const card = remaining[Math.min(game.timelineOrder.cursor, remaining.length - 1)];
+      ctx.fillStyle = '#ffd644';
+      ctx.font = fs(15, true);
+      ctx.fillText(`● 현재보다 ${card.daysAgo}일 전`, 458, 164);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = fs(16, true);
+      drawQuestionText(card.title, 458, 198, 210, lh(24));
+      ctx.fillStyle = '#888888';
+      ctx.font = fs(12);
+      ctx.fillText(`${game.timelineOrder.cursor + 1}/${remaining.length} · ↑↓ 카드 선택`, 458, 278);
+    } else {
+      ctx.fillStyle = '#8de08d';
+      ctx.font = fs(15, true);
+      ctx.fillText('◆ 다섯 카드 배치 완료', 458, 166);
+      ctx.fillStyle = '#dddddd';
+      ctx.font = fs(13);
+      ctx.fillText('Z·Enter로 순서를 확인하자.', 458, 204);
+    }
+    if (game.timelineOrder.feedback) {
+      utBox(28, 408, 664, 60, 6);
+      ctx.fillStyle = badColor();
+      ctx.font = fs(14, true);
+      ctx.fillText(`△ 오답 · ${game.timelineOrder.feedback}`, 46, 443);
+    }
+    ctx.fillStyle = '#888888';
+    ctx.font = fs(12);
+    ctx.textAlign = 'center';
+    ctx.fillText(isTouchDevice ? 'Ⓐ 놓기·확인 · [되돌리기] · [메뉴] 저장 후 나가기' : 'Z 놓기·확인 · X·Esc 되돌리기 · C 저장 후 나가기', LW / 2, 504);
+    ctx.textAlign = 'left';
+  }
+
   function startTimelineRestoration(options) {
     options = options || {};
     if (!game.flags || !RESTORED_TIMELINE.length) return false;
-    if (!options.replay) {
-      game.flags.timelineMerged = true;
-      save();
-    }
     game.record = {
       ids: RESTORED_TIMELINE.map((item) => item.recordId),
       scene: 0, page: 0, ret: options.ret || 'world', replay: !!options.replay,
@@ -7368,6 +7600,8 @@
         game.flags.viewedRecords[id] = true;
         game.flags.skippedRecords[id] = false;
       }
+      if (!Array.isArray(game.flags.recordEvidence)) game.flags.recordEvidence = [];
+      if (!skipped && !game.flags.recordEvidence.includes(id)) game.flags.recordEvidence.push(id);
     }
     save();
     const ret = r.ret || 'world';
@@ -7610,12 +7844,11 @@
     ctx.textAlign = 'left';
     drawRecordDiorama(scene, r.restored);
     if (r.discovery) {
-      const found = Math.max(1, game.flags.damagedRecords.indexOf(r.ids[0]) + 1);
       drawRecordPanel(visual);
       ctx.textAlign = 'center';
       ctx.fillStyle = visual.accent;
       ctx.font = recordFs(type.label, true);
-      ctx.fillText(`[새로운 손상 기록 · ${found}/${MEMENTO_RECORDS.length}]`, LW / 2, layout.discoveryLabelY);
+      ctx.fillText(`[새로운 손상 기록 · D-${scene.daysAgo} · 현재에서 과거로]`, LW / 2, layout.discoveryLabelY);
       ctx.fillStyle = color.primary;
       ctx.font = recordFs(type.title, true);
       ctx.fillText(`「${scene.title}」`, LW / 2, layout.titleY);
@@ -12161,6 +12394,35 @@
       drawMon(ctx, parade[i], bx, 134 + Math.sin(game.time / 20 + i * 1.1) * 5, 3);
     }
 
+    if (game.titleScreen === 'routechoice') {
+      ctx.fillStyle = '#fff';
+      ctx.font = fs(22, true);
+      ctx.fillText('어떤 시간선으로 시작할까?', LW / 2, 218);
+      const descriptions = ['기존 프롤로그부터 이야기를 이어갑니다', '첫 손상 기록부터 빠르게 체험합니다'];
+      for (let i = 0; i < MEMENTO_ROUTES.length; i++) {
+        const route = MEMENTO_ROUTES[i];
+        const selected = i === game.routeCursor;
+        const x = 110, y = 250 + i * 106, w = 500, h = 88;
+        utBox(x, y, w, h, 8);
+        ctx.strokeStyle = selected ? '#ffd644' : '#444444';
+        ctx.lineWidth = selected ? 4 : 2;
+        ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+        ctx.textAlign = 'left';
+        ctx.fillStyle = selected ? '#ffd644' : '#dddddd';
+        ctx.font = fs(18, true);
+        ctx.fillText(`${selected ? '●' : '○'} ${route.label}`, x + 24, y + 34);
+        ctx.fillStyle = '#b7b2c8';
+        ctx.font = fs(13);
+        ctx.fillText(descriptions[i], x + 52, y + 62);
+      }
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#888888';
+      ctx.font = fs(13);
+      ctx.fillText(isTouchDevice ? '스틱으로 선택 · Ⓐ 결정' : '↑↓ 선택 · Z·Enter 결정', LW / 2, 486);
+      ctx.textAlign = 'left';
+      return;
+    }
+
     // 세이브 슬롯 3개
     const boxW = 460, boxX = LW / 2 - boxW / 2;
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -12290,7 +12552,7 @@
     ctx.textAlign = 'left';
   }
 
-  function startNewGame(slot, name, ng) {
+  function startNewGame(slot, name, ng, route) {
     game.currentSlot = slot;
     game.playerName = name || '수호자';
     game.map = 'introlab';
@@ -12298,11 +12560,23 @@
     game.player.px = 14 * TS; game.player.py = 16 * TS;
     game.player.dir = 'up';
     game.flags = newFlags();
+    game.flags.storyRoute = route === 'memento' ? 'memento' : 'original';
+    game.newGameRoute = null;
     if (ng) game.flags.ng = true; // U-5 두 번째 모험(NG+) — 세이브 스키마 영향 없이 flags에만
     game.mode = 'world';
     save();
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
+    if (game.flags.storyRoute === 'memento') {
+      game.introDim = null;
+      game.flags.bandiJoined = true;
+      save();
+      const firstRecord = unlockDamagedRecord(1);
+      if (firstRecord) startDamagedRecord(firstRecord, {
+        ret: 'world', onEnd: () => Sound.playMapBgm(MAPS[game.map].song),
+      });
+      return;
+    }
     // 인트로 암전 — 첫 3줄(컴퓨터실 장면) 동안 화면을 거의 검게 덮는다.
     // 4번째 줄부터 걷히기 시작한다(drawWorld에서 처리).
     // 인트로 동안은 아무 음악도 흐르지 않는다 — 침묵으로 시작해, 눈을 뜬 뒤에야
@@ -12322,6 +12596,10 @@
         Sound.playMapBgm(MAPS[game.map].song);
       });
     });
+  }
+
+  function startNewGameForRoute(slot, name, route) {
+    startNewGame(slot, name, false, route);
   }
 
   // 저장된 위치가 (맵 수정·손상 등으로) 막힌 칸이면 가까운 안전한 칸을 찾아 갇힘을 막는다.
@@ -12347,6 +12625,7 @@
     const s = loadSlot(slot);
     if (!s) return;
     game.currentSlot = slot;
+    game.newGameRoute = null;
     game.playerName = s.name || '수호자';
     game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
     let sx = (typeof s.x === 'number') ? s.x : 13;
@@ -12375,10 +12654,7 @@
     Sound.playMapBgm(MAPS[game.map].song);
     if (game.flags.pendingRecord) {
       startDamagedRecord(game.flags.pendingRecord, { ret: 'world' });
-    } else if (game.flags.shrineDone && !game.flags.bandiRevealed) {
-      if (game.flags.timelineRestored) revealBandiAtShrine();
-      else startTimelineRestoration({ ret: 'world', onEnd: revealBandiAtShrine });
-    }
+    } else if (game.flags.shrineDone && !game.flags.bandiRevealed) resumeMementoFinale();
   }
 
   // B-3 일일 도전 표면화 — 월드 진입 시, 스트릭 마일스톤(3·7·14일) 축하가 있으면 먼저,
@@ -12403,7 +12679,26 @@
     Speech.speak(`슬롯 ${game.slotCursor + 1}, ` + (sum ? `${sum.name}, 이어하기` : '비어 있음, 새 모험'));
   }
 
+  function speakRouteCursor() {
+    if (!game.tts) return;
+    const route = MEMENTO_ROUTES[game.routeCursor];
+    Speech.speak(`${game.routeCursor + 1}/${MEMENTO_ROUTES.length}. ${route.label}`);
+  }
+
   function updateTitle() {
+    if (game.titleScreen === 'routechoice') {
+      if (justPressed('up') || justPressed('down') || justPressed('left') || justPressed('right')) {
+        game.routeCursor = game.routeCursor ? 0 : 1;
+        Sound.blip();
+        speakRouteCursor();
+      } else if (justPressed('action')) {
+        game.newGameRoute = MEMENTO_ROUTES[game.routeCursor].id;
+        game.titleScreen = 'slots';
+        Sound.select();
+        speakSlotCursor();
+      }
+      return;
+    }
     if (game.titleScreen === 'name') {
       if (game.nameConfirm) {
         game.nameConfirm = false;
@@ -12411,7 +12706,7 @@
         hideNameEntry();
         game.titleScreen = 'slots';
         Sound.select();
-        startNewGame(game.slotCursor, nm);
+        startNewGame(game.slotCursor, nm, false, game.newGameRoute);
       } else if (game.nameCancel || justPressed('cancel')) {
         game.nameCancel = false;
         hideNameEntry();
@@ -12423,7 +12718,7 @@
         hideNameEntry();
         game.titleScreen = 'slots';
         Sound.select();
-        startNewGame(game.slotCursor, nm);
+        startNewGame(game.slotCursor, nm, false, game.newGameRoute);
       }
       return;
     }
@@ -12452,7 +12747,7 @@
           const sum = slotSummary(slot); // 이름은 이어받아 NG+로 새로 시작
           game.titleScreen = 'slots';
           Sound.select();
-          startNewGame(slot, sum ? sum.name : '수호자', true);
+          startNewGame(slot, sum ? sum.name : '수호자', true, game.newGameRoute);
         } else {
           game.titleScreen = 'slots';
           Sound.select();
@@ -12475,7 +12770,9 @@
       speakSlotCursor(); // 읽어주기 — 어떤 슬롯이 선택됐는지 귀로 알 수 있게
     }
     if (justPressed('cancel')) {
-      if (slotSummary(game.slotCursor)) { game.titleScreen = 'delete'; Sound.blip(); }
+      if (slotSummary(game.slotCursor)) game.titleScreen = 'delete';
+      else { game.titleScreen = 'routechoice'; game.newGameRoute = null; }
+      Sound.blip();
       return;
     }
     if (justPressed('action')) {
@@ -12754,12 +13051,19 @@
   function syncSrLive() {
     if (!srLiveEl) return;
     let txt = '';
-    if (game.mode === 'record' && game.record) {
+    if (game.mode === 'title' && game.titleScreen === 'routechoice') {
+      const route = MEMENTO_ROUTES[game.routeCursor];
+      txt = `시간선 선택. ${game.routeCursor + 1}/${MEMENTO_ROUTES.length}. ${route.label}.`;
+    } else if (game.mode === 'timelineorder') {
+      txt = timelineOrderAnnouncement();
+    } else if (game.mode === 'choice' && game.choice) {
+      txt = `${game.choice.prompt}. ${game.choice.cursor + 1}/${game.choice.options.length}. ${game.choice.options[game.choice.cursor]}.`;
+    } else if (game.mode === 'record' && game.record) {
       const r = game.record;
       const scene = recordById(r.ids[r.scene], r.restored);
       if (scene) {
         txt = r.discovery
-          ? `새로운 손상 기록. 현재보다 ${scene.daysAgo}일 전. 지금 복원하기, 또는 나중에 보기.`
+          ? `새로운 손상 기록. 역행 시간선, 현재에서 과거 방향. 현재보다 ${scene.daysAgo}일 전. 지금 복원하기, 또는 나중에 보기.`
           : (r.restored ? '복원된 시간순' : '손상된 기록') + '. 현재보다 ' +
             scene.daysAgo + '일 전. ' + scene.title + '. ' + recordPageText(scene, r.page);
       }
@@ -12892,6 +13196,12 @@
         if (game.mode === 'record') drawRecord();
         else if (game.mode === 'journal') drawJournal();
         else { drawWorld(); if (game.dialog) drawDialog(); }
+        break;
+      case 'timelineorder':
+        updateTimelineOrder();
+        if (game.mode === 'timelineorder') drawTimelineOrder();
+        else if (game.mode === 'record') drawRecord();
+        else drawWorld();
         break;
       case 'awards':
         updateAwards();
@@ -13115,7 +13425,13 @@
     dailyDoneToday, surfaceDailyAndStreak,
     // X라운드 신규 — 재대결(기억의 방)·수업 배너·반응 선택 검증용
     newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
-    recordForChapter, recordHudText, unlockDamagedRecord, startDamagedRecord, startTimelineRestoration,
+    titleRoutes: () => MEMENTO_ROUTES.map((route) => ({ id: route.id, label: route.label })),
+    startNewGameForRoute, continueGame,
+    recordForChapter, recordHudText, recordEvidenceStatus, unlockDamagedRecord, startDamagedRecord,
+    openAdministratorTerminal, startTimelineRestoration,
+    startTimelineOrdering, placeTimelineCard, undoTimelineCard, submitTimelineOrder,
+    updateTimelineOrder, drawTimelineOrder, timelineOrderAnnouncement,
+    interactAltar, finishShrine, resumeMementoFinale,
     journalRecordStage, journalRecordItems, journalAnnouncement, announceJournal, finishRecord, revealBandiAtShrine,
     timelineVisualMode, recordDioramaSpec, worldFigureProfile,
     endingScene, endingAnnouncement, announceEnding,

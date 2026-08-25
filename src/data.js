@@ -2907,6 +2907,13 @@ function getObjective(flags, curMap) {
   const d = flags.defeated;
   // 프롤로그 실험실 — 단서 수집 → 문 개방 → 출구 이동까지 방 안 목표로 유지한다.
   if (curMap === 'introlab') {
+    if (flags.storyRoute === 'memento') {
+      if (flags.introDoorOpen) return '출구가 열렸다 — 문으로 나가자';
+      if (flags.administratorTerminalSolved) return '관리자 확인 완료 — 출구로 나가자';
+      return (flags.recordEvidence || []).includes('reset_after')
+        ? '관리자 단말에서 안내문을 확인하자'
+        : '관리자 단말에서 손상 기록을 다시 확인하자';
+    }
     const c = introClueCount(flags);
     if (flags.introDoorOpen) return '출구가 열렸다 — 문으로 나가자';
     if (!flags.introClue1) return `단서 ${c}/3 — 왼쪽 위 태블릿을 조사하자`;
@@ -3041,6 +3048,10 @@ function getObjectiveTarget(flags, curMap) {
   // 출구만 가리키면 넓어진 방에서 "증거 찾기"가 지나치게 어렵다.
   // 문이 열린 직후엔 HUD/나침반이 박사님으로 건너뛰지 않고 출구를 유지한다.
   if (curMap === 'introlab') {
+    if (flags.storyRoute === 'memento') {
+      if (flags.introDoorOpen) return { map: 'introlab', x: 14, y: 17, label: '열린 출구' };
+      return { map: 'introlab', x: 18, y: 16, label: '관리자 단말' };
+    }
     if (flags.introDoorOpen) return { map: 'introlab', x: 14, y: 17, label: '열린 출구' };
     if (!flags.introClue1) return { map: 'introlab', x: 4, y: 3, label: '단서: 태블릿' };
     if (!flags.introClue2) return { map: 'introlab', x: 23, y: 6, label: '단서: 모니터' };
@@ -4981,7 +4992,7 @@ const MAP_PROPS = {
       text: '모니터 한 대가 푸른빛으로 깜빡인다.\n화면에는 누군가의 낙서 같은 메모:\n"출구 비밀번호: 기억 속에 있다."' },
     { x: 6, y: 12, flag: 'introClue3', kind: 'memo', label: '포스트잇', clue: true,
       text: '포스트잇 묶음이 바스락거린다.\n"문을 열려면, 내가 누군지 알아야 해.\n…힌트: 나를 만든 사람부터 찾아봐."' },
-    { x: 18, y: 16, kind: 'unverified-admin-note', label: '관리자 메모',
+    { x: 18, y: 16, kind: 'admin-terminal', label: '관리자 메모',
       text: '찢긴 관리자 메모다.\n"영이가 코어를 망가뜨렸다. 반디를 믿고\n마음 조각을 모아라."\n아래에는 「확인 전 기록」이라고 적혀 있다.' },
     { x: 12, y: 4, kind: 'board', label: '깨진 칠판',
       text: '깨진 칠판에는 선이 세 갈래로 갈라져 있다.\n① 왼쪽 위 태블릿 ② 오른쪽 모니터\n③ 아래쪽 포스트잇. 노란 표시를 따라가자.' },
