@@ -514,6 +514,18 @@ async function canvasColorProfile(page, rect) {
       out.stickSurvivesSteal = window.__test.heldKeys().includes('right');
       fire(stick, 'touchend', [mkTouch(stick, 21, sx + 40, sy)]);   // 원래 손가락 뗌
       out.stickReleased = !window.__test.heldKeys().includes('right');
+
+      fire(btn, 'touchstart', [mkTouch(btn, 31, bx, by)]);
+      window.dispatchEvent(new TouchEvent('touchcancel', {
+        changedTouches: [mkTouch(btn, 31, bx, by)], bubbles: true, cancelable: true,
+      }));
+      out.globalCancelReleased = !window.__test.heldKeys().includes('action');
+
+      fire(stick, 'touchstart', [mkTouch(stick, 41, sx + 40, sy)]);
+      Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      out.hiddenReleased = !window.__test.heldKeys().includes('right') &&
+        document.getElementById('t-stick-knob').style.transform.includes('0px');
       return out;
     });
     check('버튼: 두 손가락 중 하나만 떼면 유지', r.heldAfterOneUp === true);
@@ -521,6 +533,8 @@ async function canvasColorProfile(page, rect) {
     check('스틱: 방향 입력 인식', r.stickRight === true);
     check('스틱: 둘째 손가락 탈취에도 이동 유지', r.stickSurvivesSteal === true);
     check('스틱: 원래 손가락 떼면 정지', r.stickReleased === true);
+    check('전역 touchcancel에서 모든 터치 입력 해제', r.globalCancelReleased === true);
+    check('앱이 숨겨질 때 방향 입력과 스틱 위치 초기화', r.hiddenReleased === true);
     await ctx.close();
   }
 

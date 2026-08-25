@@ -1341,9 +1341,15 @@
     const k = KEYMAP[e.key];
     if (k) held.delete(k);
   });
+  const inputResetters = [];
+  function releaseAllInputs() {
+    held.clear();
+    pressed.clear();
+    for (const reset of inputResetters) reset();
+  }
   // 창 포커스를 잃으면(다른 탭·앱으로 전환) keyup이 안 와서 키가 '눌린 채' 남아
   // 돌아왔을 때 캐릭터가 계속 걷는 문제를 막는다.
-  window.addEventListener('blur', () => { held.clear(); pressed.clear(); });
+  window.addEventListener('blur', releaseAllInputs);
 
   // 가상 스틱: 중심에서의 변위(dx,dy)를 우세 4방향 하나로 환산. 데드존 안이면 null.
   // (메뉴 커서 이동 등 단일 방향이 필요한 곳에서 사용) — 순수 함수라 테스트로 검증한다.
@@ -1407,6 +1413,8 @@
     isTouchDevice = true;
     document.body.classList.add('touch');
     const touchIds = new Map();
+    inputResetters.push(() => touchIds.clear());
+    window.addEventListener('touchcancel', releaseAllInputs);
     const bind = (id, key) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -1514,6 +1522,11 @@
       stick.addEventListener('touchmove', onMove);
       stick.addEventListener('touchend', onEnd);
       stick.addEventListener('touchcancel', onEnd);
+      inputResetters.push(() => {
+        stickId = null;
+        setDir([]);
+        place(0, 0);
+      });
     }
     const hintBtn = document.getElementById('t-hint');
     if (hintBtn) {
@@ -12848,6 +12861,7 @@
     document.addEventListener('visibilitychange', () => {
       try {
         if (document.hidden) {
+          releaseAllInputs();
           bgmBeforeHide = Sound.songName;
           Sound.stopSong();
           Speech.stop();
