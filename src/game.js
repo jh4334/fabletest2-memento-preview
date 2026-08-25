@@ -1114,7 +1114,7 @@
     return JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(), data });
   }
   const BACKUP_UNDO_KEY = 'ai-ethics-adventure-restore-undo';
-  function applyBackup(text) {
+  function applyBackup(text, recordUndo = true) {
     let obj;
     try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: 'parse' }; }
     if (!obj || obj.app !== 'ai-ethics-adventure' || !obj.data) return { ok: false, error: 'format' };
@@ -1122,12 +1122,38 @@
     const incoming = Object.keys(obj.data).filter((k) => valid.has(k));
     // 인식 가능한 데이터가 하나도 없으면 덮어쓰지 않는다 — 잘못된/빈 파일에 '완료' 오표시 방지
     if (incoming.length === 0) return { ok: false, error: 'empty' };
+    if (incoming.some((k) => typeof obj.data[k] !== 'string')) return { ok: false, error: 'value' };
+    const previous = {};
     // 되돌리기 안전망 — 덮어쓰기 직전 현재 상태를 스냅샷해 둔다 (실수 복원 1회 취소용)
-    try { localStorage.setItem(BACKUP_UNDO_KEY, buildBackupText()); } catch (e) { /* 용량 부족 등이면 그냥 진행 */ }
-    let count = 0;
-    for (const k of incoming) {
-      try { localStorage.setItem(k, String(obj.data[k])); count++; } catch (e) { /* 무시 */ }
+    try {
+      for (const k of incoming) previous[k] = localStorage.getItem(k);
+      if (recordUndo) localStorage.setItem(BACKUP_UNDO_KEY, buildBackupText());
+    } catch (e) {
+      noteStorageFail();
+      return { ok: false, error: 'snapshot' };
     }
+    let count = 0;
+    try {
+      for (const k of incoming) {
+        localStorage.setItem(k, obj.data[k]);
+        count++;
+      }
+    } catch (e) {
+      let rolledBack = true;
+      for (const k of incoming) {
+        try {
+          if (previous[k] == null) localStorage.removeItem(k);
+          else localStorage.setItem(k, previous[k]);
+        } catch (rollbackError) { rolledBack = false; }
+      }
+      if (recordUndo) {
+        try { localStorage.removeItem(BACKUP_UNDO_KEY); } catch (removeError) { rolledBack = false; }
+      }
+      puzzleLogCache = null;
+      noteStorageFail();
+      return { ok: false, error: rolledBack ? 'write' : 'rollback' };
+    }
+    puzzleLogCache = null;
     return { ok: true, count };
   }
   // 직전 복원을 취소한다 (되돌리기 스냅샷이 있을 때만).
@@ -1135,8 +1161,8 @@
     let snap;
     try { snap = localStorage.getItem(BACKUP_UNDO_KEY); } catch (e) { return { ok: false }; }
     if (!snap) return { ok: false };
-    const res = applyBackup(snap); // 스냅샷을 다시 적용 (이때 또 undo 스냅샷이 갱신됨)
-    try { localStorage.removeItem(BACKUP_UNDO_KEY); } catch (e) { /* 무시 */ }
+    const res = applyBackup(snap, false);
+    if (res.ok) { try { localStorage.removeItem(BACKUP_UNDO_KEY); } catch (e) { /* 무시 */ } }
     return res;
   }
   function hasRestoreUndo() {

@@ -577,6 +577,68 @@ async function canvasColorProfile(page, rect) {
   }
 
   {
+    console.log('[backup-restore-write-failure] 파일 복원 중간 실패 원자 롤백');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    const fixture = await page.evaluate(() => {
+      const slotKey = 'ai-ethics-adventure-slot-2';
+      const statsKey = 'ai-ethics-adventure-stats-2';
+      const oldSlot = JSON.stringify({ v: 9, name: '복원전', flags: { defeated: {} } });
+      const oldStats = JSON.stringify({ privacy: { correct: 1, total: 2 } });
+      localStorage.setItem(slotKey, oldSlot);
+      localStorage.setItem(statsKey, oldStats);
+      const original = Storage.prototype.setItem;
+      let failedOnce = false;
+      window.__restoreStorageSetItem = () => { Storage.prototype.setItem = original; };
+      Storage.prototype.setItem = function setItem(key, value) {
+        if (key === statsKey && !failedOnce) {
+          failedOnce = true;
+          throw new Error('mid-restore write failed');
+        }
+        return original.call(this, key, value);
+      };
+      return {
+        slotKey, statsKey, oldSlot, oldStats,
+        backup: JSON.stringify({
+          app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+          data: {
+            [slotKey]: JSON.stringify({ v: 9, name: '복원후', flags: { defeated: {} } }),
+            [statsKey]: JSON.stringify({ privacy: { correct: 9, total: 9 } }),
+          },
+        }),
+      };
+    });
+    await page.keyboard.press('u');
+    await page.waitForTimeout(150);
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(150);
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(150);
+    await page.keyboard.press('z');
+    await page.waitForTimeout(150);
+    const chooserPromise = page.waitForEvent('filechooser');
+    await page.keyboard.press('z');
+    const chooser = await chooserPromise;
+    await chooser.setFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(fixture.backup) });
+    await page.waitForFunction(() => window.__game.backup.toast < 0, { timeout: 8000 });
+    const result = await page.evaluate(({ slotKey, statsKey, oldSlot, oldStats }) => {
+      window.__restoreStorageSetItem();
+      return {
+        intact: localStorage.getItem(slotKey) === oldSlot && localStorage.getItem(statsKey) === oldStats,
+        mode: window.__game.mode,
+        toast: window.__game.backup.toast,
+        notice: window.__game.notice && window.__game.notice.text,
+      };
+    }, fixture);
+    check('파일 복원 중간 실패 뒤 기존 데이터 모두 보존', result.intact);
+    check('복원 실패를 성공 전환 없이 화면과 경고로 표시',
+      result.mode === 'backup' && result.toast < 0 && /저장되지 않/.test(result.notice || ''));
+    await ctx.close();
+  }
+
+  {
     console.log('[service-worker-optional-asset] 선택 아이콘 404 중에도 core shell 설치');
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();

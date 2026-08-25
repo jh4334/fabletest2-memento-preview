@@ -944,6 +944,45 @@ check('되돌리기 소진 후 스냅샷 없음', T.hasRestoreUndo() === false);
 storage.set('ai-ethics-adventure-stats-0', goodStats);
 storage.set('ai-ethics-adventure-puzzle-0', goodPuzzle);
 
+console.log('[P-4] 백업 복원 중간 실패 원자 롤백');
+{
+  const slotKey = 'ai-ethics-adventure-slot-2';
+  const statsKey = 'ai-ethics-adventure-stats-2';
+  const oldSlot = JSON.stringify({ v: 9, name: '복원전', flags: { defeated: {} } });
+  const oldStats = JSON.stringify({ privacy: { correct: 1, total: 2 } });
+  storage.set(slotKey, oldSlot);
+  storage.set(statsKey, oldStats);
+  const incoming = JSON.stringify({
+    app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+    data: {
+      [slotKey]: JSON.stringify({ v: 9, name: '복원후', flags: { defeated: {} } }),
+      [statsKey]: JSON.stringify({ privacy: { correct: 9, total: 9 } }),
+    },
+  });
+  const realSet = sandbox.localStorage.setItem;
+  let failedOnce = false;
+  sandbox.localStorage.setItem = (key, value) => {
+    if (key === statsKey && !failedOnce) {
+      failedOnce = true;
+      throw new Error('mid-restore write failed');
+    }
+    return realSet(key, value);
+  };
+  const failedRestore = T.applyBackup(incoming);
+  sandbox.localStorage.setItem = realSet;
+  check('P-4 중간 쓰기 실패를 복원 실패로 반환', failedRestore.ok === false && failedRestore.error === 'write');
+  check('P-4 중간 쓰기 실패 뒤 기존 슬롯·통계 모두 보존',
+    storage.get(slotKey) === oldSlot && storage.get(statsKey) === oldStats);
+  check('P-4 실패한 복원은 되돌리기 항목을 남기지 않음', T.hasRestoreUndo() === false);
+  const badValue = T.applyBackup(JSON.stringify({
+    app: 'ai-ethics-adventure', version: 1, data: { [slotKey]: { not: 'serialized' } },
+  }));
+  check('P-4 문자열이 아닌 백업 값은 쓰기 전에 거부', badValue.ok === false && badValue.error === 'value');
+  T.probeStorage();
+  storage.delete(slotKey);
+  storage.delete(statsKey);
+}
+
 console.log('[36b] 교사용 반 현황 CSV 내보내기');
 const csv = T.buildClassCsv();
 const csvLines = csv.split('\r\n');
