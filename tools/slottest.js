@@ -348,6 +348,29 @@ console.log('[Y-17b] 오래된 되돌리기 스냅샷 자동 정리 (SLOT_UNDO·
   storage.delete('ai-ethics-adventure-slot-1');
 }
 
+console.log('[P-3] 삭제 안전망 저장 실패 시 원본 슬롯 보존');
+{
+  const T = windowObj.__test;
+  const SLOT_UNDO = 'ai-ethics-adventure-deleted-slot';
+  const slotKey = 'ai-ethics-adventure-slot-2';
+  const statsKey = 'ai-ethics-adventure-stats-2';
+  storage.set(slotKey, JSON.stringify({ v: 9, name: '보존아이', flags: { defeated: {} } }));
+  storage.set(statsKey, JSON.stringify({ privacy: { correct: 2, total: 3 } }));
+  const realSet = sandbox.localStorage.setItem;
+  sandbox.localStorage.setItem = (key, value) => {
+    if (key === SLOT_UNDO) throw new Error('snapshot unavailable');
+    return realSet(key, value);
+  };
+  const deleted = T.deleteSlot(2);
+  sandbox.localStorage.setItem = realSet;
+  check('P-3 스냅샷 저장 실패 시 슬롯 원본 유지', !!storage.get(slotKey));
+  check('P-3 스냅샷 저장 실패 시 학습 기록 유지', !!storage.get(statsKey));
+  check('P-3 삭제 함수가 실패를 호출자에게 반환', deleted === false);
+  T.probeStorage();
+  storage.delete(slotKey);
+  storage.delete(statsKey);
+}
+
 // ── Y-17a 저장공간 쿼터 초과(QuotaExceededError) → noteStorageFail 경고 승격 ──
 console.log('[Y-17a] 쿼터 초과 모의 스토리지 — noteStorageFail 경고 승격');
 {

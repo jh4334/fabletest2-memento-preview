@@ -411,9 +411,13 @@
       const snap = { slot: i, ts: Date.now() };
       for (const k of slotAllKeys(i)) { const v = localStorage.getItem(k); if (v != null) snap[k] = v; }
       localStorage.setItem(SLOT_UNDO_KEY, JSON.stringify(snap));
-    } catch (e) { /* 용량 부족 등이면 그냥 진행 */ }
+    } catch (e) {
+      noteStorageFail();
+      return false;
+    }
     try { localStorage.removeItem(slotKey(i)); } catch (e) { /* 무시 */ }
     clearSlotLearning(i); // 학생을 지우면 학습 기록(일지·복습·도전과제)도 함께 지운다
+    return true;
   }
   function undoDeleteSlot() {
     let snap;
@@ -12260,9 +12264,9 @@
 
     if (game.titleScreen === 'delete') {
       if (justPressed('action')) {
-        deleteSlot(game.slotCursor);
+        const deleted = deleteSlot(game.slotCursor);
         game.titleScreen = 'slots';
-        Sound.wrong();
+        if (deleted) Sound.wrong(); else Sound.blip();
       } else if (justPressed('cancel') || justPressed('menu')) {
         game.titleScreen = 'slots';
         Sound.blip();

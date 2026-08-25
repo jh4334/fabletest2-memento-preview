@@ -541,6 +541,42 @@ async function canvasColorProfile(page, rect) {
   }
 
   {
+    console.log('[slot-delete-snapshot-failure] 삭제 안전망 실패 시 원본 보존');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => {
+      localStorage.setItem('ai-ethics-adventure-slot-2', JSON.stringify({ v: 9, name: '보존아이', flags: { defeated: {} } }));
+      localStorage.setItem('ai-ethics-adventure-stats-2', JSON.stringify({ privacy: { correct: 2, total: 3 } }));
+      const original = Storage.prototype.setItem;
+      window.__restoreStorageSetItem = () => { Storage.prototype.setItem = original; };
+      Storage.prototype.setItem = function setItem(key, value) {
+        if (key === 'ai-ethics-adventure-deleted-slot') throw new Error('snapshot unavailable');
+        return original.call(this, key, value);
+      };
+      window.__game.mode = 'title';
+      window.__game.titleScreen = 'delete';
+      window.__game.slotCursor = 2;
+    });
+    await page.keyboard.press('z');
+    await page.waitForTimeout(200);
+    const result = await page.evaluate(() => {
+      window.__restoreStorageSetItem();
+      return {
+        slot: !!localStorage.getItem('ai-ethics-adventure-slot-2'),
+        stats: !!localStorage.getItem('ai-ethics-adventure-stats-2'),
+        screen: window.__game.titleScreen,
+        notice: window.__game.notice && window.__game.notice.text,
+      };
+    });
+    check('삭제 안전망 실패 뒤 슬롯·학습 기록 보존', result.slot && result.stats);
+    check('삭제 실패 뒤 슬롯 화면과 저장 불가 안내 표시',
+      result.screen === 'slots' && /저장되지 않/.test(result.notice || ''));
+    await ctx.close();
+  }
+
+  {
     console.log('[service-worker-optional-asset] 선택 아이콘 404 중에도 core shell 설치');
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();
