@@ -36,6 +36,12 @@ const CHRONOLOGICAL_IDS = REVEAL_IDS.slice().reverse();
 console.log('[CORE-RED] Tasks 4-9 gameplay contracts');
 check('routechoice is the first title surface before slots',
   g.mode === 'title' && g.titleScreen === 'routechoice' && Array.isArray(T.titleRoutes && T.titleRoutes()));
+check('route choice and timeline ordering reuse semantic Canvas tokens', (() => {
+  const tokens = T.mementoUiTokens();
+  return tokens.route.selected === '#ffd644' && tokens.route.unselected === '#dddddd' &&
+    tokens.route.borderIdle === '#444444' && tokens.order.title === '#72d2c7' &&
+    tokens.order.success === '#8de08d' && tokens.order.empty === '#777777';
+})());
 check('fast Memento start has a deterministic route-aware test seam', has('startNewGameForRoute'));
 check('record completion grants evidence only through the completion seam', has('recordEvidenceStatus'));
 check('present administrator terminal exposes locked, retry, and solved states', has('openAdministratorTerminal'));

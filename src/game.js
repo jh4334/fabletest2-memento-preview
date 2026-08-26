@@ -41,12 +41,26 @@
   const BACKUP_APP_ID = 'ai-ethics-adventure-memento-preview';
   const SAVE_KEY = STORAGE_PREFIX + 'v1';
 
+  const CANVAS_COLOR = {
+    surfacePrimary: '#000000', surfaceSecondary: '#0b0e1a',
+    textPrimary: '#ffffff', textSecondary: '#dddddd', textMuted: '#888888', textTertiary: '#777777',
+    borderSubtle: '#444444', accentWarm: '#ffd644', statusSuccess: '#8de08d',
+    restoredCyan: '#72d2c7', reverseSurface: '#17191d', reverseLight: '#c7c9cc',
+    worldMortar: '#586b96', worldWall: '#1a2028', worldWood: '#8a603b',
+    worldLavender: '#66617d', worldTeal: '#287b78', figureOutline: '#0a0d12',
+    guardianTeal: '#2b8790', guardianStripe: '#9bd6cf',
+  };
+
   const REVERSE_TONES = {
-    dark: '#0b0e1a', surface: '#17191d', floor: '#444444', light: '#c7c9cc',
+    dark: CANVAS_COLOR.surfaceSecondary, surface: CANVAS_COLOR.reverseSurface,
+    floor: CANVAS_COLOR.borderSubtle, light: CANVAS_COLOR.reverseLight,
   };
 
   const RECORD_UI = {
-    color: { page: '#000000', primary: '#ffffff', body: '#dddddd', muted: '#888888' },
+    color: {
+      page: CANVAS_COLOR.surfacePrimary, primary: CANVAS_COLOR.textPrimary,
+      body: CANVAS_COLOR.textSecondary, muted: CANVAS_COLOR.textMuted,
+    },
     layout: {
       inset: 36, headerY: 44, roomY: 66, roomHeight: 160,
       panelY: 254, panelHeight: 182, panelRadius: 8, panelPad: 22, controlsY: 486,
@@ -59,9 +73,11 @@
   const TIMELINE_VISUALS = {
     present: {
       id: 'present', grayscale: false, direction: 'forward', label: '현재 순행',
-      surface: '#0b0e1a', floor: '#66617d', floorAlt: '#287b78', wall: '#1a2028',
-      mortar: '#586b96', light: '#ffffff', accent: '#ffd644', warm: '#ffd644',
-      cool: '#72d2c7', wood: '#8a603b',
+      surface: CANVAS_COLOR.surfaceSecondary, floor: CANVAS_COLOR.worldLavender,
+      floorAlt: CANVAS_COLOR.worldTeal, wall: CANVAS_COLOR.worldWall,
+      mortar: CANVAS_COLOR.worldMortar, light: CANVAS_COLOR.textPrimary,
+      accent: CANVAS_COLOR.accentWarm, warm: CANVAS_COLOR.accentWarm,
+      cool: CANVAS_COLOR.restoredCyan, wood: CANVAS_COLOR.worldWood,
     },
     reverse: {
       id: 'reverse', grayscale: true, direction: 'backward', label: '과거 역행',
@@ -71,15 +87,34 @@
     },
     restored: {
       id: 'restored', grayscale: false, direction: 'forward', label: '복원 순행',
-      surface: '#0b0e1a', floor: '#66617d', floorAlt: '#287b78', wall: '#1a2028',
-      mortar: '#586b96', light: '#ffffff', accent: '#72d2c7', warm: '#ffd644',
-      cool: '#72d2c7', wood: '#8a603b',
+      surface: CANVAS_COLOR.surfaceSecondary, floor: CANVAS_COLOR.worldLavender,
+      floorAlt: CANVAS_COLOR.worldTeal, wall: CANVAS_COLOR.worldWall,
+      mortar: CANVAS_COLOR.worldMortar, light: CANVAS_COLOR.textPrimary,
+      accent: CANVAS_COLOR.restoredCyan, warm: CANVAS_COLOR.accentWarm,
+      cool: CANVAS_COLOR.restoredCyan, wood: CANVAS_COLOR.worldWood,
     },
   };
 
+  const ROUTE_CHOICE_UI = {
+    title: CANVAS_COLOR.textPrimary, selected: CANVAS_COLOR.accentWarm,
+    unselected: CANVAS_COLOR.textSecondary, detail: CANVAS_COLOR.textSecondary,
+    borderIdle: CANVAS_COLOR.borderSubtle, helper: CANVAS_COLOR.textMuted,
+  };
+
+  const TIMELINE_ORDER_UI = {
+    page: CANVAS_COLOR.surfacePrimary, title: CANVAS_COLOR.restoredCyan,
+    body: CANVAS_COLOR.textSecondary, primary: CANVAS_COLOR.textPrimary,
+    empty: CANVAS_COLOR.textTertiary, selected: CANVAS_COLOR.accentWarm,
+    success: CANVAS_COLOR.statusSuccess, helper: CANVAS_COLOR.textMuted,
+  };
+
   const WORLD_FIGURE = {
-    player: { h: '#493323', f: '#f2c59d', e: '#10151a', r: '#2b8790', i: '#9bd6cf', u: '#253645', k: '#0a0d12', n: '#b35c66' },
-    outline: '#0a0d12', outlinePx: 2, shadow: true,
+    player: {
+      h: '#493323', f: '#f2c59d', e: '#10151a',
+      r: CANVAS_COLOR.guardianTeal, i: CANVAS_COLOR.guardianStripe,
+      u: '#253645', k: CANVAS_COLOR.figureOutline, n: '#b35c66',
+    },
+    outline: CANVAS_COLOR.figureOutline, outlinePx: 2, shadow: true,
   };
 
   const REVERSE_SPRITE_PAL = {
@@ -193,6 +228,9 @@
       localStorage.removeItem(k);
       storageOk = ok;
     } catch (e) { storageOk = false; }
+    if (!storageOk) {
+      try { game.notice = { text: '⚠ 이 기기에서는 진행이 저장되지 않아요. 백업을 이용해 주세요.', t: 360 }; } catch (e) {}
+    }
     return storageOk;
   }
   // 런타임에 저장이 처음 실패하면(쿼터 초과 등) 경고로 승격하고 안내를 띄운다.
@@ -536,6 +574,7 @@
       mercy: s.flags.mercy || 0,
       done: !!(s.flags.defeated && s.flags.defeated.yeongi),
       endingId: s.flags.endingId || null,
+      storyRoute: s.flags.storyRoute === 'memento' ? 'memento' : 'original',
     };
   }
 
@@ -7514,14 +7553,14 @@
 
   function drawTimelineOrder() {
     if (!game.timelineOrder || !game.flags) return;
-    const color = RECORD_UI.color;
+    const color = TIMELINE_ORDER_UI;
     const remaining = timelineOrderRemaining();
     ctx.fillStyle = color.page;
     ctx.fillRect(0, 0, LW, LH);
-    ctx.fillStyle = '#72d2c7';
+    ctx.fillStyle = color.title;
     ctx.font = fs(22, true);
     ctx.fillText('[복원된 시간순 · 카드 배치]', 28, 40);
-    ctx.fillStyle = '#dddddd';
+    ctx.fillStyle = color.body;
     ctx.font = fs(13);
     ctx.fillText('가장 오래된 날부터 1→5번 칸에 놓자.', 28, 64);
     for (let i = 0; i < 5; i++) {
@@ -7529,30 +7568,30 @@
       const id = game.flags.timelineOrderDraft[i];
       const card = game.timelineOrder.cards.find((item) => item.id === id);
       utBox(28, y, 390, 49, 6);
-      ctx.fillStyle = card ? '#72d2c7' : '#777777';
+      ctx.fillStyle = card ? color.title : color.empty;
       ctx.font = fs(14, true);
       ctx.fillText(`${i + 1}. ${card ? `현재보다 ${card.daysAgo}일 전 · ${card.title}` : '○ 빈 시간순 칸'}`, 44, y + 30);
     }
     utBox(438, 88, 254, 232, 8);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = color.primary;
     ctx.font = fs(16, true);
     ctx.fillText(`남은 카드 ${remaining.length}개`, 458, 118);
     if (remaining.length) {
       const card = remaining[Math.min(game.timelineOrder.cursor, remaining.length - 1)];
-      ctx.fillStyle = '#ffd644';
+      ctx.fillStyle = color.selected;
       ctx.font = fs(15, true);
       ctx.fillText(`● 현재보다 ${card.daysAgo}일 전`, 458, 164);
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = color.primary;
       ctx.font = fs(16, true);
       drawQuestionText(card.title, 458, 198, 210, lh(24));
-      ctx.fillStyle = '#888888';
+      ctx.fillStyle = color.helper;
       ctx.font = fs(12);
       ctx.fillText(`${game.timelineOrder.cursor + 1}/${remaining.length} · ↑↓ 카드 선택`, 458, 278);
     } else {
-      ctx.fillStyle = '#8de08d';
+      ctx.fillStyle = color.success;
       ctx.font = fs(15, true);
       ctx.fillText('◆ 다섯 카드 배치 완료', 458, 166);
-      ctx.fillStyle = '#dddddd';
+      ctx.fillStyle = color.body;
       ctx.font = fs(13);
       ctx.fillText('Z·Enter로 순서를 확인하자.', 458, 204);
     }
@@ -7562,7 +7601,7 @@
       ctx.font = fs(14, true);
       ctx.fillText(`△ 오답 · ${game.timelineOrder.feedback}`, 46, 443);
     }
-    ctx.fillStyle = '#888888';
+    ctx.fillStyle = color.helper;
     ctx.font = fs(12);
     ctx.textAlign = 'center';
     ctx.fillText(isTouchDevice ? 'Ⓐ 놓기·확인 · [되돌리기] · [메뉴] 저장 후 나가기' : 'Z 놓기·확인 · X·Esc 되돌리기 · C 저장 후 나가기', LW / 2, 504);
@@ -12395,7 +12434,8 @@
     }
 
     if (game.titleScreen === 'routechoice') {
-      ctx.fillStyle = '#fff';
+      const color = ROUTE_CHOICE_UI;
+      ctx.fillStyle = color.title;
       ctx.font = fs(22, true);
       ctx.fillText('어떤 시간선으로 시작할까?', LW / 2, 218);
       const descriptions = ['기존 프롤로그부터 이야기를 이어갑니다', '첫 손상 기록부터 빠르게 체험합니다'];
@@ -12404,19 +12444,19 @@
         const selected = i === game.routeCursor;
         const x = 110, y = 250 + i * 106, w = 500, h = 88;
         utBox(x, y, w, h, 8);
-        ctx.strokeStyle = selected ? '#ffd644' : '#444444';
+        ctx.strokeStyle = selected ? color.selected : color.borderIdle;
         ctx.lineWidth = selected ? 4 : 2;
         ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
         ctx.textAlign = 'left';
-        ctx.fillStyle = selected ? '#ffd644' : '#dddddd';
+        ctx.fillStyle = selected ? color.selected : color.unselected;
         ctx.font = fs(18, true);
         ctx.fillText(`${selected ? '●' : '○'} ${route.label}`, x + 24, y + 34);
-        ctx.fillStyle = '#b7b2c8';
+        ctx.fillStyle = color.detail;
         ctx.font = fs(13);
         ctx.fillText(descriptions[i], x + 52, y + 62);
       }
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#888888';
+      ctx.fillStyle = color.helper;
       ctx.font = fs(13);
       ctx.fillText(isTouchDevice ? '스틱으로 선택 · Ⓐ 결정' : '↑↓ 선택 · Z·Enter 결정', LW / 2, 486);
       ctx.textAlign = 'left';
@@ -12425,6 +12465,10 @@
 
     // 세이브 슬롯 3개
     const boxW = 460, boxX = LW / 2 - boxW / 2;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = CANVAS_COLOR.textMuted;
+    ctx.font = fs(12);
+    ctx.fillText('선택한 시간선은 새 모험에 적용 · 저장 슬롯은 표시된 시간선 이어하기', LW / 2, 196);
     for (let i = 0; i < SLOT_COUNT; i++) {
       const y = 212 + i * 74, h = 64;
       const sel = i === game.slotCursor && game.titleScreen === 'slots';
@@ -12449,9 +12493,10 @@
         ctx.fillStyle = '#888';
         ctx.font = fs(13);
         const prog = sum.done ? '모험 완료' : sum.stage;
+        const route = sum.storyRoute === 'memento' ? '메멘토 이어하기' : '원래 모험 이어하기';
         const streak = getMeta(i).streak || 0;
         ctx.textAlign = 'right';
-        ctx.fillText(`${prog}   ♥ ${sum.mercy}${streak ? '   🔥' + streak : ''}`, boxX + boxW - 18, y + 40);
+        ctx.fillText(`${route} · ${prog}   ♥ ${sum.mercy}${streak ? '   🔥' + streak : ''}`, boxX + boxW - 18, y + 40);
         ctx.textAlign = 'left';
         // B-3 오늘의 도전 미완료 배지 — 슬롯 화면에서 은은히 알려 준다(벌점·소멸 없음)
         if (!dailyDoneToday(i)) {
@@ -12676,7 +12721,9 @@
   function speakSlotCursor() {
     if (!game.tts) return;
     const sum = slotSummary(game.slotCursor);
-    Speech.speak(`슬롯 ${game.slotCursor + 1}, ` + (sum ? `${sum.name}, 이어하기` : '비어 있음, 새 모험'));
+    const route = sum && sum.storyRoute === 'memento' ? '메멘토 시간선' : '원래 모험 시간선';
+    Speech.speak(`슬롯 ${game.slotCursor + 1}, ` +
+      (sum ? `${sum.name}, ${route} 이어하기` : '비어 있음, 선택한 시간선으로 새 모험'));
   }
 
   function speakRouteCursor() {
@@ -13408,6 +13455,7 @@
     toggleLowGraphics, effectiveDprCap, prologueVisibleMarks, ch1StreetVisualProfile, ch1HubVisibleMarks,
     chapter2HubVisualProfile, chapter2HubVisibleMarks, chapter3HubVisualProfile, chapter3HubVisibleMarks,
     chapter4HubVisualProfile, chapter4HubVisibleMarks, chapter5HubVisualProfile, chapter5HubVisibleMarks,
+    drawWorld,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     heldKeys: () => Array.from(held), // E2E 멀티터치 검증용 — 현재 눌린 논리 키
     srLiveText: () => (srLiveEl ? srLiveEl.textContent : null), // aria-live 미러 검증용
@@ -13430,6 +13478,7 @@
     // X라운드 신규 — 재대결(기억의 방)·수업 배너·반응 선택 검증용
     newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
     titleRoutes: () => MEMENTO_ROUTES.map((route) => ({ id: route.id, label: route.label })),
+    mementoUiTokens: () => ({ route: Object.assign({}, ROUTE_CHOICE_UI), order: Object.assign({}, TIMELINE_ORDER_UI) }),
     startNewGameForRoute, continueGame,
     recordForChapter, recordHudText, recordEvidenceStatus, unlockDamagedRecord, startDamagedRecord,
     openAdministratorTerminal, startTimelineRestoration,

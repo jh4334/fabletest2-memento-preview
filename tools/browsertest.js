@@ -112,6 +112,58 @@ async function canvasColorProfile(page, rect) {
   }, rect);
 }
 
+async function screenshotStableCanvas(page, file, redrawWorld) {
+  await page.evaluate(async (shouldRedrawWorld) => {
+    const canvas = document.getElementById('game');
+    const frozen = document.createElement('canvas');
+    frozen.width = canvas.width;
+    frozen.height = canvas.height;
+    const frozenCtx = frozen.getContext('2d');
+    let bestScore = -1;
+    const frameCount = shouldRedrawWorld ? 1 : 8;
+    for (let frame = 0; frame < frameCount; frame++) {
+      if (shouldRedrawWorld) window.__test.drawWorld();
+      else await new Promise((resolve) => requestAnimationFrame(resolve));
+      const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+      let score = 0;
+      for (let i = 0; i < pixels.data.length; i += 64) {
+        if (pixels.data[i] > 16 || pixels.data[i + 1] > 16 || pixels.data[i + 2] > 16) score++;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        frozenCtx.putImageData(pixels, 0, 0);
+      }
+    }
+    const rect = canvas.getBoundingClientRect();
+    const still = document.createElement('img');
+    still.id = 'browser-canvas-still';
+    still.alt = '';
+    still.src = frozen.toDataURL('image/png');
+    await new Promise((resolve, reject) => {
+      if (still.complete) { resolve(); return; }
+      still.onload = resolve;
+      still.onerror = reject;
+    });
+    Object.assign(still.style, {
+      position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`,
+      width: `${rect.width}px`, height: `${rect.height}px`,
+      imageRendering: 'pixelated', zIndex: '20', pointerEvents: 'none',
+    });
+    document.body.appendChild(still);
+    canvas.style.visibility = 'hidden';
+  }, !!redrawWorld);
+  try {
+    await page.screenshot({ path: file });
+  } finally {
+    await page.evaluate(() => {
+      const canvas = document.getElementById('game');
+      const still = document.getElementById('browser-canvas-still');
+      if (still) still.remove();
+      if (canvas) canvas.style.visibility = '';
+    });
+  }
+}
+
 (async () => {
   const server = await startServer();
   const port = server.address().port;
@@ -197,7 +249,7 @@ async function canvasColorProfile(page, rect) {
       title.routes.join(',') === '원래 모험 시작,메멘토 시간선 체험');
     check('시간선 선택이 aria-live에 연결됨', /시간선 선택/.test(title.live));
     await page.waitForTimeout(180);
-    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'routechoice-desktop.png') });
+    await screenshotStableCanvas(page, path.join(gameplayLoopShotsDir, 'routechoice-desktop.png'));
 
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('z');
@@ -215,7 +267,7 @@ async function canvasColorProfile(page, rect) {
     check(`첫 손상 기록은 3,600 프레임 안(${firstRecord.frames})`, firstRecord.id === 'reset_after' && firstRecord.frames < 3600);
     check(`첫 손상 기록은 실제 60초 안(${firstRecord.elapsedMs}ms)`, firstRecord.elapsedMs < 60000 && firstRecord.route === 'memento');
     check('첫 기록은 현재에서 과거로 가는 방향을 안내', /현재에서 과거 방향/.test(firstRecord.live));
-    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'first-record-desktop.png') });
+    await screenshotStableCanvas(page, path.join(gameplayLoopShotsDir, 'first-record-desktop.png'));
 
     // 스킵은 해금을 남기되 증거는 남기지 않아, 현재 단말을 우회할 수 없다.
     await page.keyboard.press('Escape');
@@ -225,13 +277,13 @@ async function canvasColorProfile(page, rect) {
     await page.evaluate(() => {
       const g = window.__game;
       // 조사 대상은 발밑이 아니라 바라보는 칸이다. 단말 바로 아래에서 위를 본다.
-      g.player.x = 18; g.player.y = 17; g.player.px = 18 * 32; g.player.py = 17 * 32; g.player.dir = 'up';
+      g.player.x = 18; g.player.y = 17; g.player.px = 18 * 48; g.player.py = 17 * 48; g.player.dir = 'up';
     });
     await page.keyboard.press('z');
     await page.waitForFunction(() => window.__game.mode === 'choice' && /잠김/.test(window.__game.choice.prompt), { timeout: 1500 });
     check('현재 관리자 단말은 증거 전 잠김', await page.evaluate(() =>
       window.__game.choice.options[0] === '기록 다시 보기' && window.__game.choice.options[1] === '돌아가기'));
-    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'terminal-locked-desktop.png') });
+    await screenshotStableCanvas(page, path.join(gameplayLoopShotsDir, 'terminal-locked-desktop.png'));
     await page.keyboard.press('z');
     await page.waitForFunction(() => window.__game.mode === 'record' && window.__game.record.replay, { timeout: 1500 });
     for (let i = 0; i < 8 && (await page.evaluate(() => window.__game.mode === 'record')); i++) {
@@ -253,19 +305,35 @@ async function canvasColorProfile(page, rect) {
     await page.waitForFunction(() => window.__game.flags.administratorTerminalSolved, { timeout: 1500 });
     check('오답 재시도 뒤 정확한 해석만 현재 문을 엶', await page.evaluate(() =>
       window.__game.flags.administratorTerminalSolved && window.__game.flags.introDoorOpen));
-    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'terminal-open-desktop.png') });
+    await screenshotStableCanvas(page, path.join(gameplayLoopShotsDir, 'terminal-open-desktop.png'));
 
     for (const count of [0, 1, 3, 5]) {
       const axis = await page.evaluate((n) => {
         const g = window.__game, T = window.__test;
+        window.dispatchEvent(new Event('blur'));
         g.mode = 'world'; g.map = 'introlab'; g.flags = T.newFlags(); g.flags.storyRoute = 'memento';
+        g.player.x = 14; g.player.y = 16; g.player.px = 14 * 48; g.player.py = 16 * 48;
+        g.player.dir = 'up'; g.player.moving = false; g.introDim = null; g.warpCooldownFrames = 30;
         g.flags.damagedRecords = ['reset_after', 'reset_before', 'city_failure', 'yeongi_warning', 'first_approval'].slice(0, n);
         g.flags.recordEvidence = g.flags.damagedRecords.slice();
         return T.recordHudText(g.flags, false);
       }, count);
       check(`역행 HUD ${count}개 상태는 현재·D-1·D-7을 보임`, /현재 ◀/.test(axis) && /D-1/.test(axis) && /D-7/.test(axis) && !/\d\/5/.test(axis));
-      await page.waitForTimeout(80);
-      await page.screenshot({ path: path.join(gameplayLoopShotsDir, `reverse-axis-${count}-desktop.png`) });
+      const hudCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const hudPage = await hudCtx.newPage();
+      await hudPage.goto(base + `?hud=${count}`, { waitUntil: 'load' });
+      await hudPage.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+      await hudPage.evaluate((n) => {
+        const g = window.__game, T = window.__test;
+        g.mode = 'world'; g.map = 'introlab'; g.flags = T.newFlags(); g.flags.storyRoute = 'memento';
+        g.player.x = 14; g.player.y = 16; g.player.px = 14 * 48; g.player.py = 16 * 48;
+        g.player.dir = 'up'; g.player.moving = false; g.introDim = null; g.warpCooldownFrames = 30;
+        g.flags.damagedRecords = ['reset_after', 'reset_before', 'city_failure', 'yeongi_warning', 'first_approval'].slice(0, n);
+        g.flags.recordEvidence = g.flags.damagedRecords.slice();
+      }, count);
+      await hudPage.waitForTimeout(180);
+      await screenshotStableCanvas(hudPage, path.join(gameplayLoopShotsDir, `reverse-axis-${count}-desktop.png`), true);
+      await hudCtx.close();
     }
 
     // 빈 칸→부분→오답→되돌림→정답: 자동 정렬/자동 결합을 잡는다.
@@ -278,17 +346,17 @@ async function canvasColorProfile(page, rect) {
     await page.waitForFunction(() => window.__game.mode === 'timelineorder', { timeout: 1500 });
     await page.waitForTimeout(180);
     check('파이널은 빈 다섯 칸으로 시작', await page.evaluate(() => window.__game.flags.timelineOrderDraft.length === 0));
-    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'timeline-empty-desktop.png') });
+    await screenshotStableCanvas(page, path.join(gameplayLoopShotsDir, 'timeline-empty-desktop.png'));
     await page.keyboard.press('z');
     await page.waitForTimeout(90);
     check('첫 카드 배치가 즉시 저장됨', await page.evaluate(() => window.__game.flags.timelineOrderDraft.length === 1));
-    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'timeline-partial-desktop.png') });
+    await screenshotStableCanvas(page, path.join(gameplayLoopShotsDir, 'timeline-partial-desktop.png'));
     for (let i = 0; i < 5; i++) { await page.keyboard.press('z'); await page.waitForTimeout(90); }
     await page.waitForFunction(() => window.__game.timelineOrder && !!window.__game.timelineOrder.feedback, { timeout: 1500 });
     await page.waitForTimeout(180);
     check('역행 공개 순서로 제출하면 오답 재시도', await page.evaluate(() =>
       /순서가 이어지지 않는다/.test(window.__game.timelineOrder.feedback) && window.__game.flags.timelineOrderWrong === 1));
-    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'timeline-wrong-desktop.png') });
+    await screenshotStableCanvas(page, path.join(gameplayLoopShotsDir, 'timeline-wrong-desktop.png'));
     for (let i = 0; i < 6; i++) { await page.keyboard.press('Escape'); await page.waitForTimeout(90); }
     await page.keyboard.press('ArrowUp');
     await page.waitForTimeout(90);
@@ -296,7 +364,7 @@ async function canvasColorProfile(page, rect) {
     await page.waitForFunction(() => window.__game.mode === 'record' && window.__game.flags.timelineMerged, { timeout: 2000 });
     check('오래된 카드부터 직접 놓으면 컬러 복원이 시작', await page.evaluate(() =>
       window.__game.flags.timelineMerged && window.__game.record.restored));
-    await page.screenshot({ path: path.join(gameplayLoopShotsDir, 'timeline-correct-desktop.png') });
+    await screenshotStableCanvas(page, path.join(gameplayLoopShotsDir, 'timeline-correct-desktop.png'));
 
     // 부분 배치 저장, 온라인 reload로 SW 제어권 획득, 오프라인 reload, 저장 슬롯 계속하기.
     await page.evaluate(() => {
@@ -375,7 +443,7 @@ async function canvasColorProfile(page, rect) {
     });
     await page.waitForTimeout(90);
     check(`${vp.name}: 터치 A로 카드 한 장 배치`, await page.evaluate(() => window.__game.flags.timelineOrderDraft.length === 1));
-    await page.screenshot({ path: path.join(gameplayLoopShotsDir, `timeline-touch-large-${vp.name}.png`) });
+    await screenshotStableCanvas(page, path.join(gameplayLoopShotsDir, `timeline-touch-large-${vp.name}.png`));
     check(`${vp.name}: 시간선 터치 렌더 콘솔/페이지 에러 없음`, errors.length === 0);
     errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
     await ctx.close();
@@ -1121,6 +1189,26 @@ async function canvasColorProfile(page, rect) {
     }));
     check('학습 기록 실패가 저장 불가 상태로 승격', result.storageOk === false);
     check('학습 기록 실패 안내가 화면 상태와 aria-live에 표시',
+      /저장되지 않/.test(result.notice || '') && /저장되지 않/.test(result.live || ''));
+    await ctx.close();
+  }
+
+  {
+    console.log('[startup-storage-warning] 첫 저장소 확인 실패 접근성 안내');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await ctx.addInitScript(() => {
+      Storage.prototype.setItem = () => { throw new Error('startup storage unavailable'); };
+    });
+    const page = await ctx.newPage();
+    await page.goto(base + '?storage-failure=1', { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.waitForTimeout(200);
+    const result = await page.evaluate(() => ({
+      storageOk: window.__test.getStorageOk(),
+      notice: window.__game.notice && window.__game.notice.text,
+      live: window.__test.srLiveText(),
+    }));
+    check('첫 저장소 확인 실패가 화면 상태와 aria-live에 표시', result.storageOk === false &&
       /저장되지 않/.test(result.notice || '') && /저장되지 않/.test(result.live || ''));
     await ctx.close();
   }

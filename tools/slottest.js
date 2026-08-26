@@ -123,6 +123,7 @@ check('사라진 v1 맵(serverroom) 세이브는 마을로 안전 이동(v3 마�
 check('현재 슬롯 0', g.currentSlot === 0);
 check('이어하기 시 진행도 유지', g.flags.defeated.finalboss === true && g.flags.mercy === 11);
 check('채운 슬롯 이어하기는 선택 경로로 리셋하지 않고 저장 경로를 유지', g.flags.storyRoute === 'original');
+check('채운 슬롯 요약은 실제 저장 시간선을 안내', storageTest.slotSummary(0).storyRoute === 'original');
 
 console.log('[3] 진행 시 슬롯 0에만 저장, 다른 슬롯은 비어 있음');
 check('슬롯 1 비어 있음', !slot(1));
@@ -476,6 +477,15 @@ console.log('[Y-17a] 쿼터 초과 모의 스토리지 — noteStorageFail 경�
 {
   const T = windowObj.__test;
   check('Y-17a 초기 상태 저장 가능(storageOk=true)', T.getStorageOk() === true);
+  const initialSet = sandbox.localStorage.setItem;
+  g.notice = null;
+  sandbox.localStorage.setItem = () => { throw new Error('startup storage unavailable'); };
+  T.probeStorage();
+  check('Y-17a 시작 probe 실패도 저장 불가 안내 notice 표시',
+    T.getStorageOk() === false && !!(g.notice && /저장되지 않/.test(g.notice.text)));
+  sandbox.localStorage.setItem = initialSet;
+  T.probeStorage();
+  g.notice = null;
   // setItem이 QuotaExceededError를 던지는 국면을 흉내 낸다 (원래 구현 백업 후 교체)
   const realSet = sandbox.localStorage.setItem;
   sandbox.localStorage.setItem = () => {
