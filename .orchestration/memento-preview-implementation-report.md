@@ -167,6 +167,8 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 - 저장된 슬롯의 실제 시간선 표시와 TTS 안내
 - 최초 저장소 probe 실패의 화면·`aria-live` 동시 경고
 - 시간선 선택·수동 복원 화면의 Canvas 의미 토큰 재사용
+- 화면 가장자리 월드 라벨의 Canvas 내부 정렬과 모바일 `한 칸` 되돌리기 표기
+- 첫 저장소 확인 실패의 최초 시간선 선택 Canvas 경고
 
 ## 17. 전체 검증 명령과 실제 결과
 
@@ -175,9 +177,9 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 | 명령 | 결과 |
 |---|---|
 | `npm run validate` | 성공 |
-| `npm test` | 성공: smoke 1223, slot 95, memento 103, service worker 6 |
+| `npm test` | 성공: smoke 1223, slot 95, memento 104, service worker 6 |
 | `npm run playtest` | 성공: 원래 경로 프롤로그→5장→고요→코어→`home` 완주 |
-| `npm run test:browser` | 성공: Chromium 180, 실패 0; WebKit 미설치로 선택 경로 생략 |
+| `npm run test:browser` | 성공: Chromium 183, 실패 0; WebKit 미설치로 선택 경로 생략 |
 | `npm run pack` | 성공: 오프라인 ZIP 생성, `unzip -tq` 무결성 성공 후 작업 트리에서 산출물 제거 |
 
 ## 18. CI 및 Pages 실행 URL
