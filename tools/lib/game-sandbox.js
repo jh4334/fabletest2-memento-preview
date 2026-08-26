@@ -74,7 +74,7 @@ function createGameSandbox() {
     g: null,
     // src 4파일 로드 — storage 시드가 끝난 뒤에 호출해야 한다(게임이 로드 시 읽는다)
     boot() {
-      for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
+      for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/memento.js', 'src/game.js']) {
         vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
       }
       env.g = windowObj.__game;

@@ -13,7 +13,7 @@ const ctx = {
 ctx.window = ctx;
 vm.createContext(ctx);
 
-for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js']) {
+for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/memento.js']) {
   const code = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
   vm.runInContext(code, ctx, { filename: f });
 }
@@ -406,7 +406,7 @@ if (process.argv.includes('--print')) {
     '깜깜몬', '떠넘기몬', '낭비몬', '핑계몬', '시들몬', '빼앗몬', '메아리몬', '그림자몬',
     '뚫림몬', '사서몬', '필터몬', '미러몬', '속삭임몬', '조각몬', '합성몬', '미래몬',
     '거짓몬', '중독몬'];
-  const files = ['src/data.js', 'src/game.js', 'src/sprites.js', 'src/audio.js', 'index.html'];
+  const files = ['src/data.js', 'src/memento.js', 'src/game.js', 'src/sprites.js', 'src/audio.js', 'index.html'];
   for (const f of files) {
     const raw = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     const stripped = raw
@@ -494,7 +494,7 @@ if (process.argv.includes('--print')) {
 // (docs/개인정보-안내.md의 '어떤 정보도 외부로 전송하지 않는다'는 약속을 CI로 강제)
 {
   const NET = /\b(fetch|XMLHttpRequest|sendBeacon|WebSocket|EventSource)\s*\(/;
-  for (const f of ['src/data.js', 'src/game.js', 'src/sprites.js', 'src/audio.js', 'index.html']) {
+  for (const f of ['src/data.js', 'src/memento.js', 'src/game.js', 'src/sprites.js', 'src/audio.js', 'index.html']) {
     const raw = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     const stripped = raw
       .replace(/\/\*[\s\S]*?\*\//g, ' ')

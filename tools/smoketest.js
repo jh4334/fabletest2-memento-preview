@@ -55,7 +55,7 @@ vm.createContext(sandbox);
 let _seed = 1234567;
 Math.random = () => { _seed = (_seed * 1103515245 + 12345) & 0x7fffffff; return _seed / 0x7fffffff; };
 
-for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
+for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/memento.js', 'src/game.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), sandbox, { filename: f });
 }
 
@@ -108,10 +108,12 @@ function check(name, cond) {
 }
 
 // ---------- 시나리오 ----------
-console.log('[1] 타이틀 → 슬롯 선택 → 이름 입력 → 게임 시작');
+console.log('[1] 타이틀 → 원래 모험 → 슬롯 선택 → 이름 입력 → 게임 시작');
 step(5);
-check('타이틀 화면', g.mode === 'title' && g.titleScreen === 'slots');
-check('슬롯 3개 모두 비어 있음', !storage.get('ai-ethics-adventure-slot-0'));
+check('첫 타이틀 화면은 시간선 선택', g.mode === 'title' && g.titleScreen === 'routechoice');
+check('슬롯 3개 모두 비어 있음', !storage.get('fabletest2-memento-preview-slot-0'));
+tap('z');
+check('원래 모험 선택 뒤 슬롯 화면', g.mode === 'title' && g.titleScreen === 'slots');
 tap('z'); // 빈 슬롯 0 선택 → 이름 입력
 check('이름 입력 화면', g.mode === 'title' && g.titleScreen === 'name');
 // 이름 입력 중에는 게임 키가 막힌다(IME). Enter/시작 버튼은 nameConfirm으로 확정.
@@ -120,7 +122,7 @@ check('인트로 대화 시작', g.mode === 'dialog');
 advanceDialog();
 check('월드 진입', g.mode === 'world' && g.map === 'introlab');
 check('시작 위치 (14,16)', g.player.x === 14 && g.player.y === 16);
-check('슬롯 0에 저장됨', !!storage.get('ai-ethics-adventure-slot-0'));
+check('슬롯 0에 저장됨', !!storage.get('fabletest2-memento-preview-slot-0'));
 check('기본 이름 수호자', g.playerName === '수호자');
 check('동행자 반디 합류 (오프닝 직후)', g.flags.bandiJoined === true);
 
@@ -416,8 +418,8 @@ console.log('[21] 진엔딩 플래그 → 마을의 영이 등장');
 console.log('[22] 저장 데이터 무결성 (v3)');
 g.map = 'village';
 setPos(13, 16, 'up');
-const save = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
-check('세이브 버전 9', save.v === 9);
+const save = JSON.parse(storage.get('fabletest2-memento-preview-slot-0'));
+check('세이브 버전 10', save.v === 10);
 {
   const migratedBeforeTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: false } } });
   const migratedAfterTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: true } } });
@@ -448,7 +450,7 @@ check('노출도 단계는 0~5가 서로 체감 다름', new Set([0,1,2,3,4,5].m
 g.lowGraphics = false;
 windowObj.__test.toggleLowGraphics();
 check('저사양 그래픽 옵션 토글 ON', g.lowGraphics === true && windowObj.__test.effectiveDprCap() === 1);
-const lowGraphicsSettings = JSON.parse(storage.get('ai-ethics-adventure-settings'));
+const lowGraphicsSettings = JSON.parse(storage.get('fabletest2-memento-preview-settings'));
 check('저사양 그래픽 옵션 저장', lowGraphicsSettings.lowGraphics === true);
 windowObj.__test.toggleLowGraphics();
 check('저사양 그래픽 옵션 토글 OFF', g.lowGraphics === false && windowObj.__test.effectiveDprCap() === 1.5);
@@ -673,7 +675,7 @@ check('v2 완주(자비 8회 전부 mercy) → 진엔딩 도달', computeEnding(
 check('하위 호환 — v1 세이브의 큰 자비값도 진엔딩 충족', computeEnding('mercy', 22) === 'home');
 
 console.log('[24] 도감 — 수집 기록 + 열고 닫기');
-const dexSeen = JSON.parse(storage.get('ai-ethics-adventure-dex'));
+const dexSeen = JSON.parse(storage.get('fabletest2-memento-preview-dex'));
 const { DEX_ORDER, MONSTER_DEX } = vm.runInContext('({ DEX_ORDER, MONSTER_DEX })', sandbox);
 // 깨운 몬스터는 빠짐없이 도감에 기록되어 있어야 한다
 const defeatedIds = Object.keys(g.flags.defeated).filter((id) => g.flags.defeated[id]);
@@ -695,12 +697,12 @@ console.log('[26] 오답 복습 노트 (슬롯별)');
 {
   const { QUIZZES } = vm.runInContext('({ QUIZZES })', sandbox);
   const q0 = QUIZZES.privacy[0];
-  storage.set('ai-ethics-adventure-mistakes-0',
+  storage.set('fabletest2-memento-preview-mistakes-0',
     JSON.stringify({ 'privacy#0': { topic: 'privacy', q: q0.q, a: q0.a, c: q0.c, why: q0.why } }));
 }
-const mistakesBefore = JSON.parse(storage.get('ai-ethics-adventure-mistakes-0') || '{}');
+const mistakesBefore = JSON.parse(storage.get('fabletest2-memento-preview-mistakes-0') || '{}');
 check('틀린 문제가 슬롯 0에 기록됨', Object.keys(mistakesBefore).length > 0);
-check('이전 전역 키는 쓰지 않음', !storage.get('ai-ethics-adventure-mistakes'));
+check('이전 전역 키는 쓰지 않음', !storage.get('fabletest2-memento-preview-mistakes'));
 check('월드 상태', g.mode === 'world');
 tap('v');
 check('복습 노트 열림', g.mode === 'review' && g.review.phase === 'list');
@@ -709,7 +711,7 @@ check('복습 목록에 항목 있음', g.review.ids.length > 0);
 tap('z'); // 첫 문제 풀기
 check('복습 문제 화면', g.review.phase === 'question');
 {
-  const m = JSON.parse(storage.get('ai-ethics-adventure-mistakes-0'))[g.review.ids[g.review.cursor]];
+  const m = JSON.parse(storage.get('fabletest2-memento-preview-mistakes-0'))[g.review.ids[g.review.cursor]];
   const target = g.review.choiceOrder.indexOf(m.c);
   while (g.review.qCursor !== target) tap('ArrowDown');
 }
@@ -770,9 +772,9 @@ check('설정 메뉴 닫힘', g.mode === 'world');
 
 console.log('[29] 학습 진척도·수호자 일지 (E, 슬롯별)');
 // 앞선 배틀/복습에서 주제별 통계가 슬롯 0에 쌓였는지
-const stats = JSON.parse(storage.get('ai-ethics-adventure-stats-0') || '{}');
+const stats = JSON.parse(storage.get('fabletest2-memento-preview-stats-0') || '{}');
 check('주제별 통계가 슬롯 0에 기록됨', Object.keys(stats).length > 0);
-check('이전 전역 통계 키는 쓰지 않음', !storage.get('ai-ethics-adventure-stats'));
+check('이전 전역 통계 키는 쓰지 않음', !storage.get('fabletest2-memento-preview-stats'));
 check('통계에 정답/시도 수가 있음',
   Object.values(stats).every((e) => typeof e.correct === 'number' && typeof e.total === 'number' && e.total >= e.correct));
 check('월드 상태', g.mode === 'world');
@@ -815,7 +817,7 @@ while (g.mode === 'challenge' && g.challenge.phase !== 'result' && guard++ < 60)
 }
 check('결과 화면 도달', g.challenge && g.challenge.phase === 'result');
 check('전부 맞히면 만점', g.challenge.score === g.challenge.questions.length);
-const meta0 = JSON.parse(storage.get('ai-ethics-adventure-meta-0') || '{}');
+const meta0 = JSON.parse(storage.get('fabletest2-memento-preview-meta-0') || '{}');
 check('챌린지 결과가 메타에 기록', meta0.challengeRuns >= 1 && meta0.challengeBest === g.challenge.questions.length);
 tap('z'); // 닫기 → world (ret)
 check('챌린지 닫고 복귀', g.mode === 'world');
@@ -836,7 +838,7 @@ check('메뉴 열림', g.mode === 'pause');
 while (g.pauseCursor !== pauseIdx('colorblind')) tap('ArrowDown');
 tap('z');
 check('색약 모드 토글', g.colorBlind !== cbBefore);
-const savedSettings = JSON.parse(storage.get('ai-ethics-adventure-settings') || '{}');
+const savedSettings = JSON.parse(storage.get('fabletest2-memento-preview-settings') || '{}');
 check('색약 설정이 저장됨', savedSettings.colorBlind === g.colorBlind);
 tap('z'); // 복원
 check('색약 모드 복원', g.colorBlind === cbBefore);
@@ -862,42 +864,42 @@ console.log('[35] 슬롯별 학습 데이터 분리');
 const { recordTopicResult } = vm.runInContext('({ recordTopicResult: window.__test.recordTopicResult })', sandbox);
 recordTopicResult(1, 'privacy', false); // 슬롯 1에 두 문제 기록
 recordTopicResult(1, 'privacy', true);
-const s0 = JSON.parse(storage.get('ai-ethics-adventure-stats-0') || '{}');
-const s1 = JSON.parse(storage.get('ai-ethics-adventure-stats-1') || '{}');
+const s0 = JSON.parse(storage.get('fabletest2-memento-preview-stats-0') || '{}');
+const s1 = JSON.parse(storage.get('fabletest2-memento-preview-stats-1') || '{}');
 check('슬롯 1 통계가 따로 쌓임', s1.privacy && s1.privacy.total === 2);
 check('슬롯 0과 슬롯 1 통계가 분리됨', JSON.stringify(s0) !== JSON.stringify(s1));
 // 슬롯 1 삭제 시 학습 데이터도 함께 지워지는지 (방탈출 퍼즐 로그 포함 — C6)
 const getPuzzleLogT = vm.runInContext('window.__test.getPuzzleLog', sandbox);
-storage.set('ai-ethics-adventure-puzzle-1',
+storage.set('fabletest2-memento-preview-puzzle-1',
   JSON.stringify({ dummy: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 1 } }));
 check('슬롯 1 퍼즐 로그 기록됨(삭제 전, 메모이즈 캐시에도 적재)', Object.keys(getPuzzleLogT(1)).length === 1);
 deleteSlotViaGame(1);
-check('슬롯 1 삭제 시 통계도 삭제', !storage.get('ai-ethics-adventure-stats-1'));
-check('슬롯 1 삭제 시 퍼즐 로그도 삭제(스토리지)', !storage.get('ai-ethics-adventure-puzzle-1'));
+check('슬롯 1 삭제 시 통계도 삭제', !storage.get('fabletest2-memento-preview-stats-1'));
+check('슬롯 1 삭제 시 퍼즐 로그도 삭제(스토리지)', !storage.get('fabletest2-memento-preview-puzzle-1'));
 check('슬롯 1 삭제 시 퍼즐 로그 메모이즈도 무효화(빈 객체 반환)', Object.keys(getPuzzleLogT(1)).length === 0);
 // C9: 삭제한 세이브 되살리기 — 방금 지운 슬롯 복구 (공용 태블릿 실수 방지)
 {
   const Tu = vm.runInContext('window.__test', sandbox);
   // 실제 세이브 + 통계를 갖춘 슬롯 1을 만든 뒤 삭제 → 되살리기
-  storage.set('ai-ethics-adventure-slot-1', JSON.stringify({ v: 8, name: '되살이', flags: {} }));
-  storage.set('ai-ethics-adventure-stats-1', '{"privacy":{"correct":3,"total":3}}');
+  storage.set('fabletest2-memento-preview-slot-1', JSON.stringify({ v: 8, name: '되살이', flags: {} }));
+  storage.set('fabletest2-memento-preview-stats-1', '{"privacy":{"correct":3,"total":3}}');
   deleteSlotViaGame(1);
-  check('삭제 후 세이브 없음', !storage.get('ai-ethics-adventure-slot-1'));
+  check('삭제 후 세이브 없음', !storage.get('fabletest2-memento-preview-slot-1'));
   check('삭제 직후 되살리기 가능 표시', Tu.hasDeletedSlot() === true);
   const un = Tu.undoDeleteSlot();
   check('되살리기 성공 + 슬롯 번호 반환', un.ok === true && un.slot === 1);
-  check('세이브 복구됨', storage.get('ai-ethics-adventure-slot-1') === JSON.stringify({ v: 8, name: '되살이', flags: {} }));
-  check('통계도 복구됨', !!storage.get('ai-ethics-adventure-stats-1'));
+  check('세이브 복구됨', storage.get('fabletest2-memento-preview-slot-1') === JSON.stringify({ v: 8, name: '되살이', flags: {} }));
+  check('통계도 복구됨', !!storage.get('fabletest2-memento-preview-stats-1'));
   check('되살리기 소진 후 스냅샷 없음', Tu.hasDeletedSlot() === false);
   // R 키 경로도 확인
   g.mode = 'title'; g.titleScreen = 'delete'; g.slotCursor = 1; tap('z'); // 다시 삭제
   g.mode = 'title'; g.titleScreen = 'slots';
   dispatch('keydown', { key: 'r' }); step(2); dispatch('keyup', { key: 'r' });
-  check('R 키로 되살리기 → 세이브 복구', !!storage.get('ai-ethics-adventure-slot-1') &&
+  check('R 키로 되살리기 → 세이브 복구', !!storage.get('fabletest2-memento-preview-slot-1') &&
     /되살렸/.test(g.notice.text));
   // 정리
-  storage.delete('ai-ethics-adventure-slot-1');
-  storage.delete('ai-ethics-adventure-stats-1');
+  storage.delete('fabletest2-memento-preview-slot-1');
+  storage.delete('fabletest2-memento-preview-stats-1');
 }
 function deleteSlotViaGame(slot) {
   g.mode = 'title'; g.titleScreen = 'delete'; g.slotCursor = slot;
@@ -908,50 +910,65 @@ g.mode = 'world';
 console.log('[36] 데이터 백업·복원 (내보내기·가져오기)');
 const T = vm.runInContext('window.__test', sandbox);
 // 퍼즐 로그도 백업 대상에 포함되는지(C6) 확인하기 위해 슬롯 0에 하나 심어 둔다
-storage.set('ai-ethics-adventure-puzzle-0',
+storage.set('fabletest2-memento-preview-puzzle-0',
   JSON.stringify({ dummy: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 1 } }));
 const backupText = T.buildBackupText();
 const backupObj = JSON.parse(backupText);
-check('백업에 앱 식별자 포함', backupObj.app === 'ai-ethics-adventure');
-check('백업에 슬롯 0 세이브 포함', !!backupObj.data['ai-ethics-adventure-slot-0']);
-check('백업에 슬롯 0 통계 포함', !!backupObj.data['ai-ethics-adventure-stats-0']);
-check('백업에 슬롯 0 퍼즐 로그 포함', !!backupObj.data['ai-ethics-adventure-puzzle-0']);
+check('production backup ID is rejected', T.applyBackup(JSON.stringify({
+  app: 'ai-ethics-adventure', version: 1,
+  data: { 'ai-ethics-adventure-slot-0': '{"v":9}' },
+})).error === 'format');
+check('백업에 preview 앱 식별자 포함', backupObj.app === 'ai-ethics-adventure-memento-preview');
+check('백업은 preview-prefixed 키만 포함',
+  Object.keys(backupObj.data).every((key) => key.startsWith('fabletest2-memento-preview-')));
+check('백업에 슬롯 0 세이브 포함', !!backupObj.data['fabletest2-memento-preview-slot-0']);
+check('백업에 슬롯 0 통계 포함', !!backupObj.data['fabletest2-memento-preview-stats-0']);
+check('백업에 슬롯 0 퍼즐 로그 포함', !!backupObj.data['fabletest2-memento-preview-puzzle-0']);
 // 데이터를 망가뜨린 뒤 복원
-const goodStats = storage.get('ai-ethics-adventure-stats-0');
-const goodPuzzle = storage.get('ai-ethics-adventure-puzzle-0');
-storage.set('ai-ethics-adventure-stats-0', '{}');
-storage.set('ai-ethics-adventure-puzzle-0', '{}');
+const goodStats = storage.get('fabletest2-memento-preview-stats-0');
+const goodPuzzle = storage.get('fabletest2-memento-preview-puzzle-0');
+storage.set('fabletest2-memento-preview-stats-0', '{}');
+storage.set('fabletest2-memento-preview-puzzle-0', '{}');
 const res = T.applyBackup(backupText);
 check('복원 성공', res.ok === true && res.count >= 2);
-check('통계가 복원됨', storage.get('ai-ethics-adventure-stats-0') === goodStats);
-check('퍼즐 로그도 복원됨', storage.get('ai-ethics-adventure-puzzle-0') === goodPuzzle);
+check('통계가 복원됨', storage.get('fabletest2-memento-preview-stats-0') === goodStats);
+check('퍼즐 로그도 복원됨', storage.get('fabletest2-memento-preview-puzzle-0') === goodPuzzle);
 check('잘못된 데이터는 거부', T.applyBackup('{"app":"other"}').ok === false);
 check('깨진 JSON은 거부', T.applyBackup('not json').ok === false);
+const productionBytes = '{"v":9,"name":"production"}';
+storage.set('ai-ethics-adventure-slot-0', productionBytes);
+check('preview app ID라도 production-prefixed payload 키는 거부', T.applyBackup(JSON.stringify({
+  app: 'ai-ethics-adventure-memento-preview', version: 1,
+  data: { 'ai-ethics-adventure-slot-0': '{"v":9,"name":"incoming"}' },
+})).error === 'empty');
+check('거부된 production payload는 production bytes를 바꾸지 않음',
+  storage.get('ai-ethics-adventure-slot-0') === productionBytes);
+storage.delete('ai-ethics-adventure-slot-0');
 // C3: 식별자는 맞지만 인식 가능한 데이터가 없는 백업 → empty (완료 오표시 방지)
-check('빈 백업은 empty 오류로 거부', T.applyBackup('{"app":"ai-ethics-adventure","data":{}}').error === 'empty');
+check('빈 백업은 empty 오류로 거부', T.applyBackup('{"app":"ai-ethics-adventure-memento-preview","data":{}}').error === 'empty');
 check('알 수 없는 키만 있는 백업도 거부',
-  T.applyBackup('{"app":"ai-ethics-adventure","data":{"random-key":"x"}}').error === 'empty');
+  T.applyBackup('{"app":"ai-ethics-adventure-memento-preview","data":{"random-key":"x"}}').error === 'empty');
 // C3: 복원 되돌리기 — 복원 직전 스냅샷으로 1회 취소
-storage.set('ai-ethics-adventure-stats-0', '{"privacy":{"correct":9,"total":9}}');
-const beforeRestore = storage.get('ai-ethics-adventure-stats-0');
+storage.set('fabletest2-memento-preview-stats-0', '{"privacy":{"correct":9,"total":9}}');
+const beforeRestore = storage.get('fabletest2-memento-preview-stats-0');
 T.applyBackup(backupText); // 스냅샷 저장 + 덮어쓰기
 check('복원 후 되돌리기 가능 표시', T.hasRestoreUndo() === true);
 const undo = T.undoRestore();
 check('되돌리기 성공', undo.ok === true);
-check('되돌리기로 복원 직전 값 복구', storage.get('ai-ethics-adventure-stats-0') === beforeRestore);
+check('되돌리기로 복원 직전 값 복구', storage.get('fabletest2-memento-preview-stats-0') === beforeRestore);
 check('되돌리기 소진 후 스냅샷 없음', T.hasRestoreUndo() === false);
 // 원상 복구 (뒤 테스트 영향 방지)
-storage.set('ai-ethics-adventure-stats-0', goodStats);
-storage.set('ai-ethics-adventure-puzzle-0', goodPuzzle);
+storage.set('fabletest2-memento-preview-stats-0', goodStats);
+storage.set('fabletest2-memento-preview-puzzle-0', goodPuzzle);
 
 console.log('[P-4] 백업 복원 중간 실패 원자 롤백');
 {
-  const slotKey = 'ai-ethics-adventure-slot-2';
-  const statsKey = 'ai-ethics-adventure-stats-2';
-  const undoKey = 'ai-ethics-adventure-restore-undo';
+  const slotKey = 'fabletest2-memento-preview-slot-2';
+  const statsKey = 'fabletest2-memento-preview-stats-2';
+  const undoKey = 'fabletest2-memento-preview-restore-undo';
   const priorUndo = JSON.stringify({
-    app: 'ai-ethics-adventure', version: 1, savedAt: Date.now() - 1000,
-    data: { 'ai-ethics-adventure-stats-0': '{"privacy":{"correct":3,"total":3}}' },
+    app: 'ai-ethics-adventure-memento-preview', version: 1, savedAt: Date.now() - 1000,
+    data: { 'fabletest2-memento-preview-stats-0': '{"privacy":{"correct":3,"total":3}}' },
   });
   const oldSlot = JSON.stringify({ v: 9, name: '복원전', flags: { defeated: {} } });
   const oldStats = JSON.stringify({ privacy: { correct: 1, total: 2 } });
@@ -959,7 +976,7 @@ console.log('[P-4] 백업 복원 중간 실패 원자 롤백');
   storage.set(slotKey, oldSlot);
   storage.set(statsKey, oldStats);
   const incoming = JSON.stringify({
-    app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+    app: 'ai-ethics-adventure-memento-preview', version: 1, savedAt: Date.now(),
     data: {
       [slotKey]: JSON.stringify({ v: 9, name: '복원후', flags: { defeated: {} } }),
       [statsKey]: JSON.stringify({ privacy: { correct: 9, total: 9 } }),
@@ -981,7 +998,7 @@ console.log('[P-4] 백업 복원 중간 실패 원자 롤백');
     storage.get(slotKey) === oldSlot && storage.get(statsKey) === oldStats);
   check('P-4 실패한 복원이 기존 되돌리기 항목을 보존', storage.get(undoKey) === priorUndo);
   const badValue = T.applyBackup(JSON.stringify({
-    app: 'ai-ethics-adventure', version: 1, data: { [slotKey]: { not: 'serialized' } },
+    app: 'ai-ethics-adventure-memento-preview', version: 1, data: { [slotKey]: { not: 'serialized' } },
   }));
   check('P-4 문자열이 아닌 백업 값은 쓰기 전에 거부', badValue.ok === false && badValue.error === 'value');
   T.probeStorage();
@@ -992,12 +1009,12 @@ console.log('[P-4] 백업 복원 중간 실패 원자 롤백');
 
 console.log('[P-4b] 복원 취소는 새로 들어온 키도 제거');
 {
-  const cosmeticKey = 'ai-ethics-adventure-cosmetic-2';
-  const undoKey = 'ai-ethics-adventure-restore-undo';
+  const cosmeticKey = 'fabletest2-memento-preview-cosmetic-2';
+  const undoKey = 'fabletest2-memento-preview-restore-undo';
   storage.delete(cosmeticKey);
   storage.delete(undoKey);
   const incoming = JSON.stringify({
-    app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+    app: 'ai-ethics-adventure-memento-preview', version: 1, savedAt: Date.now(),
     data: { [cosmeticKey]: '{"theme":"night"}' },
   });
   const restored = T.applyBackup(incoming);
@@ -1128,7 +1145,7 @@ tap('x');
 while (g.pauseCursor !== pauseIdx('difficulty')) tap('ArrowDown');
 tap('z');
 check('난이도 변경됨', g.difficulty !== diffBefore);
-check('난이도 설정 저장', JSON.parse(storage.get('ai-ethics-adventure-settings')).difficulty === g.difficulty);
+check('난이도 설정 저장', JSON.parse(storage.get('fabletest2-memento-preview-settings')).difficulty === g.difficulty);
 tap('x');
 // (v3) 퀴즈 배틀 폐지 — 50:50 힌트 시스템 없음. 난이도는 탄막·하트에만 영향.
 
@@ -1138,7 +1155,7 @@ tap('x');
 while (g.pauseCursor !== pauseIdx('tts')) tap('ArrowDown');
 tap('z');
 check('읽어주기 토글', g.tts !== ttsBefore);
-check('읽어주기 설정 저장', JSON.parse(storage.get('ai-ethics-adventure-settings')).tts === g.tts);
+check('읽어주기 설정 저장', JSON.parse(storage.get('fabletest2-memento-preview-settings')).tts === g.tts);
 tap('z'); // 복원
 check('읽어주기 복원', g.tts === ttsBefore);
 tap('x');
@@ -1213,7 +1230,7 @@ g.map = 'village';
 g.flags = { talkedProf: true, defeated: {}, mercy: 0, visited: {}, trueEnding: false, correctCount: 0, battleCount: 0 };
 tap('z'); tap('x'); // 대화 트리거 없이 저장이 일어나는 워프를 쓸 수 없으므로, 수동 저장
 // 현재 save()는 배틀 후, 워프 후 등에 호출됨. 여기서는 직접 테스트.
-const savedSlotData = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
+const savedSlotData = JSON.parse(storage.get('fabletest2-memento-preview-slot-0'));
 check('세이브 버전 필드 존재', savedSlotData && typeof savedSlotData.v === 'number');
 check('세이브 버전 ≥ 3', savedSlotData && savedSlotData.v >= 3);
 
@@ -1341,7 +1358,7 @@ g.flags.visited.boardplaza = true;
 g.flags.visited.warehouse = true;
 g.flags.evCards = (g.flags.evCards || []).filter(
   (id) => id !== 'ev_minimal' && id !== 'ev_footprint' && id !== 'ev_consent');
-storage.set('ai-ethics-adventure-puzzle-0', JSON.stringify({}));
+storage.set('fabletest2-memento-preview-puzzle-0', JSON.stringify({}));
 g.dialog = null; g.mode = 'world'; g.map = 'village'; setPos(24, 6, 'up');
 hold('ArrowUp', 14);
 check('마을 네온 문 → 거리 진입 (허브)', g.map === 'freestreet' && !g.puzzleRun);
@@ -1421,7 +1438,7 @@ tap('h');
 check('힌트 더 보기(2단계)', g.hint.level === 2);
 tap('z');
 check('힌트 닫힘 → 월드 복귀', g.mode === 'world');
-let plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+let plog = JSON.parse(storage.get('fabletest2-memento-preview-puzzle-0'));
 check('힌트 사용이 단계별 로그에 기록', plog.traces && plog.traces.hintsUsed.eraser >= 1);
 
 // 지우개로 2개 삭제 — 게시판 공유 얼굴사진은 삭제 불가
@@ -1448,7 +1465,7 @@ const beforeStalkers = g.puzzleRun.stalkers.length;
 pickChoice(0); advanceDialog();
 check('VIP 함정 → 스토커 2 추가', g.puzzleRun.stalkers.length === beforeStalkers + 2);
 check('VIP 통과 실패(방에 남음)', g.map === 'traceroom' && !!g.puzzleRun);
-plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+plog = JSON.parse(storage.get('fabletest2-memento-preview-puzzle-0'));
 check('VIP 함정 → wrongTries 기록', plog.traces.wrongTries >= 1);
 
 // 정리하고 일반 출구로 클리어 (테스트 편의로 되돌린 상태 구성)
@@ -1471,7 +1488,7 @@ check('클리어 → 거리 복귀(접수처 문 앞)', g.map === 'freestreet' &
   g.player.x === 6 && g.player.y === 6);
 check('구역① 보상은 ev_minimal 1장', g.flags.evCards.includes('ev_minimal') &&
   !g.flags.evCards.includes('ev_footprint'));
-plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+plog = JSON.parse(storage.get('fabletest2-memento-preview-puzzle-0'));
 check('퍼즐 done/clears 기록', plog.traces.done === true && plog.traces.clears >= 1);
 check('입장~클리어 프레임 누적 기록', plog.traces.timeFrames > 0);
 
@@ -1481,7 +1498,7 @@ hold('ArrowUp', 14);
 check('재입장 가능', g.map === 'traceroom' && !!g.puzzleRun);
 g.puzzleRun.given = []; g.puzzleRun.boardFace = false; g.puzzleRun.held.nickname = true;
 setPos(3, 11, 'up'); tap('z'); pickChoice(0); advanceDialog();
-plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+plog = JSON.parse(storage.get('fabletest2-memento-preview-puzzle-0'));
 check('재클리어로 clears 증가', plog.traces.clears >= 2);
 
 console.log('[68b] 구역② 새김의 게시판 광장 — 사본 3개 회수 (금고 사본은 회수 불가)');
@@ -1512,7 +1529,7 @@ advanceDialog();
 tap('h');
 check('광장 힌트 열림(copies 단계)', g.mode === 'hint');
 tap('z');
-plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+plog = JSON.parse(storage.get('fabletest2-memento-preview-puzzle-0'));
 check('광장 힌트 로그 기록', plog.copies && plog.copies.hintsUsed.copies >= 1);
 // 사본 회수 — 플레이어를 사본 위치로 옮겨 접촉 (도망치지만 0.7배속이라 잡힌다)
 function grabCopy() {
@@ -1543,7 +1560,7 @@ check('클리어 대사 — 금고 속 네 번째 사본 콜백', g.dialog.lines
 advanceDialog();
 check('광장 클리어 → 거리 복귀 + ev_footprint', g.map === 'freestreet' && !g.puzzleRun &&
   g.flags.evCards.includes('ev_footprint'));
-plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+plog = JSON.parse(storage.get('fabletest2-memento-preview-puzzle-0'));
 check('copies done/clears 기록(같은 스키마)', plog.copies.done === true && plog.copies.clears >= 1 &&
   plog.copies.timeFrames > 0);
 
@@ -1559,7 +1576,7 @@ pickChoice(0);
 check('오답 → 출하 안내 대사', g.mode === 'dialog' && /출하구/.test(g.dialog.lines[0]));
 advanceDialog();
 check('오답 후 반송 0 유지(같은 상자 재등장)', g.puzzleRun.diverted === 0 && g.puzzleRun.boxIdx === 0);
-plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+plog = JSON.parse(storage.get('fabletest2-memento-preview-puzzle-0'));
 check('오답이 wrongTries에 기록', plog.levers.wrongTries >= 1);
 // 정답 순서: 1호→달(11,9), 2호→별(6,9), 3호→나비(16,9)
 setPos(11, 10, 'up'); tap('z'); pickChoice(0); advanceDialog();
@@ -1575,7 +1592,7 @@ check('3호 반송 → 클리어 대화', g.mode === 'dialog');
 advanceDialog();
 check('창고 클리어 → 거리 복귀 + ev_consent 「동의의 범위」', g.map === 'freestreet' && !g.puzzleRun &&
   g.flags.evCards.includes('ev_consent'));
-plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+plog = JSON.parse(storage.get('fabletest2-memento-preview-puzzle-0'));
 check('levers done + 오답 기록 유지(같은 스키마)', plog.levers.done === true && plog.levers.wrongTries >= 1);
 
 console.log('[68d] 금고 잠금 3개 해제 → 주인의 방 개방 + 복선 조사');
@@ -1608,7 +1625,7 @@ check('콜백 인트로 — 토큰 2 중립(양쪽과 다름)',
 
 // ── 금고문(보스방) 진입 게이트 — 잠금 3개 ──
 // 구역 1개만 클리어(잠금 1/3)면 금고가 잠겨 있다
-storage.set('ai-ethics-adventure-puzzle-0',
+storage.set('fabletest2-memento-preview-puzzle-0',
   JSON.stringify({ traces: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 10 } }));
 g.flags.visited = g.flags.visited || {};
 g.flags.visited.freestreet = true; g.flags.visited.ownerroom = true;
@@ -1618,7 +1635,7 @@ check('잠금 1/3 — 금고문 잠김(거리에 남음)', g.map === 'freestreet
 check('잠김 안내 대사 표시', g.mode === 'dialog' && g.dialog.lines.some((l) => /1\/3/.test(l)));
 advanceDialog();
 // 구역 3개 전부 클리어(잠금 3/3)면 열린다
-storage.set('ai-ethics-adventure-puzzle-0', JSON.stringify({
+storage.set('fabletest2-memento-preview-puzzle-0', JSON.stringify({
   traces: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 10 },
   copies: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 10 },
   levers: { done: true, clears: 1, hintsUsed: {}, wrongTries: 1, timeFrames: 10 },
@@ -1802,7 +1819,7 @@ check('1장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags
 console.log('[71] 2장 「기울어진 거리」 — 진입 게이트 + 구역① 메아리 골목');
 g.flags = TJ.setupClassBaseFlags();
 g.currentSlot = 0;
-storage.set('ai-ethics-adventure-puzzle-0', JSON.stringify({}));
+storage.set('fabletest2-memento-preview-puzzle-0', JSON.stringify({}));
 g.flags.visited = g.flags.visited || {};
 g.flags.evCards = [];
 // 진입 게이트: chapter1Clear 전에는 잠김
@@ -1877,7 +1894,7 @@ check('다른 목소리 3 수집 → 클리어 대화', g.mode === 'dialog');
 advanceDialog();
 check('구역① 클리어 → 허브 복귀 + ev_othervoice',
   g.map === 'tiltstreet' && !g.puzzleRun && g.flags.evCards.includes('ev_othervoice'));
-let s2log = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+let s2log = JSON.parse(storage.get('fabletest2-memento-preview-puzzle-0'));
 check('voices done 기록', s2log.voices && s2log.voices.done === true);
 
 console.log('[72] 구역② 표본 창고 — 반례 3 수집 + 판독기 3 투입 + 복선 2호');
@@ -2086,7 +2103,7 @@ while (g.choice.cursor !== 2) tap('ArrowDown'); // idx2 = 제보③(수상함)
 tap('z');
 check('오답 채택 → [속보] 대화', g.mode === 'dialog');
 advanceDialog();
-let plog3 = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+let plog3 = JSON.parse(storage.get('fabletest2-memento-preview-puzzle-0'));
 check('오답이 wrongTries에 기록', plog3.tips.wrongTries >= 1);
 // 정답 두 장 채택 → 클리어
 setPos(9, 11, 'up'); tap('z');
@@ -2428,7 +2445,7 @@ pickChoice(1); // www.arca-cle.com(오답) → 함정
 check('오답 — 함정 되돌림 대사', g.mode === 'dialog' && g.dialog.lines.some((l) => /함정에 걸렸다/.test(l)));
 advanceDialog();
 check('함정 되돌림 — 갈림길 입구로', g.player.x === 9 && g.player.y === 1);
-const plog4 = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+const plog4 = JSON.parse(storage.get('fabletest2-memento-preview-puzzle-0'));
 check('오답이 wrongTries에 기록', plog4.signup.wrongTries >= 1);
 setPos(9, 6, 'up'); tap('z');
 pickChoice(0); // www.arca-de.com(정답)
@@ -2949,7 +2966,13 @@ for (let i = 1; i < SHRINE_WHISPERS.length; i++) {
     check(`정답 ${i + 1} — 비차단 말풍선(${i + 1}/8)`, !!g.notice && new RegExp(`${i + 1}/8`).test(g.notice.text));
   }
 }
-check('마지막 봉헌 → 실제 시간순 복원 시작', g.mode === 'record' && g.record && g.record.restored === true);
+check('마지막 봉헌 → 다섯 카드 시간순 정렬 시작', g.mode === 'timelineorder' && g.flags.timelineMerged === false);
+tap('ArrowUp');
+for (let i = 0; i < 5; i++) tap('z');
+check('키보드로 오래된 7→5→3→2→1일 카드 배치',
+  g.flags.timelineOrderDraft.join(',') === 'first_approval,yeongi_warning,city_failure,reset_before,reset_after');
+tap('z');
+check('정답 확인 뒤 실제 시간순 복원 시작', g.mode === 'record' && g.record && g.record.restored === true);
 check('복원 장면은 최초 승인부터 시간순으로 시작', g.record.ids[0] === 'first_approval' &&
   g.record.ids[g.record.ids.length - 1] === 'reset_after');
 check('복원 시작 시 결합 상태 저장, 정체는 아직 비공개', g.flags.timelineMerged === true &&
@@ -3042,7 +3065,7 @@ advanceDialog();
 check('flags.mercy 누적(25→26, 공용 처리 확인) + defeated.yeongi', g.flags.mercy === 26 && g.flags.defeated.yeongi === true);
 check('진엔딩 계산 재사용 — computeEnding(mercy,26) === home', g.flags.endingId === 'home' && g.flags.trueEnding === true);
 check('진엔딩 연출 진입(ending/true)', g.mode === 'ending' && g.endingType === 'true');
-const endingsSeenFinal = JSON.parse(storage.get('ai-ethics-adventure-endings') || '{}');
+const endingsSeenFinal = JSON.parse(storage.get('fabletest2-memento-preview-endings') || '{}');
 check('엔딩 기록(recordEndingSeen) — home 기록됨', endingsSeenFinal.home === true);
 const gameSrcFinal = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
 check('진엔딩 화면에 박사님과 아침빛 장면 보존', gameSrcFinal.includes('박사님도 아침빛 아래 서명을 보탰다') &&
@@ -3283,7 +3306,7 @@ console.log('[112] 4·5장 허브 HUD 진행 텍스트 — arcade(열쇠 N/2)·c
 console.log('[113] getPuzzleLog 슬롯별 메모이즈 — 캐시 히트/무효화(쓰기·슬롯 변경) 동작 불변');
 {
   const TJ3 = vm.runInContext('window.__test', sandbox);
-  storage.set('ai-ethics-adventure-puzzle-9', JSON.stringify({ traces: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 5 } }));
+  storage.set('fabletest2-memento-preview-puzzle-9', JSON.stringify({ traces: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 5 } }));
   const first = TJ3.getPuzzleLog(9);
   check('첫 조회 — 저장된 내용 반영', first.traces && first.traces.done === true);
   const second = TJ3.getPuzzleLog(9);
@@ -3293,11 +3316,11 @@ console.log('[113] getPuzzleLog 슬롯별 메모이즈 — 캐시 히트/무효�
   const afterWrite = TJ3.getPuzzleLog(9);
   check('writePuzzleLog 후 — 캐시가 새 내용 반영', afterWrite.traces.clears === 2);
   // writePuzzleLog를 거치지 않은 외부 변경(직접 storage 조작)도 다음 조회에서 정확히 반영된다
-  storage.set('ai-ethics-adventure-puzzle-9', JSON.stringify({ traces: { done: false, clears: 0, hintsUsed: {}, wrongTries: 3, timeFrames: 0 } }));
+  storage.set('fabletest2-memento-preview-puzzle-9', JSON.stringify({ traces: { done: false, clears: 0, hintsUsed: {}, wrongTries: 3, timeFrames: 0 } }));
   const afterExternal = TJ3.getPuzzleLog(9);
   check('캐시 우회 외부 변경도 다음 조회에 정확히 반영(동작 불변)', afterExternal.traces.wrongTries === 3 && afterExternal.traces.done === false);
   // 슬롯이 바뀌면 캐시가 자동으로 무효화된다(다른 슬롯의 내용이 새지 않음)
-  storage.set('ai-ethics-adventure-puzzle-10', JSON.stringify({ copies: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 1 } }));
+  storage.set('fabletest2-memento-preview-puzzle-10', JSON.stringify({ copies: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 1 } }));
   const otherSlot = TJ3.getPuzzleLog(10);
   check('슬롯 변경 시 무효화 — 다른 슬롯 내용이 섞이지 않음', !otherSlot.traces && otherSlot.copies && otherSlot.copies.done === true);
   const backToNine = TJ3.getPuzzleLog(9);
@@ -3485,7 +3508,7 @@ console.log('[T-B2] 배틀 등급 — 오답·피격 기준 S/A/B 산출');
 console.log('[T-B3] 일일 도전 표면화 — 미완료면 알림, 완료면 조용');
 {
   const slot = 0;
-  const metaKey = 'ai-ethics-adventure-meta-' + slot;
+  const metaKey = 'fabletest2-memento-preview-meta-' + slot;
   const meta = T.getMeta(slot);
   meta.lastDailyDay = null; meta.lastMilestone = 999; // 오늘 미완료 + 마일스톤 방지
   storage.set(metaKey, JSON.stringify(meta));
@@ -3608,9 +3631,10 @@ console.log('[U-5] NG+ — 두 번째 모험 (대사 스왑 오버레이 + 타�
   // 타이틀 흐름 — 클리어(endingId) 슬롯에서 Z → ngchoice, "처음부터"면 startNewGame(...true)
   const tsrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
   check('U-5 클리어 슬롯 Z → 두 번째 모험 선택(ngchoice)', /sum && sum\.endingId[\s\S]*?titleScreen = 'ngchoice'/.test(tsrc));
-  check('U-5 처음부터 선택 → NG+ 새 게임(startNewGame(slot, ..., true))', /startNewGame\(slot, sum \? sum\.name : '수호자', true\)/.test(tsrc));
-  check('U-5 두 번째 모험은 V9 기록 스키마와 별개로 flags.ng에만 반영',
-    /if \(ng\) game\.flags\.ng = true;/.test(tsrc) && /SAVE_VERSION = 9/.test(tsrc));
+  check('U-5 처음부터 선택 → 선택한 시간선의 NG+ 새 게임',
+    /startNewGame\(slot, sum \? sum\.name : '수호자', true, game\.newGameRoute\)/.test(tsrc));
+  check('U-5 두 번째 모험은 V10 기록 스키마와 별개로 flags.ng에만 반영',
+    /if \(ng\) game\.flags\.ng = true;/.test(tsrc) && /SAVE_VERSION = 10/.test(tsrc));
 }
 
 console.log('[U-5b] NG+ 오버레이 실제 적용 — 워프 시 반디 대사가 NG 버전으로 바뀐다');
@@ -3929,25 +3953,25 @@ console.log('[Y-14·Y-20] 패턴 레지스트리 정합성 · 반 순위표 집�
   const ppRec = T.getPrepost(0, 'trace');
   check('Y-18 사전/사후 점수 슬롯 메타 저장·조회', ppRec.pre && ppRec.pre.score === 2 && ppRec.post && ppRec.post.score === 4);
   // CSV에 사전/사후/향상도가 실제로 실린다 — 슬롯 0에 세이브가 있어야 행이 생긴다
-  storage.set('ai-ethics-adventure-slot-0', JSON.stringify({ v: 8, name: '측정아이', flags: { defeated: {}, mercy: 1 } }));
+  storage.set('fabletest2-memento-preview-slot-0', JSON.stringify({ v: 8, name: '측정아이', flags: { defeated: {}, mercy: 1 } }));
   const csv18 = T.buildClassCsv().split('\r\n');
   const h18 = csv18[0].split(',');
   const iPre = h18.indexOf('사전(%)'), iPost = h18.indexOf('사후(%)'), iImp = h18.indexOf('향상도(%p)');
   const row0 = csv18[1].split(',');
   check('Y-18 CSV에 사전 40% · 사후 80% · 향상도 +40 반영',
     row0[iPre] === '40' && row0[iPost] === '80' && row0[iImp] === '40');
-  storage.delete('ai-ethics-adventure-slot-0');
-  storage.delete('ai-ethics-adventure-meta-0');
+  storage.delete('fabletest2-memento-preview-slot-0');
+  storage.delete('fabletest2-memento-preview-meta-0');
 
   // Y-20 반 순위표 — 백업 객체에서 학생 행 집계(로컬 저장소 무접촉)
-  const mkBackup = (slots) => ({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+  const mkBackup = (slots) => ({ app: 'ai-ethics-adventure-memento-preview', version: 1, savedAt: Date.now(),
     data: (() => {
       const d = {};
       slots.forEach((s, i) => {
-        d['ai-ethics-adventure-slot-' + i] = JSON.stringify({ v: 8, name: s.name,
+        d['fabletest2-memento-preview-slot-' + i] = JSON.stringify({ v: 8, name: s.name,
           flags: { mercy: s.mercy, defeated: s.done ? { yeongi: true } : {} } });
-        d['ai-ethics-adventure-stats-' + i] = JSON.stringify(s.stats || {});
-        d['ai-ethics-adventure-meta-' + i] = JSON.stringify({ bossRank: s.ranks || {} });
+        d['fabletest2-memento-preview-stats-' + i] = JSON.stringify(s.stats || {});
+        d['fabletest2-memento-preview-meta-' + i] = JSON.stringify({ bossRank: s.ranks || {} });
       });
       return d;
     })() });

@@ -349,6 +349,7 @@
 <script src="src/sprites.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/data.js"></script>
+<script src="src/memento.js"></script>
 <script src="src/game.js"></script>
 <script>
   // 첫 로딩 감시: 게임이 일정 시간 안에 시작되지 않으면(스크립트 누락·네트워크 실패)
@@ -380,12 +381,12 @@
   // 한 번 선택하면 기억한다(다음부터 안내를 건너뜀).
   (function () {
     try {
-      if (localStorage.getItem('ai-ethics-allow-portrait') === '1') document.body.classList.add('allow-portrait');
+      if (localStorage.getItem('fabletest2-memento-preview-allow-portrait') === '1') document.body.classList.add('allow-portrait');
     } catch (e) {}
     var rd = document.getElementById('rotate-dismiss');
     if (rd) rd.addEventListener('click', function () {
       document.body.classList.add('allow-portrait');
-      try { localStorage.setItem('ai-ethics-allow-portrait', '1'); } catch (e) {}
+      try { localStorage.setItem('fabletest2-memento-preview-allow-portrait', '1'); } catch (e) {}
     });
   })();
 

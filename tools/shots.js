@@ -8,14 +8,14 @@ const env = createGameSandbox();
 const { storage } = env;
 
 // ---- 타이틀/수첩을 보기 좋게 채워 둔다 (스크립트 로드 전에 심어야 함) ----
-storage.set('ai-ethics-adventure-slot-0', JSON.stringify({
+storage.set('fabletest2-memento-preview-slot-0', JSON.stringify({
   v: 3, name: '도도', map: 'rumorstreet', x: 14, y: 16, flags: v3Flags(), updatedAt: Date.now(),
 }));
-storage.set('ai-ethics-adventure-slot-1', JSON.stringify({
+storage.set('fabletest2-memento-preview-slot-1', JSON.stringify({
   v: 3, name: '하늘', map: 'village', x: 13, y: 16,
   flags: { talkedProf: true, bandiJoined: true, defeated: {}, mercy: 1, visited: {} }, updatedAt: Date.now(),
 }));
-storage.set('ai-ethics-adventure-endings', JSON.stringify({ farewell: true }));
+storage.set('fabletest2-memento-preview-endings', JSON.stringify({ farewell: true }));
 // 친구 수첩 — 여덟 조각 중 넷을 만난 상태
 const dexStore = {
   bekkyeomon: { seen: true, mercy: 'mercy' },
@@ -23,7 +23,7 @@ const dexStore = {
   pyeonhyangmon: { seen: true, mercy: 'neutral' },
   hwangakmon: { seen: true, mercy: 'mercy' },
 };
-storage.set('ai-ethics-adventure-dex', JSON.stringify(dexStore));
+storage.set('fabletest2-memento-preview-dex', JSON.stringify(dexStore));
 
 const g = env.boot();
 const { QUIZZES } = env.run('({QUIZZES})');
@@ -103,7 +103,7 @@ shot('09-street.png');
 
 // 10) 수호자 일지 (주제별 정답률 — 슬롯 0 통계 시드)
 g.currentSlot = 0; g.playerName = '수호자';
-storage.set('ai-ethics-adventure-stats-0', JSON.stringify({
+storage.set('fabletest2-memento-preview-stats-0', JSON.stringify({
   privacy: { correct: 6, total: 6 },
   copyright: { correct: 5, total: 6 },
   fake: { correct: 4, total: 5 },
@@ -113,7 +113,7 @@ storage.set('ai-ethics-adventure-stats-0', JSON.stringify({
   safety: { correct: 1, total: 3 },
   transparency: { correct: 4, total: 6 },
 }));
-storage.set('ai-ethics-adventure-meta-0', JSON.stringify({ challengeRuns: 3, challengeBest: 10, challengeBestTotal: 10 }));
+storage.set('fabletest2-memento-preview-meta-0', JSON.stringify({ challengeRuns: 3, challengeBest: 10, challengeBestTotal: 10 }));
 g.mode = 'journal'; g.journal = { ret: 'world', slot: 0, scroll: 0, toast: 0 };
 g.time = 20;
 shot('10-journal.png');
@@ -134,7 +134,7 @@ g.time = 16;
 shot('11-challenge.png');
 
 // 12) 도전과제 (업적) — 일부 달성 상태
-storage.set('ai-ethics-adventure-endings', JSON.stringify({ home: true }));
+storage.set('fabletest2-memento-preview-endings', JSON.stringify({ home: true }));
 g.mode = 'awards'; g.awards = { ret: 'world', slot: 0, scroll: 0 };
 g.time = 20;
 shot('12-awards.png');
@@ -145,7 +145,7 @@ g.time = 20;
 shot('13-help.png');
 
 // 14) 꾸미기 (칭호 · 테마)
-storage.set('ai-ethics-adventure-cosmetic-0', JSON.stringify({ title: 'kind', theme: 'ocean' }));
+storage.set('fabletest2-memento-preview-cosmetic-0', JSON.stringify({ title: 'kind', theme: 'ocean' }));
 g.mode = 'cosmetics';
 g.cosmetics = { ret: 'world', slot: 0, col: 1, rowTitle: 1, rowTheme: 2, toast: 0 };
 g.time = 20;
@@ -166,12 +166,12 @@ g.time = 18;
 shot('16-quietyard.png');
 
 // 17) 교사용 대시보드 (학생 둘은 데이터, 하나는 비어 있음)
-storage.set('ai-ethics-adventure-stats-1', JSON.stringify({
+storage.set('fabletest2-memento-preview-stats-1', JSON.stringify({
   privacy: { correct: 3, total: 4 }, copyright: { correct: 2, total: 5 },
   fake: { correct: 4, total: 4 }, bias: { correct: 1, total: 4 },
 }));
-storage.set('ai-ethics-adventure-meta-1', JSON.stringify({ streak: 2, bestStreak: 3 }));
-storage.set('ai-ethics-adventure-meta-0', JSON.stringify({
+storage.set('fabletest2-memento-preview-meta-1', JSON.stringify({ streak: 2, bestStreak: 3 }));
+storage.set('fabletest2-memento-preview-meta-0', JSON.stringify({
   challengeRuns: 3, challengeBest: 10, challengeBestTotal: 10, streak: 5, bestStreak: 7,
 }));
 g.mode = 'dashboard';
@@ -180,7 +180,7 @@ g.time = 20;
 shot('17-dashboard.png');
 
 // 18) 커스텀 퀴즈 (선생님 문제)
-storage.set('ai-ethics-adventure-customquiz', JSON.stringify([
+storage.set('fabletest2-memento-preview-customquiz', JSON.stringify([
   { q: '우리 반 규칙: AI에게 물어봐도 되는 것은?', a: ['친구 비밀', '숙제 푸는 방법 설명', '내 주소'], c: 1, why: '예시 문제입니다.' },
   { q: '두 번째 커스텀 문제', a: ['1', '2', '3'], c: 0, why: '해설' },
 ]));
