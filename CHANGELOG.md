@@ -24,7 +24,8 @@
 #### Release status
 - 브라우저 검증: Chromium 183 통과 / 0 실패. 1280×800, 390×844, 844×390과 큰 글씨·효과 줄이기·저사양·TTS·ARIA·첫 화면 저장소 실패 안내·오프라인 재개를 확인했다.
 - `npm run pack`과 생성 ZIP의 무결성 검사를 통과했으며, 배포 대상이 아닌 로컬 ZIP은 작업 트리에서 제거했다.
-- **TODO:** 기능 브랜치는 아직 미리보기 `origin`에 push하거나 Draft PR·CI·Pages 배포·main 병합을 하지 않았다.
+- 미리보기 PR #7을 일반 merge했고 기능 merge SHA는 `bca918ec0eb2ca156dc6aefd151decaa8f22dd95`다. main CI와 Pages verify·deploy가 성공했다.
+- 공개 URL에서 두 경로, 60초 이내 첫 역행 기록, 카드 수동 배열, 최신 서비스워커 캐시, 오프라인 재진입, 모바일 세로 화면, 콘솔 오류 0을 다시 확인했다.
 
 ### 메멘토형 이중 시간선 미리보기 — 초기 통합 기록 (2026-08)
 

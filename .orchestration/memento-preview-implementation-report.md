@@ -1,9 +1,8 @@
 # 마음의 문 메멘토형 이중 시간선 미리보기 구현 보고서
 
-작성 기준: `feat/memento-gameplay-loop`의 브라우저 검증 런타임 커밋
-`6bbe964cf38b8147386c316e2cbc9254f8c39df4`와 브라우저 회귀·출시 심사 보강 커밋.
-이 문서는 기능 브랜치의 현재 상태를 기록한다. 아직 이 브랜치의 원격 push, Draft PR,
-CI, Pages 배포가 끝나지 않았으므로 완료로 표시하지 않는다.
+작성 기준: 기능 브랜치 최종 검토 SHA `30653bba2a7c3a6dfaafdb867c78305bc03d3540`,
+기능 PR #7의 merge SHA `bca918ec0eb2ca156dc6aefd151decaa8f22dd95`,
+main CI·Pages 배포 및 공개 URL 실제 브라우저 검증 결과.
 
 ## 1. 원본 저장소 최신 main SHA
 
@@ -15,11 +14,11 @@ CI, Pages 배포가 끝나지 않았으므로 완료로 표시하지 않는다.
 ## 2. 미리보기 저장소 URL
 
 - 저장소: `https://github.com/jh4334/fabletest2-memento-preview`
-- Pages 예정 URL: `https://jh4334.github.io/fabletest2-memento-preview/`
+- Pages URL: `https://jh4334.github.io/fabletest2-memento-preview/`
 - 설명: 마음의 문 메멘토형 이중 시간선 플롯 미리보기
 
-원격 미리보기 `main`은 읽기 전용으로 `bc71f0984b8e9aeb71f002b46cb45b2a4b2214c2`를
-가리킨다. 현재 기능 커밋은 아직 push하지 않았다.
+기능 구현은 미리보기 `origin`에만 push했고, 기능 PR #7을 일반 merge한 시점의
+미리보기 `main`은 `bca918ec0eb2ca156dc6aefd151decaa8f22dd95`다.
 
 ## 3. remote -v 결과
 
@@ -52,15 +51,16 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 - 기준 Pages: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32786447971` 성공
 - 기준 URL은 HTTP 200이었고 HTML·JS·CSS·이미지·서비스워커·새 게임·데스크톱·모바일·콘솔 오류 0을 확인했다.
 - 원본 최신 `79bdc2a`의 당시 제목은 `방과 후: 그림자 학교`여서 요청한 `마음의 문` 제목 조건과 충돌했다. 기준 ref는 손대지 않고 그대로 보존했으며, 사용자가 이후 명시한 “마음의 문으로 진행”에 따라 미리보기 기능 브랜치에서만 기존 안정 `마음의 문` 계보를 합쳐 구현했다.
-- 현재 기능 커밋의 최종 Pages 검증은 Draft PR·CI·main 병합 뒤 별도로 수행한다.
+- 기능 merge SHA의 최종 Pages도 같은 항목을 다시 검증했으며 모두 통과했다.
 
 ## 6. 구현 브랜치
 
 - `feat/memento-gameplay-loop`
-- 브라우저 검증 런타임: `6bbe964cf38b8147386c316e2cbc9254f8c39df4`
-- 브라우저 회귀 테스트: `2571c8690b32535338f0e7bfeee9f6a0575700a5`
+- 최종 독립 검토 SHA: `30653bba2a7c3a6dfaafdb867c78305bc03d3540`
+- 기능 merge SHA: `bca918ec0eb2ca156dc6aefd151decaa8f22dd95`
 - 설계 및 순수 시간축 모듈, V10 저장 격리, 실제 플레이 루프가 이 브랜치에 있다.
-- **TODO:** 기능 브랜치 push와 Draft PR 생성.
+- Draft PR #7에서 정확한 SHA 대상 목표·코드·QA·보안·맥락·시각·CJK·런타임
+  검토를 통과한 뒤 ready 전환하고 일반 merge했다.
 
 ## 7. 기존 스토리 요약
 
@@ -184,18 +184,23 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 
 ## 18. CI 및 Pages 실행 URL
 
-- 기능 브랜치 push CI: **TODO**
-- Draft PR: **TODO**
-- PR CI/Pages 사전 검증: **TODO**
-- main merge CI: **TODO**
-- 최종 Pages 배포: **TODO**
+- 기능 브랜치 push CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32915452366` — 성공
+- Draft PR: `https://github.com/jh4334/fabletest2-memento-preview/pull/7` — 검토 뒤 일반 merge
+- PR CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32915468716` — 성공
+- PR Pages 사전 검증: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32915468654` — 성공
+- main merge CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32915555646` — 성공
+- 최종 Pages 배포: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32915555630` — verify·deploy 성공
 
 ## 19. 최종 미리보기 URL
 
-**TODO:** 기능 브랜치 검증 통과 후 미리보기 저장소에 일반 merge하고, merge SHA를
-사용해 `https://jh4334.github.io/fabletest2-memento-preview/?v=<merge-sha>`에서
-HTTP 200, 제목, 새 게임, 첫 기록, 관리자 단말, 카드 정렬, 모바일 레이아웃,
-콘솔 오류 0, 서비스워커 최신 캐시를 확인한다.
+`https://jh4334.github.io/fabletest2-memento-preview/?v=bca918ec0eb2ca156dc6aefd151decaa8f22dd95`
+
+실제 Chromium에서 HTTP 200, `마음의 문` 제목, 두 시간선 선택, 메멘토 새 게임,
+60초 이내 D-1 기록, 미리보기 전용 저장 키, 역행 `aria-live`, 빈 다섯 칸 수동
+복원, 키보드로 다섯 카드 시간순 배치, 컬러 순행 복원, 모바일 세로 계속하기,
+콘솔·페이지·요청 오류 0을 확인했다. 서비스워커의 소스와 활성 캐시가 모두
+`fabletest2-memento-preview-3742020e`였고 네트워크를 끈 뒤에도 재진입했다.
+실행 로그와 직접 확인한 캡처는 `.omo/evidence/memento-gameplay-live/`에 있다.
 
 ## 20. 원본 저장소가 변경되지 않았다는 검증
 
@@ -203,29 +208,48 @@ HTTP 200, 제목, 새 게임, 첫 기록, 관리자 단말, 카드 정렬, 모�
 - 원본 remote에는 기능 브랜치·기준 태그·보관 브랜치를 쓰지 않았다.
 - 로컬 upstream push URL은 `DISABLED`다.
 - 원본 Pages·PR·설정은 이 기능 브랜치에서 변경하지 않았다.
-- **TODO:** 최종 배포 직전에 원본 SHA·Pages·PR·ref를 다시 읽기 전용 확인한다.
+- 최종 배포 뒤 다시 확인한 원본 기본 브랜치는 `main`, 열린 PR은 0개, 기능
+  브랜치·기준 태그·보관 브랜치는 원본에 없었다.
+- 원본의 최근 성공 CI와 Pages는 모두 원본 SHA `79bdc2a`에 묶여 있으며,
+  원본 Pages source는 기존 `main`/GitHub Actions 그대로다.
 
 ## 21. 남은 스토리·UX·기술 위험
 
 - 실제 Chromium에서 1280×800·390×844·844×390, 큰 글씨, 효과 줄이기, 저사양, TTS·ARIA를 확인했으나 WebKit은 설치되지 않아 선택 경로를 생략했다.
 - 저가 태블릿 실기기 터치·TalkBack·VoiceOver는 별도 확인이 필요하다.
-- 기능 커밋이 아직 배포되지 않아 Pages 캐시·오프라인 서비스워커의 최종 SHA 일치는 미검증이다.
 - 카드 오답 피드백과 기록 건너뛰기 안내가 초등 고학년에게 충분히 명확한지 실사용자 테스트가 필요하다.
-- Node 액션 런타임 경고 및 정적 Pages 배포 후 캐시 갱신은 CI에서 확인한다.
+- GitHub Actions는 고정된 checkout/setup-node/upload-artifact 액션이 Node 20 호환
+  런타임으로 실행된다는 폐기 예정 경고를 냈다. 현재 검사는 성공했지만 향후 액션
+  버전 갱신이 필요하다.
+- 레거시 태그 release 워크플로는 Pages 워크플로보다 좁아 Memento·SW·브라우저·
+  playtest 전체를 실행하지 않는다. 다음 stable 태그 발행 전 정렬해야 한다.
+- `tools/mementotest.js`는 476줄의 혼합 책임 테스트 파일이므로 다음 기능 확장 전
+  저장·진행·렌더 계약별 분할을 권장한다.
 
 ## 22. git status 및 커밋 목록
 
-현재 브랜치: `feat/memento-gameplay-loop`
+구현 브랜치: `feat/memento-gameplay-loop`
+보고서 확정 브랜치: `docs/memento-gameplay-final-report`
+
+기능 merge 뒤 구현 브랜치와 보고서 작성 직전 작업 트리는 깨끗했다. 브라우저가
+생성한 추적 PNG는 원래 내용으로 복원했고 ZIP은 작업 트리 밖으로 옮겼다.
 
 ```text
+bca918e Merge pull request #7 from jh4334/feat/memento-gameplay-loop
+30653bb fix(ui): bind memento panels to semantic tokens
+be4d1c3 docs: record final visual hardening
+8f49338 fix(ui): keep memento labels readable
+ce27987 docs: update memento release evidence
+cc67be0 fix(memento): close release review gaps
+402b7b9 merge: sync preview main
+6a6ae2d docs: record interactive memento verification
 2571c86 test(memento): cover interactive timeline journey
 6bbe964 fix(a11y): announce preview storage failures
 e959d7f feat(memento): make timeline restoration playable
 16bcd63 feat(storage): isolate memento preview state
 a3d371d refactor(memento): extract pure timeline module
 ef615b5 docs(memento): define interactive timeline loop
-af2ee52 fix: preserve storage state across failed operations
 ```
 
-출시 문서 커밋 뒤 `git diff --check`와 문서 계약 검사를 수행한다. 패키징이 만든
-ZIP과 브라우저 임시 스크린샷은 기능 브랜치 작업 트리에 남기지 않는다.
+본 보고서는 기능 코드를 바꾸지 않는 별도 문서 PR로 게시한다. 게시 전
+`git diff --check`와 문서 계약을 다시 검사한다.
