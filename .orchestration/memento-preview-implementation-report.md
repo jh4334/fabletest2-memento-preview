@@ -1,7 +1,7 @@
 # 마음의 문 메멘토형 이중 시간선 미리보기 구현 보고서
 
 작성 기준: `feat/memento-gameplay-loop`의 브라우저 검증 런타임 커밋
-`6bbe964cf38b8147386c316e2cbc9254f8c39df4`와 브라우저 회귀 커밋 `2571c86`.
+`6bbe964cf38b8147386c316e2cbc9254f8c39df4`와 브라우저 회귀·출시 심사 보강 커밋.
 이 문서는 기능 브랜치의 현재 상태를 기록한다. 아직 이 브랜치의 원격 push, Draft PR,
 CI, Pages 배포가 끝나지 않았으므로 완료로 표시하지 않는다.
 
@@ -48,8 +48,11 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 ## 5. 기준 버전 Pages 검증 결과
 
 - 기준 URL 형식: `https://jh4334.github.io/fabletest2-memento-preview/?v=79bdc2af7cac4e6e01758ae825bce9c96262c4a1`
-- 기준 버전의 과거 배포 기록은 기존 보고서에 남아 있으나, 현재 기능 커밋의 사전 배포는 아직 실행하지 않았다.
-- **TODO:** 현재 기능 브랜치를 origin에 게시한 뒤 Draft PR·CI·Pages 게이트를 실행하고, HTTP 200, 제목, 자산, 서비스워커, 새 게임, 데스크톱·모바일·콘솔을 확인한다.
+- 기준 CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32786448015` 성공
+- 기준 Pages: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32786447971` 성공
+- 기준 URL은 HTTP 200이었고 HTML·JS·CSS·이미지·서비스워커·새 게임·데스크톱·모바일·콘솔 오류 0을 확인했다.
+- 원본 최신 `79bdc2a`의 당시 제목은 `방과 후: 그림자 학교`여서 요청한 `마음의 문` 제목 조건과 충돌했다. 기준 ref는 손대지 않고 그대로 보존했으며, 사용자가 이후 명시한 “마음의 문으로 진행”에 따라 미리보기 기능 브랜치에서만 기존 안정 `마음의 문` 계보를 합쳐 구현했다.
+- 현재 기능 커밋의 최종 Pages 검증은 Draft PR·CI·main 병합 뒤 별도로 수행한다.
 
 ## 6. 구현 브랜치
 
@@ -161,6 +164,9 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 - V10 신규 기본값·V9 이하 마이그레이션·중단 상태 재개
 - 기존 본편 흐름·네 엔딩·금지 어휘·반디/고요 복선
 - 서비스워커 preview 캐시 격리
+- 저장된 슬롯의 실제 시간선 표시와 TTS 안내
+- 최초 저장소 probe 실패의 화면·`aria-live` 동시 경고
+- 시간선 선택·수동 복원 화면의 Canvas 의미 토큰 재사용
 
 ## 17. 전체 검증 명령과 실제 결과
 
@@ -169,9 +175,9 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 | 명령 | 결과 |
 |---|---|
 | `npm run validate` | 성공 |
-| `npm test` | 성공: smoke 1223, slot 93, memento 102, service worker 6 |
+| `npm test` | 성공: smoke 1223, slot 95, memento 103, service worker 6 |
 | `npm run playtest` | 성공: 원래 경로 프롤로그→5장→고요→코어→`home` 완주 |
-| `npm run test:browser` | 성공: Chromium 179, 실패 0; WebKit 미설치로 선택 경로 생략 |
+| `npm run test:browser` | 성공: Chromium 180, 실패 0; WebKit 미설치로 선택 경로 생략 |
 | `npm run pack` | 성공: 오프라인 ZIP 생성, `unzip -tq` 무결성 성공 후 작업 트리에서 산출물 제거 |
 
 ## 18. CI 및 Pages 실행 URL

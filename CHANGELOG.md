@@ -17,10 +17,11 @@
 #### Changed
 - 새 저장 스키마는 V10이며, 메멘토 체험의 슬롯·백업·캐시는 `fabletest2-memento-preview-*` 접두사와 전용 앱 ID를 사용한다. 기존 운영용 저장 키와 섞이지 않는다.
 - 순행 본편·기존 방탈출·마음 조각 배틀·모바일 조작·네 엔딩은 유지하고, 메멘토 경로와 파이널의 수동 복원을 그 위에 연결했다.
-- 로컬 검증 기준은 `smoke 1223`, `slot 93`, `memento 102`, `service worker 6`이며 `npm run validate`, `npm test`, `npm run playtest`가 통과했다.
+- 로컬 검증 기준은 `smoke 1223`, `slot 95`, `memento 103`, `service worker 6`이며 `npm run validate`, `npm test`, `npm run playtest`가 통과했다.
+- 두 시간선 선택·수동 복원 화면은 `DESIGN.md`의 Canvas 의미 토큰을 재사용한다. 저장된 슬롯에는 실제 시간선 이어하기를 표시하고, 첫 저장소 확인 실패도 화면과 `aria-live`에 함께 알린다.
 
 #### Release status
-- 브라우저 검증 런타임: `6bbe964cf38b8147386c316e2cbc9254f8c39df4`; Chromium 179 통과 / 0 실패. 1280×800, 390×844, 844×390과 큰 글씨·효과 줄이기·저사양·TTS·ARIA·오프라인 재개를 확인했다.
+- 브라우저 검증: Chromium 180 통과 / 0 실패. 1280×800, 390×844, 844×390과 큰 글씨·효과 줄이기·저사양·TTS·ARIA·첫 저장소 실패 안내·오프라인 재개를 확인했다.
 - `npm run pack`과 생성 ZIP의 무결성 검사를 통과했으며, 배포 대상이 아닌 로컬 ZIP은 작업 트리에서 제거했다.
 - **TODO:** 기능 브랜치는 아직 미리보기 `origin`에 push하거나 Draft PR·CI·Pages 배포·main 병합을 하지 않았다.
 
