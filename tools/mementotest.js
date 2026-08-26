@@ -42,6 +42,11 @@ check('route choice and timeline ordering reuse semantic Canvas tokens', (() => 
     tokens.route.borderIdle === '#444444' && tokens.order.title === '#72d2c7' &&
     tokens.order.success === '#8de08d' && tokens.order.empty === '#777777';
 })());
+check('world labels clamp their centers inside both Canvas edges',
+  typeof T.clampedCanvasLabelX === 'function' &&
+  T.clampedCanvasLabelX(90, -12, 4) === 49 &&
+  T.clampedCanvasLabelX(90, 740, 4) === 671 &&
+  T.clampedCanvasLabelX(90, 360, 4) === 360);
 check('fast Memento start has a deterministic route-aware test seam', has('startNewGameForRoute'));
 check('record completion grants evidence only through the completion seam', has('recordEvidenceStatus'));
 check('present administrator terminal exposes locked, retry, and solved states', has('openAdministratorTerminal'));

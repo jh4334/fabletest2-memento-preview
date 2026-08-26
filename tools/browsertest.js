@@ -443,6 +443,10 @@ async function screenshotStableCanvas(page, file, redrawWorld) {
     });
     await page.waitForTimeout(90);
     check(`${vp.name}: 터치 A로 카드 한 장 배치`, await page.evaluate(() => window.__game.flags.timelineOrderDraft.length === 1));
+    check(`${vp.name}: 카드 되돌리기 버튼은 한 줄짜리 짧은 한글`, await page.evaluate(() => {
+      const button = document.getElementById('t-pause');
+      return button && button.textContent === '한 칸' && button.scrollWidth <= button.clientWidth;
+    }));
     await screenshotStableCanvas(page, path.join(gameplayLoopShotsDir, `timeline-touch-large-${vp.name}.png`));
     check(`${vp.name}: 시간선 터치 렌더 콘솔/페이지 에러 없음`, errors.length === 0);
     errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
@@ -1198,6 +1202,12 @@ async function screenshotStableCanvas(page, file, redrawWorld) {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     await ctx.addInitScript(() => {
       Storage.prototype.setItem = () => { throw new Error('startup storage unavailable'); };
+      const fillText = CanvasRenderingContext2D.prototype.fillText;
+      window.__drawnStorageWarnings = [];
+      CanvasRenderingContext2D.prototype.fillText = function captureStorageWarning(text, ...args) {
+        if (/진행이 저장되지 않는 환경/.test(String(text))) window.__drawnStorageWarnings.push(String(text));
+        return fillText.call(this, text, ...args);
+      };
     });
     const page = await ctx.newPage();
     await page.goto(base + '?storage-failure=1', { waitUntil: 'load' });
@@ -1207,9 +1217,13 @@ async function screenshotStableCanvas(page, file, redrawWorld) {
       storageOk: window.__test.getStorageOk(),
       notice: window.__game.notice && window.__game.notice.text,
       live: window.__test.srLiveText(),
+      screen: window.__game.titleScreen,
+      drawnWarnings: window.__drawnStorageWarnings.slice(),
     }));
     check('첫 저장소 확인 실패가 화면 상태와 aria-live에 표시', result.storageOk === false &&
       /저장되지 않/.test(result.notice || '') && /저장되지 않/.test(result.live || ''));
+    check('첫 저장소 확인 실패가 최초 시간선 선택 Canvas에도 표시', result.screen === 'routechoice' &&
+      result.drawnWarnings.some((text) => /진행이 저장되지 않는 환경/.test(text)));
     await ctx.close();
   }
 

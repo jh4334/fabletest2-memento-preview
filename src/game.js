@@ -1510,7 +1510,7 @@
       action.setAttribute('aria-label', remaining.length ? '선택한 시간 카드 놓기' : '시간순 확인');
       setActionSub(remaining.length ? '카드 놓기' : '순서 확인');
       cancel.setAttribute('aria-label', '마지막 카드 되돌리기');
-      cancel.textContent = '되돌리기';
+      cancel.textContent = '한 칸';
       return;
     }
     if (game.mode === 'report') {
@@ -3700,6 +3700,11 @@
     box(Math.round(ex.normal.x * TS - cx), Math.round(ex.normal.y * TS - cy - 6), '#2a5a3a', '↩', '#8de08d');
     label(Math.round(ex.normal.x * TS - cx), Math.round(ex.normal.y * TS - cy - 6), '일반 출구', '#8de08d');
   }
+  function clampedCanvasLabelX(textWidth, desiredX, padding) {
+    const inset = textWidth / 2 + padding;
+    return Math.max(inset, Math.min(LW - inset, desiredX));
+  }
+
   function drawIntroLabObjects(cx, cy) {
     if (game.map !== 'introlab') return;
     const props = MAP_PROPS.introlab || [];
@@ -3708,10 +3713,11 @@
       if (!text) return;
       ctx.font = fs(10, true);
       ctx.textAlign = 'center';
+      const labelX = clampedCanvasLabelX(ctx.measureText(text).width, nx + TS / 2, 4);
       ctx.lineWidth = 3; ctx.strokeStyle = '#000';
-      ctx.strokeText(text, nx + TS / 2, ny - 5);
+      ctx.strokeText(text, labelX, ny - 5);
       ctx.fillStyle = col || '#fff';
-      ctx.fillText(text, nx + TS / 2, ny - 5);
+      ctx.fillText(text, labelX, ny - 5);
       ctx.textAlign = 'left';
     };
     for (const prop of props) {
@@ -12405,6 +12411,14 @@
     }
   }
 
+  function drawTitleStorageWarning() {
+    if (storageOk) return;
+    ctx.fillStyle = badColor();
+    ctx.font = fs(12, true);
+    ctx.textAlign = 'center';
+    ctx.fillText('⚠ 진행이 저장되지 않는 환경이에요 — 메뉴의 데이터 백업을 이용하세요', LW / 2, 520);
+  }
+
   function drawTitle() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
@@ -12459,6 +12473,7 @@
       ctx.fillStyle = color.helper;
       ctx.font = fs(13);
       ctx.fillText(isTouchDevice ? '스틱으로 선택 · Ⓐ 결정' : '↑↓ 선택 · Z·Enter 결정', LW / 2, 486);
+      drawTitleStorageWarning();
       ctx.textAlign = 'left';
       return;
     }
@@ -12544,11 +12559,7 @@
     ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   친구 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 498);
 
     // 저장 불가 환경 경고 (비공개 모드·저장공간 가득 등)
-    if (!storageOk) {
-      ctx.fillStyle = badColor();
-      ctx.font = fs(12, true);
-      ctx.fillText('⚠ 진행이 저장되지 않는 환경이에요 — 메뉴의 데이터 백업을 이용하세요', LW / 2, 520);
-    }
+    drawTitleStorageWarning();
 
     // 삭제 확인
     if (game.titleScreen === 'delete') {
@@ -13479,6 +13490,7 @@
     newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
     titleRoutes: () => MEMENTO_ROUTES.map((route) => ({ id: route.id, label: route.label })),
     mementoUiTokens: () => ({ route: Object.assign({}, ROUTE_CHOICE_UI), order: Object.assign({}, TIMELINE_ORDER_UI) }),
+    clampedCanvasLabelX,
     startNewGameForRoute, continueGame,
     recordForChapter, recordHudText, recordEvidenceStatus, unlockDamagedRecord, startDamagedRecord,
     openAdministratorTerminal, startTimelineRestoration,
