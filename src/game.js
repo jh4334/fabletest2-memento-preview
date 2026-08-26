@@ -44,7 +44,7 @@
   const CANVAS_COLOR = {
     surfacePrimary: '#000000', surfaceSecondary: '#0b0e1a',
     textPrimary: '#ffffff', textSecondary: '#dddddd', textMuted: '#888888', textTertiary: '#777777',
-    borderSubtle: '#444444', accentWarm: '#ffd644', statusSuccess: '#8de08d',
+    borderDefault: '#ffffff', borderSubtle: '#444444', accentWarm: '#ffd644', statusSuccess: '#8de08d',
     restoredCyan: '#72d2c7', reverseSurface: '#17191d', reverseLight: '#c7c9cc',
     worldMortar: '#586b96', worldWall: '#1a2028', worldWood: '#8a603b',
     worldLavender: '#66617d', worldTeal: '#287b78', figureOutline: '#0a0d12',
@@ -96,13 +96,15 @@
   };
 
   const ROUTE_CHOICE_UI = {
+    page: CANVAS_COLOR.surfacePrimary, border: CANVAS_COLOR.borderDefault,
     title: CANVAS_COLOR.textPrimary, selected: CANVAS_COLOR.accentWarm,
     unselected: CANVAS_COLOR.textSecondary, detail: CANVAS_COLOR.textSecondary,
     borderIdle: CANVAS_COLOR.borderSubtle, helper: CANVAS_COLOR.textMuted,
   };
 
   const TIMELINE_ORDER_UI = {
-    page: CANVAS_COLOR.surfacePrimary, title: CANVAS_COLOR.restoredCyan,
+    page: CANVAS_COLOR.surfacePrimary, border: CANVAS_COLOR.borderDefault,
+    title: CANVAS_COLOR.restoredCyan,
     body: CANVAS_COLOR.textSecondary, primary: CANVAS_COLOR.textPrimary,
     empty: CANVAS_COLOR.textTertiary, selected: CANVAS_COLOR.accentWarm,
     success: CANVAS_COLOR.statusSuccess, helper: CANVAS_COLOR.textMuted,
@@ -7573,12 +7575,12 @@
       const y = 88 + i * 61;
       const id = game.flags.timelineOrderDraft[i];
       const card = game.timelineOrder.cards.find((item) => item.id === id);
-      utBox(28, y, 390, 49, 6);
+      utBox(28, y, 390, 49, 6, color);
       ctx.fillStyle = card ? color.title : color.empty;
       ctx.font = fs(14, true);
       ctx.fillText(`${i + 1}. ${card ? `현재보다 ${card.daysAgo}일 전 · ${card.title}` : '○ 빈 시간순 칸'}`, 44, y + 30);
     }
-    utBox(438, 88, 254, 232, 8);
+    utBox(438, 88, 254, 232, 8, color);
     ctx.fillStyle = color.primary;
     ctx.font = fs(16, true);
     ctx.fillText(`남은 카드 ${remaining.length}개`, 458, 118);
@@ -7602,7 +7604,7 @@
       ctx.fillText('Z·Enter로 순서를 확인하자.', 458, 204);
     }
     if (game.timelineOrder.feedback) {
-      utBox(28, 408, 664, 60, 6);
+      utBox(28, 408, 664, 60, 6, color);
       ctx.fillStyle = badColor();
       ctx.font = fs(14, true);
       ctx.fillText(`△ 오답 · ${game.timelineOrder.feedback}`, 46, 443);
@@ -11753,11 +11755,12 @@
   }
 
   // 박스 안에 두 줄 흰 테두리를 그려 언더테일풍 윈도우를 만든다
-  function utBox(x, y, w, h, c) {
-    ctx.fillStyle = '#000';
+  function utBox(x, y, w, h, c, palette) {
+    const color = palette || CANVAS_COLOR;
+    ctx.fillStyle = color.page || color.surfacePrimary;
     roundRect(x, y, w, h, c || 6);
     ctx.fill();
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = color.border || color.borderDefault;
     ctx.lineWidth = 3;
     roundRect(x, y, w, h, c || 6);
     ctx.stroke();
@@ -12420,7 +12423,7 @@
   }
 
   function drawTitle() {
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = CANVAS_COLOR.surfacePrimary;
     ctx.fillRect(0, 0, LW, LH);
 
     // 배경 별
@@ -12433,10 +12436,10 @@
     }
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = CANVAS_COLOR.textPrimary;
     ctx.font = fs(40, true);
     ctx.fillText('마음의 문', LW / 2, 86);
-    ctx.fillStyle = '#888';
+    ctx.fillStyle = CANVAS_COLOR.textMuted;
     ctx.font = fs(15);
     ctx.fillText('화면 속에서, 누군가 기다리고 있다', LW / 2, 114);
 
@@ -12457,7 +12460,7 @@
         const route = MEMENTO_ROUTES[i];
         const selected = i === game.routeCursor;
         const x = 110, y = 250 + i * 106, w = 500, h = 88;
-        utBox(x, y, w, h, 8);
+        utBox(x, y, w, h, 8, color);
         ctx.strokeStyle = selected ? color.selected : color.borderIdle;
         ctx.lineWidth = selected ? 4 : 2;
         ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
@@ -13489,7 +13492,11 @@
     // X라운드 신규 — 재대결(기억의 방)·수업 배너·반응 선택 검증용
     newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
     titleRoutes: () => MEMENTO_ROUTES.map((route) => ({ id: route.id, label: route.label })),
-    mementoUiTokens: () => ({ route: Object.assign({}, ROUTE_CHOICE_UI), order: Object.assign({}, TIMELINE_ORDER_UI) }),
+    mementoUiTokens: () => ({
+      canvas: Object.assign({}, CANVAS_COLOR),
+      route: Object.assign({}, ROUTE_CHOICE_UI),
+      order: Object.assign({}, TIMELINE_ORDER_UI),
+    }),
     clampedCanvasLabelX,
     startNewGameForRoute, continueGame,
     recordForChapter, recordHudText, recordEvidenceStatus, unlockDamagedRecord, startDamagedRecord,

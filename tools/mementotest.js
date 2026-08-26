@@ -38,9 +38,12 @@ check('routechoice is the first title surface before slots',
   g.mode === 'title' && g.titleScreen === 'routechoice' && Array.isArray(T.titleRoutes && T.titleRoutes()));
 check('route choice and timeline ordering reuse semantic Canvas tokens', (() => {
   const tokens = T.mementoUiTokens();
-  return tokens.route.selected === '#ffd644' && tokens.route.unselected === '#dddddd' &&
-    tokens.route.borderIdle === '#444444' && tokens.order.title === '#72d2c7' &&
-    tokens.order.success === '#8de08d' && tokens.order.empty === '#777777';
+  return tokens.canvas.surfacePrimary === '#000000' && tokens.canvas.textPrimary === '#ffffff' &&
+    tokens.canvas.borderDefault === '#ffffff' && tokens.route.page === tokens.canvas.surfacePrimary &&
+    tokens.route.border === tokens.canvas.borderDefault && tokens.route.selected === '#ffd644' &&
+    tokens.route.unselected === '#dddddd' && tokens.route.borderIdle === '#444444' &&
+    tokens.order.page === tokens.canvas.surfacePrimary && tokens.order.border === tokens.canvas.borderDefault &&
+    tokens.order.title === '#72d2c7' && tokens.order.success === '#8de08d' && tokens.order.empty === '#777777';
 })());
 check('world labels clamp their centers inside both Canvas edges',
   typeof T.clampedCanvasLabelX === 'function' &&
