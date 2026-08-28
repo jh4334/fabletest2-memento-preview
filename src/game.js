@@ -185,6 +185,7 @@
     titleScreen: 'routechoice',
     routeCursor: 0,
     newGameRoute: null,
+    experienceKind: 'original',
     slotCursor: 0,
     currentSlot: 0,
     playerName: '수호자',
@@ -463,10 +464,18 @@
     return data;
   }
 
+  function migrateSlotV11(data) {
+    if (!data || !data.flags) return data;
+    if ((Number(data.v) || 0) >= 11) return data;
+    data.experienceKind = data.flags.storyRoute === 'memento' ? 'legacy-records' : 'original';
+    data.v = 11;
+    return data;
+  }
+
   function loadSlot(i) {
     try {
       const raw = localStorage.getItem(slotKey(i));
-      return raw ? migrateSlotV10(migrateSlotV9(migrateSlotV8(migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw))))))))) : null;
+      return raw ? migrateSlotV11(migrateSlotV10(migrateSlotV9(migrateSlotV8(migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw)))))))))) : null;
     } catch (e) { return null; }
   }
 
@@ -542,10 +551,11 @@
     }
   }
 
-  const SAVE_VERSION = 10;
+  const SAVE_VERSION = 11;
   function save() {
     writeSlot(game.currentSlot, {
       v: SAVE_VERSION,
+      experienceKind: game.experienceKind,
       name: game.playerName,
       map: game.map,
       x: game.player.x, y: game.player.y,
@@ -577,6 +587,7 @@
       done: !!(s.flags.defeated && s.flags.defeated.yeongi),
       endingId: s.flags.endingId || null,
       storyRoute: s.flags.storyRoute === 'memento' ? 'memento' : 'original',
+      experienceKind: s.experienceKind,
     };
   }
 
@@ -12619,14 +12630,24 @@
     game.player.px = 14 * TS; game.player.py = 16 * TS;
     game.player.dir = 'up';
     game.flags = newFlags();
-    game.flags.storyRoute = route === 'memento' ? 'memento' : 'original';
+    game.experienceKind = route === 'consequence-pairs'
+      ? 'consequence-pairs'
+      : (route === 'memento' ? 'legacy-records' : 'original');
+    game.flags.storyRoute = game.experienceKind === 'original' ? 'original' : 'memento';
+    if (game.experienceKind === 'consequence-pairs') {
+      game.flags.consequenceCampaign = createConsequenceCampaignState();
+      for (const id of CONSEQUENCE_PAIR_ORDER) {
+        const config = consequencePairConfig(id);
+        game.flags[config.stateKey] = createConsequencePairState(id);
+      }
+    }
     game.newGameRoute = null;
     if (ng) game.flags.ng = true; // U-5 두 번째 모험(NG+) — 세이브 스키마 영향 없이 flags에만
     game.mode = 'world';
     save();
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
-    if (game.flags.storyRoute === 'memento') {
+    if (game.experienceKind === 'legacy-records') {
       game.introDim = null;
       game.flags.bandiJoined = true;
       save();
@@ -12685,6 +12706,7 @@
     if (!s) return;
     game.currentSlot = slot;
     game.newGameRoute = null;
+    game.experienceKind = s.experienceKind;
     game.playerName = s.name || '수호자';
     game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
     let sx = (typeof s.x === 'number') ? s.x : 13;
@@ -13448,7 +13470,7 @@
   window.__game = game; // 디버그/테스트용
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
-    migrateSlotV6, migrateSlotV7, migrateSlotV8, migrateSlotV9, migrateSlotV10,
+    migrateSlotV6, migrateSlotV7, migrateSlotV8, migrateSlotV9, migrateSlotV10, migrateSlotV11,
     loadSlot, writeSlot, slotSummary, // W-1 골든 세이브 픽스처·roundtrip 검증용
     buildBackupText, applyBackup, undoRestore, hasRestoreUndo,
     cleanStaleUndoSnapshots, noteStorageFail, UNDO_TTL_MS, // Y-17 쿼터·스냅샷 정리 검증용
