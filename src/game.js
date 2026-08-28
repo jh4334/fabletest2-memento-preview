@@ -577,6 +577,42 @@
   }
 
   // 슬롯 요약 (타이틀 표시용). 없으면 null.
+  const EXPERIENCE_KIND_LABELS = Object.freeze({
+    original: '원래 모험',
+    'legacy-records': '기존 손상 기록',
+    'consequence-pairs': '과거·현재 캠페인',
+  });
+  function expectedExperienceKindForRoute(route) {
+    if (route === 'original') return 'original';
+    if (route === 'memento') return 'legacy-records';
+    if (route === 'consequence-pairs') return 'consequence-pairs';
+    return null;
+  }
+  function experienceKindLabel(kind) {
+    return EXPERIENCE_KIND_LABELS[kind] || '다른 경험';
+  }
+  function selectedNewGameRoute() {
+    return expectedExperienceKindForRoute(game.newGameRoute) ? game.newGameRoute : 'original';
+  }
+  function slotRouteStatus(route, summary) {
+    const expectedExperienceKind = expectedExperienceKindForRoute(route);
+    if (!expectedExperienceKind || !summary) {
+      return { kind: summary ? 'mismatch' : 'empty', expectedExperienceKind,
+        actualExperienceKind: summary ? summary.experienceKind : null };
+    }
+    return {
+      kind: summary.experienceKind === expectedExperienceKind ? 'matching' : 'mismatch',
+      expectedExperienceKind,
+      actualExperienceKind: summary.experienceKind,
+    };
+  }
+  const SLOT_ROUTE_MISMATCH_NOTICE = '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.';
+  const TITLE_SLOT_NOTICE_LAYOUT = Object.freeze({ x: 48, y: 426, w: 624, h: 56, pad: 18, lineH: 18 });
+  function titleSlotNotice() {
+    const notice = game.notice;
+    return game.mode === 'title' && game.titleScreen === 'slots' && notice && notice.t > 0 &&
+      notice.text === SLOT_ROUTE_MISMATCH_NOTICE ? notice.text : null;
+  }
   function slotSummary(i) {
     const s = loadSlot(i);
     if (!s || !s.flags) return null;
@@ -12433,6 +12469,21 @@
     ctx.fillText('⚠ 진행이 저장되지 않는 환경이에요 — 메뉴의 데이터 백업을 이용하세요', LW / 2, 520);
   }
 
+  function drawTitleSlotNotice() {
+    const text = titleSlotNotice();
+    if (!text) return false;
+    const box = TITLE_SLOT_NOTICE_LAYOUT;
+    utBox(box.x, box.y, box.w, box.h, 6, {
+      page: CANVAS_COLOR.surfaceSecondary,
+      border: warnColor(),
+    });
+    ctx.fillStyle = warnColor();
+    ctx.font = fs(12, true);
+    ctx.textAlign = 'left';
+    drawQuestionText(text, box.x + box.pad, box.y + 20, box.w - box.pad * 2, lh(box.lineH));
+    return true;
+  }
+
   function drawTitle() {
     ctx.fillStyle = CANVAS_COLOR.surfacePrimary;
     ctx.fillRect(0, 0, LW, LH);
@@ -12465,28 +12516,32 @@
       const color = ROUTE_CHOICE_UI;
       ctx.fillStyle = color.title;
       ctx.font = fs(22, true);
-      ctx.fillText('어떤 시간선으로 시작할까?', LW / 2, 218);
-      const descriptions = ['기존 프롤로그부터 이야기를 이어갑니다', '첫 손상 기록부터 빠르게 체험합니다'];
+      ctx.fillText('어떤 시간선으로 시작할까?', LW / 2, 192);
+      const descriptions = {
+        original: '기존 프롤로그부터 이야기를 이어갑니다',
+        memento: '첫 손상 기록부터 빠르게 체험합니다',
+        'consequence-pairs': '과거의 선택과 현재의 결과를 이어 봅니다',
+      };
       for (let i = 0; i < MEMENTO_ROUTES.length; i++) {
         const route = MEMENTO_ROUTES[i];
         const selected = i === game.routeCursor;
-        const x = 110, y = 250 + i * 106, w = 500, h = 88;
+        const x = 72, y = 210 + i * 76, w = 576, h = 70;
         utBox(x, y, w, h, 8, color);
         ctx.strokeStyle = selected ? color.selected : color.borderIdle;
         ctx.lineWidth = selected ? 4 : 2;
         ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
         ctx.textAlign = 'left';
         ctx.fillStyle = selected ? color.selected : color.unselected;
-        ctx.font = fs(18, true);
-        ctx.fillText(`${selected ? '●' : '○'} ${route.label}`, x + 24, y + 34);
+        ctx.font = fs(16, true);
+        ctx.fillText(`${selected ? '●' : '○'} ${route.label}`, x + 24, y + 29);
         ctx.fillStyle = color.detail;
-        ctx.font = fs(13);
-        ctx.fillText(descriptions[i], x + 52, y + 62);
+        ctx.font = fs(12);
+        ctx.fillText(descriptions[route.id], x + 52, y + 54);
       }
       ctx.textAlign = 'center';
       ctx.fillStyle = color.helper;
       ctx.font = fs(13);
-      ctx.fillText(isTouchDevice ? '스틱으로 선택 · Ⓐ 결정' : '↑↓ 선택 · Z·Enter 결정', LW / 2, 486);
+      ctx.fillText(isTouchDevice ? '스틱으로 선택 · Ⓐ 결정' : '↑↓ 선택 · Z·Enter 결정', LW / 2, 462);
       drawTitleStorageWarning();
       ctx.textAlign = 'left';
       return;
@@ -12497,7 +12552,9 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = CANVAS_COLOR.textMuted;
     ctx.font = fs(12);
-    ctx.fillText('선택한 시간선은 새 모험에 적용 · 저장 슬롯은 표시된 시간선 이어하기', LW / 2, 196);
+    const selectedRoute = selectedNewGameRoute();
+    const selectedRouteLabel = MEMENTO_ROUTES.find((route) => route.id === selectedRoute).label;
+    ctx.fillText(`${selectedRouteLabel} · 같은 진행 또는 빈 슬롯을 고르세요`, LW / 2, 196);
     for (let i = 0; i < SLOT_COUNT; i++) {
       const y = 212 + i * 74, h = 64;
       const sel = i === game.slotCursor && game.titleScreen === 'slots';
@@ -12522,9 +12579,11 @@
         ctx.fillStyle = '#888';
         ctx.font = fs(13);
         const prog = sum.done ? '모험 완료' : sum.stage;
-        const route = sum.storyRoute === 'memento' ? '메멘토 이어하기' : '원래 모험 이어하기';
+        const routeStatus = slotRouteStatus(selectedRoute, sum);
+        const route = `${experienceKindLabel(sum.experienceKind)} 진행`;
         const streak = getMeta(i).streak || 0;
         ctx.textAlign = 'right';
+        ctx.fillStyle = routeStatus.kind === 'matching' ? '#888' : warnColor();
         ctx.fillText(`${route} · ${prog}   ♥ ${sum.mercy}${streak ? '   🔥' + streak : ''}`, boxX + boxW - 18, y + 40);
         ctx.textAlign = 'left';
         // B-3 오늘의 도전 미완료 배지 — 슬롯 화면에서 은은히 알려 준다(벌점·소멸 없음)
@@ -12541,16 +12600,16 @@
       }
     }
 
+    const titleNoticeVisible = drawTitleSlotNotice();
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
-    // 단축키는 핵심만 — 나머지는 I 도움말(또는 메뉴). 벽 같은 키 나열은 초등 첫인상을 해친다.
-    if (isTouchDevice) {
+    if (!titleNoticeVisible && isTouchDevice) {
       ctx.font = fs(14);
       ctx.fillText('스틱으로 슬롯 선택 · Ⓐ로 시작', LW / 2, 456);
       ctx.fillStyle = '#9aa8c8';
       ctx.font = fs(13);
       ctx.fillText('친구수첩·백업 등 → [메뉴]   ·   선생님 → 오른쪽 아래', LW / 2, 476);
-    } else {
+    } else if (!titleNoticeVisible) {
       ctx.font = fs(13);
       ctx.fillText('↑↓ 선택  ·  Z 시작  ·  X 삭제  ·  I 도움말', LW / 2, 456);
       ctx.fillStyle = '#666';
@@ -12570,7 +12629,8 @@
       .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
     ctx.fillStyle = '#e0453a';
     ctx.font = fs(13);
-    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   친구 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 498);
+    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   친구 ${dexSeenCount()}/${DEX_ORDER.length}`,
+      LW / 2, titleNoticeVisible ? 512 : 498);
 
     // 저장 불가 환경 경고 (비공개 모드·저장공간 가득 등)
     drawTitleStorageWarning();
@@ -12625,14 +12685,13 @@
   function startNewGame(slot, name, ng, route) {
     game.currentSlot = slot;
     game.playerName = name || '수호자';
-    game.map = 'introlab';
-    game.player.x = 14; game.player.y = 16;
-    game.player.px = 14 * TS; game.player.py = 16 * TS;
-    game.player.dir = 'up';
     game.flags = newFlags();
-    game.experienceKind = route === 'consequence-pairs'
-      ? 'consequence-pairs'
-      : (route === 'memento' ? 'legacy-records' : 'original');
+    game.experienceKind = expectedExperienceKindForRoute(route) || 'original';
+    game.map = game.experienceKind === 'consequence-pairs' ? 'creationhall' : 'introlab';
+    const start = MAPS[game.map].start || { x: 14, y: 16 };
+    game.player.x = start.x; game.player.y = start.y;
+    game.player.px = start.x * TS; game.player.py = start.y * TS;
+    game.player.dir = 'up';
     game.flags.storyRoute = game.experienceKind === 'original' ? 'original' : 'memento';
     if (game.experienceKind === 'consequence-pairs') {
       game.flags.consequenceCampaign = createConsequenceCampaignState();
@@ -12757,9 +12816,14 @@
   function speakSlotCursor() {
     if (!game.tts) return;
     const sum = slotSummary(game.slotCursor);
-    const route = sum && sum.storyRoute === 'memento' ? '메멘토 시간선' : '원래 모험 시간선';
+    const selectedRoute = selectedNewGameRoute();
+    const selectedRouteLabel = MEMENTO_ROUTES.find((route) => route.id === selectedRoute).label;
+    const status = slotRouteStatus(selectedRoute, sum);
     Speech.speak(`슬롯 ${game.slotCursor + 1}, ` +
-      (sum ? `${sum.name}, ${route} 이어하기` : '비어 있음, 선택한 시간선으로 새 모험'));
+      (sum
+        ? `${sum.name}, ${experienceKindLabel(sum.experienceKind)} 진행. ` +
+          (status.kind === 'matching' ? '이어서 할 수 있어요.' : '다른 경험 진행 중이에요. 빈 슬롯을 골라 주세요.')
+        : `비어 있음, ${selectedRouteLabel} 새 모험`));
   }
 
   function speakRouteCursor() {
@@ -12771,7 +12835,8 @@
   function updateTitle() {
     if (game.titleScreen === 'routechoice') {
       if (justPressed('up') || justPressed('down') || justPressed('left') || justPressed('right')) {
-        game.routeCursor = game.routeCursor ? 0 : 1;
+        const move = justPressed('up') || justPressed('left') ? -1 : 1;
+        game.routeCursor = (game.routeCursor + move + MEMENTO_ROUTES.length) % MEMENTO_ROUTES.length;
         Sound.blip();
         speakRouteCursor();
       } else if (justPressed('action')) {
@@ -12860,6 +12925,13 @@
     }
     if (justPressed('action')) {
       const sum = slotSummary(game.slotCursor);
+      const routeStatus = slotRouteStatus(selectedNewGameRoute(), sum);
+      if (routeStatus.kind === 'mismatch') {
+        game.notice = { text: SLOT_ROUTE_MISMATCH_NOTICE, t: 300 };
+        if (game.tts) Speech.speak(game.notice.text);
+        Sound.blip();
+        return;
+      }
       // U-5 클리어(endingId 존재) 슬롯이면 "이어서 볼래? / 처음부터(2회차)" 선택을 먼저 연다
       if (sum && sum.endingId) {
         game.titleScreen = 'ngchoice';
@@ -13136,11 +13208,22 @@
     let txt = '';
     const storageWarning = game.notice && game.notice.t > 0 &&
       /^⚠ 이 기기에서는 진행이 저장되지 않아요/.test(game.notice.text || '');
-    if (storageWarning) {
-      txt = game.notice.text;
+    const slotNotice = titleSlotNotice();
+    if (storageWarning || slotNotice) {
+      txt = slotNotice || game.notice.text;
     } else if (game.mode === 'title' && game.titleScreen === 'routechoice') {
       const route = MEMENTO_ROUTES[game.routeCursor];
       txt = `시간선 선택. ${game.routeCursor + 1}/${MEMENTO_ROUTES.length}. ${route.label}.`;
+    } else if (game.mode === 'title' && game.titleScreen === 'slots') {
+      const route = selectedNewGameRoute();
+      const routeLabel = MEMENTO_ROUTES.find((item) => item.id === route).label;
+      const summary = slotSummary(game.slotCursor);
+      const status = slotRouteStatus(route, summary);
+      txt = summary
+        ? `저장 슬롯 선택. ${routeLabel}. 슬롯 ${game.slotCursor + 1}. ${summary.name}, ` +
+          `${experienceKindLabel(summary.experienceKind)} 진행. ` +
+          (status.kind === 'matching' ? '이어서 할 수 있어요.' : '다른 경험 진행 중이에요. 빈 슬롯을 골라 주세요.')
+        : `저장 슬롯 선택. ${routeLabel}. 슬롯 ${game.slotCursor + 1}, 비어 있음. 새 모험을 시작할 수 있어요.`;
     } else if (game.mode === 'timelineorder') {
       txt = timelineOrderAnnouncement();
     } else if (game.mode === 'choice' && game.choice) {
@@ -13471,7 +13554,8 @@
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
     migrateSlotV6, migrateSlotV7, migrateSlotV8, migrateSlotV9, migrateSlotV10, migrateSlotV11,
-    loadSlot, writeSlot, slotSummary, // W-1 골든 세이브 픽스처·roundtrip 검증용
+    loadSlot, writeSlot, slotSummary, expectedExperienceKindForRoute, slotRouteStatus,
+    titleSlotNotice, titleSlotNoticeLayout: () => Object.assign({}, TITLE_SLOT_NOTICE_LAYOUT),
     buildBackupText, applyBackup, undoRestore, hasRestoreUndo,
     cleanStaleUndoSnapshots, noteStorageFail, UNDO_TTL_MS, // Y-17 쿼터·스냅샷 정리 검증용
     checkTextOverflow, // Y-13 큰 글씨 오버플로 실렌더 검사용

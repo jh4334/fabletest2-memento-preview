@@ -91,12 +91,13 @@ check('슬롯 0으로 이전됨', !!slot(0));
 check('이전된 진행도 보존 (스테이지 6)', slot(0).flags.defeated.finalboss === true);
 check('이전된 이름 기본값', slot(0).name === '수호자');
 check('첫 타이틀 표면은 슬롯보다 앞선 시간선 선택', g.mode === 'title' && g.titleScreen === 'routechoice');
-check('시간선 선택지는 정확한 두 ID와 표시 이름', JSON.stringify(storageTest.titleRoutes()) === JSON.stringify([
+check('시간선 선택지는 정확한 세 ID와 표시 이름', JSON.stringify(storageTest.titleRoutes()) === JSON.stringify([
   { id: 'original', label: '원래 모험 시작' },
   { id: 'memento', label: '메멘토 시간선 체험' },
+  { id: 'consequence-pairs', label: '과거·현재 캠페인 시작' },
 ]));
 tap('ArrowUp');
-check('시간선 선택은 위 방향으로 끝에서 감김', g.routeCursor === 1);
+check('시간선 선택은 위 방향으로 끝에서 감김', g.routeCursor === 2);
 tap('ArrowDown');
 check('시간선 선택은 아래 방향으로 처음에 감김', g.routeCursor === 0);
 tap('z');
@@ -330,11 +331,39 @@ console.log('[V11] 경험 종류 고정·과거 세이브 격리·미래 필드 
     futureRestored.experienceKind === 'future-experience' && futureRestored.futureTop.keep === true &&
     futureRestored.flags.futureFlag.keep === true);
 
+  check('세 타이틀 경로는 각 경험 종류를 정확히 예상한다',
+    typeof T.expectedExperienceKindForRoute === 'function' &&
+    T.expectedExperienceKindForRoute('original') === 'original' &&
+    T.expectedExperienceKindForRoute('memento') === 'legacy-records' &&
+    T.expectedExperienceKindForRoute('consequence-pairs') === 'consequence-pairs' &&
+    T.expectedExperienceKindForRoute('unknown') === null);
+  check('다른 경험과 알 수 없는 경험 슬롯은 안전하게 진입을 막는다',
+    typeof T.slotRouteStatus === 'function' &&
+    T.slotRouteStatus('consequence-pairs', T.slotSummary(0)).kind === 'mismatch' &&
+    T.slotRouteStatus('original', T.slotSummary(1)).kind === 'mismatch' &&
+    T.slotRouteStatus('consequence-pairs', T.slotSummary(2)).kind === 'mismatch');
+  check('슬롯 종류 불일치 확인은 원본 저장 바이트를 바꾸지 않는다', (() => {
+    const before = storage.get('fabletest2-memento-preview-slot-2');
+    const result = T.slotRouteStatus('consequence-pairs', T.slotSummary(2));
+    return result.kind === 'mismatch' && storage.get('fabletest2-memento-preview-slot-2') === before;
+  })());
+  g.mode = 'title'; g.titleScreen = 'slots'; g.newGameRoute = 'consequence-pairs'; g.slotCursor = 0;
+  const originalBytesBeforeMismatch = storage.get('fabletest2-memento-preview-slot-0');
+  tap('z');
+  check('다른 경험 슬롯을 실제로 누르면 원본 바이트를 보존한 채 안내만 표시',
+    g.mode === 'title' && g.titleScreen === 'slots' &&
+    g.notice && g.notice.text === '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.' &&
+    storage.get('fabletest2-memento-preview-slot-0') === originalBytesBeforeMismatch &&
+    T.srLiveText() === '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.' &&
+    T.titleSlotNotice() === '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.' &&
+    (() => { const box = T.titleSlotNoticeLayout(); return box.x === 48 && box.y === 426 && box.w === 624 && box.h === 56 && box.y + box.h < 498; })());
+
   g.mode = 'title';
   T.startNewGameForRoute(2, '과거아이', 'consequence-pairs');
   const campaignSlot = T.loadSlot(2);
   check('새 과거·현재 캠페인은 V11 consequence-pairs와 독립 기본 상태로 저장',
     campaignSlot.v === 11 && campaignSlot.experienceKind === 'consequence-pairs' &&
+    campaignSlot.map === 'creationhall' && campaignSlot.x === 12 && campaignSlot.y === 17 &&
     campaignSlot.flags.consequenceCampaign && campaignSlot.flags.consequenceCampaign.activePairId === 'd1_copyright' &&
     Array.isArray(campaignSlot.flags.consequenceCampaign.completedPairIds) &&
     campaignSlot.flags.consequenceCampaign.completedPairIds.length === 0 &&

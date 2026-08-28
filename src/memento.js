@@ -107,6 +107,7 @@ const MEMENTO_ENDING_THEMES = {
 const MEMENTO_ROUTES = Object.freeze([
   Object.freeze({ id: 'original', label: '원래 모험 시작' }),
   Object.freeze({ id: 'memento', label: '메멘토 시간선 체험' }),
+  Object.freeze({ id: 'consequence-pairs', label: '과거·현재 캠페인 시작' }),
 ]);
 
 const MEMENTO_TERMINAL = Object.freeze({

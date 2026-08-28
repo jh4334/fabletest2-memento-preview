@@ -82,10 +82,11 @@ const pureModule = data(`({
 check('순수 메멘토 상수와 투영 API가 존재',
   pureModule.recordForChapter === 'function' && pureModule.axisProjection === 'function' &&
   pureModule.orderingCards === 'function' && pureModule.chronologicalOrder === 'function');
-check('두 시작 경로는 ID와 표시 이름을 고정한다',
+check('세 시작 경로는 ID와 표시 이름을 고정한다',
   JSON.stringify(pureModule.routes) === JSON.stringify([
     { id: 'original', label: '원래 모험 시작' },
     { id: 'memento', label: '메멘토 시간선 체험' },
+    { id: 'consequence-pairs', label: '과거·현재 캠페인 시작' },
   ]));
 check('현재 관리자 단말 계약은 하나의 정답과 재시도 문구를 가진다',
   pureModule.terminal && pureModule.terminal.id === 'admin-terminal' &&
