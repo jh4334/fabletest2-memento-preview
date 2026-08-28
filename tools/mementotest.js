@@ -501,6 +501,185 @@ if (has('worldFigureProfile')) {
     /^#[0-9a-f]{6}$/i.test(figure.player.r) && figure.outline === '#0a0d12' && figure.shadow === true && figure.outlinePx >= 2);
 }
 
+console.log('[CP-1] 과거·현재 다섯 쌍의 순수 계약은 불변 레지스트리로 고정된다');
+const consequenceEngine = data(`({
+  order: typeof CONSEQUENCE_PAIR_ORDER === 'undefined' ? null : CONSEQUENCE_PAIR_ORDER,
+  configs: typeof CONSEQUENCE_PAIR_CONFIGS === 'undefined' ? null : CONSEQUENCE_PAIR_CONFIGS,
+  lookup: typeof consequencePairConfig,
+  createPair: typeof createConsequencePairState,
+  createCampaign: typeof createConsequenceCampaignState,
+  derive: typeof deriveAddedRepairIds,
+  required: typeof requiredRepairIds,
+  facts: typeof projectPairFacts,
+  ready: typeof isPairFinaleReady,
+  classify: typeof classifyPairJourney,
+  ending: typeof computeConsequenceEnding
+})`, {}) || {};
+const CONSEQUENCE_ORDER = ['d1_copyright', 'd3_consent', 'd5_recommendation', 'd7_misinformation', 'd10_judgment'];
+const CONSEQUENCE_CHRONOLOGICAL = CONSEQUENCE_ORDER.slice().reverse();
+const CONSEQUENCE_ENDINGS = ['home', 'silent', 'dawn', 'farewell'];
+const CONSEQUENCE_FINALS = ['restore_together', 'reset_again', 'delegate_all', 'disconnect_all'];
+check('다섯 쌍의 고정 순서와 모든 순수 API가 존재',
+  JSON.stringify(consequenceEngine.order) === JSON.stringify(CONSEQUENCE_ORDER) &&
+  ['lookup', 'createPair', 'createCampaign', 'derive', 'required', 'facts', 'ready', 'classify', 'ending']
+    .every((key) => consequenceEngine[key] === 'function'));
+check('쌍 레지스트리는 중첩 배열·객체까지 deep freeze하고 D-1부터 D-10까지 정확히 보존',
+  data(`(() => {
+    const frozen = (value) => {
+      if (!value || typeof value !== 'object') return true;
+      return Object.isFrozen(value) && Object.getOwnPropertyNames(value).every((key) => frozen(value[key]));
+    };
+    return frozen(CONSEQUENCE_PAIR_ORDER) && frozen(CONSEQUENCE_PAIR_CONFIGS) &&
+      CONSEQUENCE_PAIR_CONFIGS.map((config) => config.id).join(',') === ${JSON.stringify(CONSEQUENCE_ORDER.join(','))};
+  })()`, false) === true);
+check('D-1 설정은 설계의 선택·기본 수리·파생 수리·피날레 ID를 그대로 사용',
+  data(`(() => {
+    const config = consequencePairConfig('d1_copyright');
+    return config && config.stateKey === 'copyrightSlice' && config.finaleId === 'overlapped_stage' &&
+      config.rooms.map((room) => room.choiceKey).join(',') === 'visual,audio,text' &&
+      config.baseRepairIds.join(',') === 'visual_panel,music_cue,text_panel' &&
+      config.disclosureKey === 'ledger' &&
+      config.disclosureChoiceIds.join(',') === 'complete,partial,missing' &&
+      config.instantRepairByChoice.visual_instant === 'visual_rights_review' &&
+      config.instantRepairByChoice.audio_instant === 'music_license_review' &&
+      config.instantRepairByChoice.text_instant === 'text_replacement' &&
+      config.disclosureRepairByChoice.partial === 'ledger_blank' &&
+      config.disclosureRepairByChoice.missing === 'ledger_fragments';
+  })()`, false) === true);
+check('unknown pair lookup은 null이고 pair/campaign state는 안전한 새 기본값을 반환',
+  data(`(() => {
+    const first = createConsequencePairState('d1_copyright');
+    const second = createConsequencePairState('d1_copyright');
+    const campaign = createConsequenceCampaignState();
+    first.baseRepairs.visual_panel = true;
+    return consequencePairConfig('unknown') === null && first !== second &&
+      second.phase === 'past' && second.checkpoint === 'past_start' &&
+      Object.values(second.pastChoices).every((value) => value === null) &&
+      second.baseRepairs.visual_panel === false && second.finale.segment === 0 &&
+      campaign.activePairId === 'd1_copyright' && campaign.completedPairIds.length === 0 &&
+      campaign.hubCheckpoint === 'pair_select' && campaign.finalTimelineWrong === 0 &&
+      campaign.timelineRestored === false && campaign.finalChoiceId === null &&
+      campaign.canonicalEndingId === null && campaign.canonicalEndingBasis === null &&
+      campaign.timelineLabUnlocked === false;
+  })()`, false) === true);
+
+console.log('[CP-2] 405개 선택 조합은 현재 수리와 사실 투영을 결정적으로 만든다');
+const consequenceMatrix = data(`(() => {
+  if (typeof deriveAddedRepairIds !== 'function' || typeof requiredRepairIds !== 'function' ||
+      typeof projectPairFacts !== 'function' || typeof isPairFinaleReady !== 'function') return null;
+  let cases = 0;
+  let valid = true;
+  for (const config of CONSEQUENCE_PAIR_CONFIGS) {
+    const [a, b, c] = config.rooms;
+    for (const av of a.choiceIds) for (const bv of b.choiceIds) for (const cv of c.choiceIds) {
+      for (const disclosure of config.disclosureChoiceIds) {
+        const choices = {
+          [a.choiceKey]: av, [b.choiceKey]: bv, [c.choiceKey]: cv,
+          [config.disclosureKey]: disclosure,
+        };
+        const before = JSON.stringify(choices);
+        const first = deriveAddedRepairIds(config, choices);
+        const second = deriveAddedRepairIds(config, choices);
+        const required = requiredRepairIds(config, choices);
+        const facts = projectPairFacts(config, choices);
+        const state = createConsequencePairState(config.id);
+        state.pastChoices = Object.assign({}, choices);
+        for (const id of required) {
+          if (state.baseRepairs[id] !== undefined) state.baseRepairs[id] = true;
+          else state.addedRepairs[id] = true;
+        }
+        valid = valid && before === JSON.stringify(choices) &&
+          JSON.stringify(first) === JSON.stringify(second) && new Set(first).size === first.length &&
+          first.length >= 0 && first.length <= 4 && required.length === 3 + first.length &&
+          facts && facts.pairId === config.id && facts.instantCount >= 0 && facts.instantCount <= 3 &&
+          Array.isArray(facts.addedRepairIds) && JSON.stringify(facts.addedRepairIds) === JSON.stringify(first) &&
+          isPairFinaleReady(config, state) === true;
+        cases += 1;
+      }
+    }
+  }
+  return { cases, valid };
+})()`, null);
+check('5 × 3×3×3×3 = 405 조합은 중복 없는 0~4개 파생 수리와 피날레 준비를 보장',
+  consequenceMatrix && consequenceMatrix.cases === 405 && consequenceMatrix.valid === true);
+check('D-1 최소·최대·혼합 fixture의 파생 수리와 입력 불변성이 정확하다',
+  data(`(() => {
+    const config = consequencePairConfig('d1_copyright');
+    const min = { visual: 'visual_manual', audio: 'audio_reply', text: 'text_new', ledger: 'complete' };
+    const max = { visual: 'visual_instant', audio: 'audio_instant', text: 'text_instant', ledger: 'missing' };
+    const mixed = { visual: 'visual_assisted', audio: 'audio_instant', text: 'text_excerpt', ledger: 'partial' };
+    const before = JSON.stringify({ min, max, mixed });
+    const results = [min, max, mixed].map((choices) => deriveAddedRepairIds(config, choices));
+    projectPairFacts(config, max); classifyPairJourney(config, mixed);
+    return before === JSON.stringify({ min, max, mixed }) &&
+      JSON.stringify(results[0]) === '[]' &&
+      JSON.stringify(results[1]) === JSON.stringify(['visual_rights_review', 'music_license_review', 'text_replacement', 'ledger_fragments']) &&
+      JSON.stringify(results[2]) === JSON.stringify(['music_license_review', 'ledger_blank']);
+  })()`, false) === true);
+check('미완료 과거 선택 또는 수리가 빠진 상태는 피날레 준비가 될 수 없다',
+  data(`(() => {
+    const config = consequencePairConfig('d1_copyright');
+    const fresh = createConsequencePairState(config.id);
+    const completeChoices = { visual: 'visual_manual', audio: 'audio_reply', text: 'text_new', ledger: 'complete' };
+    const state = createConsequencePairState(config.id);
+    state.pastChoices = completeChoices;
+    state.baseRepairs.visual_panel = true;
+    state.baseRepairs.music_cue = true;
+    return !isPairFinaleReady(config, fresh) && !isPairFinaleReady(config, state);
+  })()`, false) === true);
+
+console.log('[CP-3] 누적 여정과 마지막 선택은 기존 네 결말 ID로만 결정된다');
+check('쌍 여정 분류는 repeat → depend → restore → mixed 우선순위를 적용',
+  data(`(() => {
+    const config = consequencePairConfig('d1_copyright');
+    const profile = (choices) => classifyPairJourney(config, choices).profile;
+    return profile({ visual: 'visual_instant', audio: 'audio_reply', text: 'text_new', ledger: 'missing' }) === 'repeat' &&
+      profile({ visual: 'visual_instant', audio: 'audio_instant', text: 'text_new', ledger: 'partial' }) === 'depend' &&
+      profile({ visual: 'visual_manual', audio: 'audio_reply', text: 'text_new', ledger: 'complete' }) === 'restore' &&
+      profile({ visual: 'visual_assisted', audio: 'audio_reply', text: 'text_new', ledger: 'partial' }) === 'mixed';
+  })()`, false) === true);
+const endingMatrix = data(`(() => {
+  if (typeof computeConsequenceEnding !== 'function') return null;
+  const profiles = ['restore', 'repeat', 'depend', 'mixed'];
+  const finals = ['restore_together', 'reset_again', 'delegate_all', 'disconnect_all'];
+  const values = [];
+  const walk = (draft) => {
+    if (draft.length === 5) {
+      for (const finalChoiceId of finals) {
+        const journeys = draft.map((profile, index) => ({ pairId: CONSEQUENCE_PAIR_ORDER[index], profile, instantCount: 0, disclosure: 'complete' }));
+        const before = JSON.stringify(journeys);
+        const first = computeConsequenceEnding(journeys, finalChoiceId);
+        const second = computeConsequenceEnding(journeys, finalChoiceId);
+        values.push({ endingId: first && first.endingId, stable: JSON.stringify(first) === JSON.stringify(second), untouched: before === JSON.stringify(journeys) });
+      }
+      return;
+    }
+    profiles.forEach((profile) => walk(draft.concat(profile)));
+  };
+  walk([]);
+  return values;
+})()`, null);
+check('4^5 × 4 = 4096 누적 여정 조합은 결정적이고 기존 네 엔딩으로만 귀결',
+  Array.isArray(endingMatrix) && endingMatrix.length === 4096 &&
+  endingMatrix.every((item) => CONSEQUENCE_ENDINGS.includes(item.endingId) && item.stable && item.untouched));
+check('동률은 여정 우선·마지막 선택·실제 시간순 순으로 해결해 단일 선택이 합의를 뒤집지 않는다',
+  data(`(() => {
+    const make = (profiles) => profiles.map((profile, index) => ({ pairId: CONSEQUENCE_PAIR_ORDER[index], profile, instantCount: 0, disclosure: 'complete' }));
+    const exampleA = computeConsequenceEnding(make(['restore', 'restore', 'mixed', 'mixed', 'mixed']), 'reset_again');
+    const allMixed = computeConsequenceEnding(make(['mixed', 'mixed', 'mixed', 'mixed', 'mixed']), 'delegate_all');
+    const exampleC = computeConsequenceEnding(make(['restore', 'depend', 'mixed', 'mixed', 'mixed']), 'disconnect_all');
+    const repeated = {
+      restore: computeConsequenceEnding(make(['restore', 'restore', 'mixed', 'mixed', 'mixed']), 'reset_again').endingId,
+      repeat: computeConsequenceEnding(make(['repeat', 'repeat', 'mixed', 'mixed', 'mixed']), 'restore_together').endingId,
+      depend: computeConsequenceEnding(make(['depend', 'depend', 'mixed', 'mixed', 'mixed']), 'disconnect_all').endingId,
+    };
+    return exampleA.endingId === 'home' && allMixed.endingId === 'dawn' && exampleC.endingId === 'farewell' &&
+      repeated.restore === 'home' && repeated.repeat === 'silent' && repeated.depend === 'dawn' &&
+      exampleA.basis && exampleA.basis.ruleVersion === 'ending-rule-v1' &&
+      Array.isArray(exampleA.basis.profiles) && exampleA.basis.profiles.map((item) => item.pairId).join(',') === ${JSON.stringify(CONSEQUENCE_ORDER.join(','))} &&
+      exampleA.basis.tieBreakReason === 'journey-majority';
+  })()`, false) === true);
+
 if (failed > 0) {
   console.error(`\n✘ 메멘토 테스트 실패 (${failed}개 실패, ${passed}개 통과)`);
   process.exit(1);

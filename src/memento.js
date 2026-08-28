@@ -155,3 +155,327 @@ function isMementoChronologicalOrder(ids) {
   return Array.isArray(ids) && ids.length === MEMENTO_CHRONOLOGICAL_IDS.length &&
     ids.every((id, index) => id === MEMENTO_CHRONOLOGICAL_IDS[index]);
 }
+
+function consequenceDeepFreeze(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  Object.getOwnPropertyNames(value).forEach((key) => consequenceDeepFreeze(value[key]));
+  return Object.freeze(value);
+}
+
+function consequenceRoom(choiceKey, choiceIds) {
+  return {
+    choiceKey,
+    choiceIds,
+    choiceModes: {
+      [choiceIds[0]]: 'manual',
+      [choiceIds[1]]: 'assisted',
+      [choiceIds[2]]: 'instant',
+    },
+  };
+}
+
+const CONSEQUENCE_PAIR_ORDER = consequenceDeepFreeze([
+  'd1_copyright',
+  'd3_consent',
+  'd5_recommendation',
+  'd7_misinformation',
+  'd10_judgment',
+]);
+
+const CONSEQUENCE_PAIR_CONFIGS = consequenceDeepFreeze([
+  {
+    id: 'd1_copyright', daysAgo: 1, stateKey: 'copyrightSlice', finaleId: 'overlapped_stage',
+    rooms: [
+      consequenceRoom('visual', ['visual_manual', 'visual_assisted', 'visual_instant']),
+      consequenceRoom('audio', ['audio_reply', 'audio_licensed', 'audio_instant']),
+      consequenceRoom('text', ['text_new', 'text_excerpt', 'text_instant']),
+    ],
+    disclosureKey: 'ledger',
+    disclosureChoiceIds: ['complete', 'partial', 'missing'],
+    disclosureModeByChoice: { complete: 'complete', partial: 'partial', missing: 'missing' },
+    baseRepairIds: ['visual_panel', 'music_cue', 'text_panel'],
+    instantRepairByChoice: {
+      visual_instant: 'visual_rights_review',
+      audio_instant: 'music_license_review',
+      text_instant: 'text_replacement',
+    },
+    disclosureRepairByChoice: { partial: 'ledger_blank', missing: 'ledger_fragments' },
+  },
+  {
+    id: 'd3_consent', daysAgo: 3, stateKey: 'consentSlice', finaleId: 'mixed_broadcast',
+    rooms: [
+      consequenceRoom('likeness', ['likeness_manual', 'likeness_assisted', 'likeness_instant']),
+      consequenceRoom('voice', ['voice_recorded', 'voice_assisted', 'voice_instant']),
+      consequenceRoom('scene', ['scene_reenact', 'scene_assisted', 'scene_instant']),
+    ],
+    disclosureKey: 'consent',
+    disclosureChoiceIds: ['consent_complete', 'consent_partial', 'consent_missing'],
+    disclosureModeByChoice: {
+      consent_complete: 'complete', consent_partial: 'partial', consent_missing: 'missing',
+    },
+    baseRepairIds: ['likeness_label', 'voice_owner_cue', 'context_caption'],
+    instantRepairByChoice: {
+      likeness_instant: 'likeness_consent_review',
+      voice_instant: 'voice_consent_review',
+      scene_instant: 'context_replacement',
+    },
+    disclosureRepairByChoice: {
+      consent_partial: 'consent_gap', consent_missing: 'consent_fragments',
+    },
+  },
+  {
+    id: 'd5_recommendation', daysAgo: 5, stateKey: 'recommendationSlice', finaleId: 'one_way_alley',
+    rooms: [
+      consequenceRoom('echo', ['echo_manual', 'echo_assisted', 'echo_instant']),
+      consequenceRoom('sample', ['sample_manual', 'sample_assisted', 'sample_instant']),
+      consequenceRoom('route', ['route_manual', 'route_assisted', 'route_instant']),
+    ],
+    disclosureKey: 'recommendationNote',
+    disclosureChoiceIds: [
+      'recommendation_note_complete', 'recommendation_note_partial', 'recommendation_note_missing',
+    ],
+    disclosureModeByChoice: {
+      recommendation_note_complete: 'complete',
+      recommendation_note_partial: 'partial',
+      recommendation_note_missing: 'missing',
+    },
+    baseRepairIds: ['echo_countervoice', 'sample_context', 'dim_choice_lamps'],
+    instantRepairByChoice: {
+      echo_instant: 'echo_filter_reset',
+      sample_instant: 'sample_counterexample_review',
+      route_instant: 'dim_autoplay_exit',
+    },
+    disclosureRepairByChoice: {
+      recommendation_note_partial: 'recommendation_log_gap',
+      recommendation_note_missing: 'recommendation_log_fragments',
+    },
+  },
+  {
+    id: 'd7_misinformation', daysAgo: 7, stateKey: 'misinformationSlice', finaleId: 'one_sided_tower',
+    rooms: [
+      consequenceRoom('tip', ['tip_manual', 'tip_assisted', 'tip_instant']),
+      consequenceRoom('context', ['context_manual', 'context_assisted', 'context_instant']),
+      consequenceRoom('bulletin', ['bulletin_manual', 'bulletin_assisted', 'bulletin_instant']),
+    ],
+    disclosureKey: 'audit',
+    disclosureChoiceIds: ['audit_complete', 'audit_partial', 'audit_missing'],
+    disclosureModeByChoice: {
+      audit_complete: 'complete', audit_partial: 'partial', audit_missing: 'missing',
+    },
+    baseRepairIds: ['tip_source_chain', 'edit_context_compare', 'tower_correction'],
+    instantRepairByChoice: {
+      tip_instant: 'tip_duplicate_trace',
+      context_instant: 'composite_origin_review',
+      bulletin_instant: 'broadcast_retraction',
+    },
+    disclosureRepairByChoice: { audit_partial: 'audit_gap', audit_missing: 'audit_fragments' },
+  },
+  {
+    id: 'd10_judgment', daysAgo: 10, stateKey: 'judgmentSlice', finaleId: 'deciding_house',
+    rooms: [
+      consequenceRoom('call', ['call_manual', 'call_assisted', 'call_instant']),
+      consequenceRoom('safety', ['safety_manual', 'safety_assisted', 'safety_instant']),
+      consequenceRoom('comfort', ['comfort_manual', 'comfort_assisted', 'comfort_instant']),
+    ],
+    disclosureKey: 'authority',
+    disclosureChoiceIds: ['authority_complete', 'authority_partial', 'authority_missing'],
+    disclosureModeByChoice: {
+      authority_complete: 'complete', authority_partial: 'partial', authority_missing: 'missing',
+    },
+    baseRepairIds: ['call_reply_choice', 'corridor_override', 'sofa_exit'],
+    instantRepairByChoice: {
+      call_instant: 'autoreply_correction',
+      safety_instant: 'false_lock_appeal',
+      comfort_instant: 'comfort_pause',
+    },
+    disclosureRepairByChoice: { authority_partial: 'authority_gap', authority_missing: 'authority_restore' },
+  },
+]);
+
+const CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER = consequenceDeepFreeze(CONSEQUENCE_PAIR_ORDER.slice().reverse());
+const CONSEQUENCE_PROFILE_ENDINGS = consequenceDeepFreeze({ restore: 'home', repeat: 'silent', depend: 'dawn' });
+const CONSEQUENCE_FINAL_ENDINGS = consequenceDeepFreeze({
+  restore_together: 'home', reset_again: 'silent', delegate_all: 'dawn', disconnect_all: 'farewell',
+});
+const CONSEQUENCE_ENDING_FALLBACK = consequenceDeepFreeze(['home', 'dawn', 'farewell', 'silent']);
+
+function consequencePairConfig(pairId) {
+  return CONSEQUENCE_PAIR_CONFIGS.find((config) => config.id === pairId) || null;
+}
+
+function createConsequencePairState(pairId) {
+  const config = consequencePairConfig(pairId);
+  if (!config) return null;
+  const pastChoices = {};
+  const baseRepairs = {};
+  config.rooms.forEach((room) => { pastChoices[room.choiceKey] = null; });
+  pastChoices[config.disclosureKey] = null;
+  config.baseRepairIds.forEach((id) => { baseRepairs[id] = false; });
+  return {
+    phase: 'past',
+    checkpoint: 'past_start',
+    pastChoices,
+    baseRepairs,
+    addedRepairs: {},
+    finale: { segment: 0, assistLevel: 0, slowWaveEnabled: false },
+    stageRestored: false,
+    complete: false,
+  };
+}
+
+function createConsequenceCampaignState() {
+  return {
+    activePairId: CONSEQUENCE_PAIR_ORDER[0],
+    completedPairIds: [],
+    hubCheckpoint: 'pair_select',
+    finalTimelineDraft: [],
+    finalTimelineWrong: 0,
+    timelineRestored: false,
+    finalChoiceId: null,
+    canonicalEndingId: null,
+    canonicalEndingBasis: null,
+    timelineLabUnlocked: false,
+  };
+}
+
+function consequenceRoomChoice(config, room, pastChoices) {
+  const choice = pastChoices && pastChoices[room.choiceKey];
+  return room.choiceIds.includes(choice) ? choice : null;
+}
+
+function consequenceDisclosureChoice(config, pastChoices) {
+  const choice = pastChoices && pastChoices[config.disclosureKey];
+  return config.disclosureChoiceIds.includes(choice) ? choice : null;
+}
+
+function deriveAddedRepairIds(config, pastChoices) {
+  if (!config) return [];
+  const ids = [];
+  config.rooms.forEach((room) => {
+    const id = config.instantRepairByChoice[consequenceRoomChoice(config, room, pastChoices)];
+    if (id) ids.push(id);
+  });
+  const disclosureId = config.disclosureRepairByChoice[consequenceDisclosureChoice(config, pastChoices)];
+  if (disclosureId) ids.push(disclosureId);
+  return [...new Set(ids)];
+}
+
+function requiredRepairIds(config, pastChoices) {
+  if (!config) return [];
+  return [...new Set(config.baseRepairIds.concat(deriveAddedRepairIds(config, pastChoices)))];
+}
+
+function projectPairFacts(config, pastChoices) {
+  if (!config) return null;
+  const choices = {};
+  const roomModes = {};
+  config.rooms.forEach((room) => {
+    const choice = consequenceRoomChoice(config, room, pastChoices);
+    choices[room.choiceKey] = choice;
+    roomModes[room.choiceKey] = choice ? room.choiceModes[choice] : null;
+  });
+  const disclosureChoice = consequenceDisclosureChoice(config, pastChoices);
+  const disclosure = disclosureChoice ? config.disclosureModeByChoice[disclosureChoice] : null;
+  const instantCount = Object.values(roomModes).filter((mode) => mode === 'instant').length;
+  return {
+    pairId: config.id,
+    choices,
+    roomModes,
+    disclosureChoice,
+    disclosure,
+    instantCount,
+    addedRepairIds: deriveAddedRepairIds(config, pastChoices),
+  };
+}
+
+function isPairFinaleReady(config, pairState) {
+  if (!config || !pairState || !pairState.pastChoices) return false;
+  const facts = projectPairFacts(config, pairState.pastChoices);
+  if (!facts.disclosureChoice || Object.values(facts.choices).some((choice) => choice === null)) return false;
+  const completed = Object.assign({}, pairState.baseRepairs, pairState.addedRepairs);
+  return requiredRepairIds(config, pairState.pastChoices).every((id) => completed[id] === true);
+}
+
+function classifyPairJourney(config, pastChoices) {
+  const facts = projectPairFacts(config, pastChoices);
+  if (!facts) return null;
+  let profile = 'mixed';
+  if (facts.disclosure === 'missing' && facts.instantCount >= 1) profile = 'repeat';
+  else if (facts.instantCount >= 2) profile = 'depend';
+  else if (facts.disclosure === 'complete' && facts.instantCount === 0) profile = 'restore';
+  return Object.assign({ profile }, facts);
+}
+
+function consequenceJourneyProjection(journeys) {
+  const source = Array.isArray(journeys) ? journeys : [];
+  return CONSEQUENCE_PAIR_ORDER.map((pairId, index) => {
+    const found = source.find((journey) => journey && typeof journey === 'object' && journey.pairId === pairId);
+    const raw = found === undefined ? source[index] : found;
+    const profile = typeof raw === 'string' ? raw : raw && raw.profile;
+    return {
+      pairId,
+      profile: Object.prototype.hasOwnProperty.call(CONSEQUENCE_PROFILE_ENDINGS, profile) ? profile : 'mixed',
+      instantCount: raw && typeof raw === 'object' && Number.isInteger(raw.instantCount) ? raw.instantCount : 0,
+      disclosure: raw && typeof raw === 'object' && typeof raw.disclosure === 'string' ? raw.disclosure : null,
+    };
+  });
+}
+
+function computeConsequenceEnding(journeys, finalChoiceId) {
+  const projected = consequenceJourneyProjection(journeys);
+  const totals = { home: 0, silent: 0, dawn: 0, farewell: 0 };
+  const journeyTotals = { home: 0, silent: 0, dawn: 0, farewell: 0 };
+  projected.forEach((journey) => {
+    const endingId = CONSEQUENCE_PROFILE_ENDINGS[journey.profile];
+    if (endingId) {
+      totals[endingId] += 1;
+      journeyTotals[endingId] += 1;
+    }
+  });
+  const finalEndingId = CONSEQUENCE_FINAL_ENDINGS[finalChoiceId] || null;
+  if (finalEndingId) totals[finalEndingId] += 2;
+
+  const highestTotal = Math.max(...Object.values(totals));
+  let candidates = Object.keys(totals).filter((id) => totals[id] === highestTotal);
+  let tieBreakReason = 'highest-total';
+  if (candidates.length > 1) {
+    const highestJourney = Math.max(...candidates.map((id) => journeyTotals[id]));
+    candidates = candidates.filter((id) => journeyTotals[id] === highestJourney);
+    tieBreakReason = 'journey-majority';
+  }
+  if (candidates.length > 1 && finalEndingId && candidates.includes(finalEndingId)) {
+    candidates = [finalEndingId];
+    tieBreakReason = 'final-choice';
+  }
+  if (candidates.length > 1) {
+    const chronological = CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER
+      .map((pairId) => projected.find((journey) => journey.pairId === pairId))
+      .map((journey) => CONSEQUENCE_PROFILE_ENDINGS[journey.profile])
+      .find((endingId) => candidates.includes(endingId));
+    if (chronological) {
+      candidates = [chronological];
+      tieBreakReason = 'chronological-pair';
+    }
+  }
+  if (candidates.length > 1) {
+    candidates = [CONSEQUENCE_ENDING_FALLBACK.find((id) => candidates.includes(id))];
+    tieBreakReason = 'fallback';
+  }
+
+  return {
+    endingId: candidates[0],
+    basis: {
+      ruleVersion: 'ending-rule-v1',
+      profiles: projected.map((journey) => ({ pairId: journey.pairId, profile: journey.profile })),
+      pairFacts: projected.map((journey) => ({
+        pairId: journey.pairId,
+        instantCount: journey.instantCount,
+        disclosure: journey.disclosure,
+      })),
+      finalChoiceId: finalEndingId ? finalChoiceId : null,
+      totals,
+      journeyTotals,
+      tieBreakReason,
+    },
+  };
+}
