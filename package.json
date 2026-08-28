@@ -7,7 +7,7 @@
     "validate": "node tools/validate.js",
     "bump": "node tools/bump-sw.js",
     "playtest": "node tools/playbot.js",
-    "test": "node tools/smoketest.js && node tools/slottest.js && node tools/mementotest.js && node tools/swtest.js",
+    "test": "node tools/smoketest.js && node tools/slottest.js && node tools/mementotest.js && node tools/consequencetest.js && node tools/swtest.js",
     "test:sw": "node tools/swtest.js",
     "test:browser": "node tools/browsertest.js",
     "shots": "node tools/shots.js",

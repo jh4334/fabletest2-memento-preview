@@ -4138,9 +4138,355 @@
     { x: 22, y: 4, name: '문구점' },
     { x: 4, y: 15, name: '사진관' },
   ];
+
+  function isConsequenceCampaign() {
+    return game.experienceKind === 'consequence-pairs' && !!(game.flags && game.flags.consequenceCampaign);
+  }
+
+  function consequenceActive() {
+    if (!isConsequenceCampaign()) return null;
+    const campaign = game.flags.consequenceCampaign;
+    const pairId = campaign.activePairId || 'd1_copyright';
+    const config = consequencePairConfig(pairId);
+    const state = config && game.flags[config.stateKey];
+    return config && state ? { campaign, config, state } : null;
+  }
+
+  function consequenceRuntime() {
+    const active = consequenceActive();
+    if (!active) return null;
+    const facts = projectPairFacts(active.config, active.state.pastChoices);
+    return {
+      pairId: active.config.id,
+      phase: active.state.phase,
+      checkpoint: active.state.checkpoint,
+      pastChoices: Object.assign({}, active.state.pastChoices),
+      requiredRepairIds: requiredRepairIds(active.config, active.state.pastChoices),
+      addedRepairIds: facts.addedRepairIds.slice(),
+      finale: Object.assign({}, active.state.finale),
+      stageRestored: !!active.state.stageRestored,
+      complete: !!active.state.complete,
+    };
+  }
+
+  function consequenceRepairIds(pastChoices) {
+    const config = consequencePairConfig('d1_copyright');
+    return requiredRepairIds(config, pastChoices || {});
+  }
+
+  function consequenceEffortProjection(choiceId) {
+    const config = consequencePairConfig('d1_copyright');
+    let mode = null;
+    for (const room of config.rooms) {
+      if (room.choiceModes[choiceId]) { mode = room.choiceModes[choiceId]; break; }
+    }
+    if (!mode && config.disclosureChoiceIds.includes(choiceId)) {
+      mode = choiceId === 'complete' ? 'manual' : choiceId === 'partial' ? 'assisted' : 'instant';
+    }
+    const labels = mode === 'manual'
+      ? ['만든 사람을 확인한다', '이용 조건을 확인한다', '이름과 도움 표시를 남긴다']
+      : mode === 'assisted'
+        ? ['도움받은 부분을 확인한다', '이름과 조건 표시를 남긴다']
+        : mode === 'instant' ? ['즉시 채우기를 실행한다'] : [];
+    return { choiceId, mode, steps: labels.length, labels };
+  }
+
+  function recordConsequencePastChoice(station, choiceId) {
+    const active = consequenceActive();
+    if (!active || active.state.phase !== 'past') return false;
+    const { config, state } = active;
+    if (station === config.disclosureKey) {
+      const roomsDone = config.rooms.every((room) => consequenceRoomChoice(config, room, state.pastChoices));
+      if (!roomsDone || state.pastChoices[station] || !config.disclosureChoiceIds.includes(choiceId)) return false;
+      state.pastChoices[station] = choiceId;
+      state.checkpoint = 'past_done';
+    } else {
+      const room = config.rooms.find((item) => item.choiceKey === station);
+      if (!room || state.pastChoices[station] || !room.choiceIds.includes(choiceId)) return false;
+      state.pastChoices[station] = choiceId;
+      state.checkpoint = 'past_rooms';
+    }
+    save();
+    return true;
+  }
+
+  function startConsequenceEffort(prop, picked) {
+    const effort = consequenceEffortProjection(picked.id);
+    if (!effort.steps) return false;
+    const advance = (step) => {
+      startChoice(`${picked.label}\n작업 ${step + 1}/${effort.steps} · 마지막 단계 전에는 돌아갈 수 있다.`,
+        [effort.labels[step]], (idx) => {
+          if (idx < 0) {
+            game.notice = { text: '아직 선택을 저장하지 않았다.', t: 180 };
+            return;
+          }
+          if (step + 1 < effort.steps) { advance(step + 1); return; }
+          recordConsequencePastChoice(prop.station, picked.id);
+          startDialog([`${picked.label}.\n${effort.steps}단계 작업을 마쳤고, 이 선택이 기록에 남았다.`], prop.label, () => {
+            if (prop.kind === 'd1_ledger') beginConsequencePresent();
+          });
+        });
+    };
+    advance(0);
+    return true;
+  }
+
+  function beginConsequencePresent() {
+    const active = consequenceActive();
+    if (!active || active.state.phase !== 'past' || active.state.checkpoint !== 'past_done') return false;
+    const { config, state } = active;
+    state.phase = 'present';
+    state.checkpoint = 'present_start';
+    state.addedRepairs = {};
+    deriveAddedRepairIds(config, state.pastChoices).forEach((id) => { state.addedRepairs[id] = false; });
+    game.map = 'creationhall';
+    game.player.px = game.player.x * TS;
+    game.player.py = game.player.y * TS;
+    save();
+    const msg = '현재로 돌아왔다. 같은 자리지만, 남겨 둔 빈칸이 보인다.';
+    game.notice = { text: msg, t: 240 };
+    Speech.speak(msg);
+    return true;
+  }
+
+  function completeConsequenceRepair(repairId) {
+    const active = consequenceActive();
+    if (!active || active.state.phase !== 'present') return false;
+    const { config, state } = active;
+    const base = config.baseRepairIds.includes(repairId);
+    const added = deriveAddedRepairIds(config, state.pastChoices).includes(repairId);
+    if (!base && !added) return false;
+    const target = base ? state.baseRepairs : state.addedRepairs;
+    if (target[repairId]) return false;
+    target[repairId] = true;
+    if (isPairFinaleReady(config, state)) state.checkpoint = 'repairs_done';
+    save();
+    return true;
+  }
+
+  const CONSEQUENCE_REPAIR_LABELS = Object.freeze({
+    visual_panel: '별표를 기준으로 원본 선을 맞춘다',
+    music_cue: '파형 모양과 번호로 여덟 박자를 분리한다',
+    text_panel: '원문·새 문장·자동 추정문을 나눈다',
+    visual_rights_review: '다솔이 승인한 복원본으로 교체한다',
+    music_license_review: '허용된 음원과 조건을 다시 확인한다',
+    text_replacement: '확인하지 못한 추정문을 바꾼다',
+    ledger_blank: '비어 있는 이름표를 현재 사실로 채운다',
+    ledger_fragments: '세 기록 조각을 작품과 연결한다',
+  });
+
+  function creationJournalRows() {
+    const active = consequenceActive();
+    if (!active) return [];
+    const facts = projectPairFacts(active.config, active.state.pastChoices);
+    const rows = [];
+    active.config.rooms.forEach((room) => {
+      const id = facts.choices[room.choiceKey];
+      const prop = (MAP_PROPS.creationhall || []).find((item) => item.station === room.choiceKey);
+      const choice = prop && prop.pastChoices.find((item) => item.id === id);
+      if (id) rows.push({ kind: 'past-choice', station: room.choiceKey, id,
+        label: choice ? choice.label : id, mode: facts.roomModes[room.choiceKey] });
+    });
+    if (facts.disclosureChoice) {
+      const prop = (MAP_PROPS.creationhall || []).find((item) => item.station === active.config.disclosureKey);
+      const choice = prop && prop.pastChoices.find((item) => item.id === facts.disclosureChoice);
+      rows.push({ kind: 'past-choice', station: active.config.disclosureKey,
+        id: facts.disclosureChoice, label: choice ? choice.label : facts.disclosureChoice, mode: facts.disclosure });
+    }
+    for (const id of requiredRepairIds(active.config, active.state.pastChoices)) {
+      const done = active.state.baseRepairs[id] === true || active.state.addedRepairs[id] === true;
+      rows.push({ kind: 'repair', id, label: CONSEQUENCE_REPAIR_LABELS[id] || id, done });
+    }
+    return rows;
+  }
+
+  function completeStagePersuasion() {
+    const active = consequenceActive();
+    if (!active || active.state.phase !== 'finale') return false;
+    const { campaign, config, state } = active;
+    state.finale.segment = Math.max(3, state.finale.segment || 0);
+    state.stageRestored = true;
+    state.complete = true;
+    state.phase = 'result';
+    state.checkpoint = 'complete';
+    if (!campaign.completedPairIds.includes(config.id)) campaign.completedPairIds.push(config.id);
+    campaign.activePairId = null;
+    campaign.hubCheckpoint = 'pair_select';
+    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[config.finaleId];
+    game.battle = null;
+    game.mode = 'world';
+    game.map = 'timelinehub';
+    game.notice = { text: '', t: 0 };
+    const start = MAPS.timelinehub.start;
+    Object.assign(game.player, { x: start.x, y: start.y, px: start.x * TS, py: start.y * TS,
+      moving: false, dir: 'up' });
+    save();
+    Sound.badge();
+    Sound.playMapBgm(MAPS.timelinehub.song);
+    startDialog([
+      '세 작품이 각자의 이름을 되찾았다.\n모르는 칸은 숨기지 않고, 다음 확인을 기다린다.',
+      '잊지 않는 건 벌이 아니었다.\n다음 선택을 바꾸기 위한 작은 약속이었다.',
+    ], '반디', () => Sound.playMapBgm(MAPS.timelinehub.song));
+    return true;
+  }
+
+  function startConsequenceStageBattle() {
+    const active = consequenceActive();
+    if (!active) return false;
+    if (!game.flags.evCards) game.flags.evCards = [];
+    for (const id of ['ev_maker', 'ev_source']) {
+      if (!game.flags.evCards.includes(id)) game.flags.evCards.push(id);
+    }
+    startPersuadeBattle('bekkyeomon', active.config.finaleId);
+    game.battle.consequenceStage = true;
+    game.battle.mon = Object.assign({}, game.battle.mon, { name: '겹친 무대' });
+    const segment = Math.max(0, Math.min(3, active.state.finale.segment || 0));
+    game.battle.claimIdx = segment;
+    if (segment > 0) {
+      game.battle.fragmentTotal = Math.max(game.battle.fragmentTotal, game.battle.p.closedThreshold || 1);
+      game.battle.gauge = Math.max(game.battle.gauge,
+        segment >= 3 ? game.battle.gaugeMax : Math.round(game.battle.gaugeMax * segment / 3));
+      persuadeGaugeSync(game.battle);
+      if (game.battle.gauge >= game.battle.gaugeMax) enterMenuPhase(game.battle);
+    }
+    return true;
+  }
+
+  function beginConsequenceFinale(options) {
+    const active = consequenceActive();
+    if (!active || active.state.phase !== 'present' || !isPairFinaleReady(active.config, active.state)) return false;
+    active.state.phase = 'finale';
+    active.state.checkpoint = 'finale_start';
+    active.state.finale.segment = 0;
+    save();
+    if (options && options.skipIntro) return startConsequenceStageBattle();
+    startDialog([getPersuade(active.config.finaleId).intro], '반디', startConsequenceStageBattle);
+    return true;
+  }
+
+  function consequenceHubProjection() {
+    const campaign = game.flags && game.flags.consequenceCampaign;
+    const completed = new Set(campaign && campaign.completedPairIds || []);
+    return CONSEQUENCE_PAIR_ORDER.map((pairId, index) => ({
+      pairId,
+      complete: completed.has(pairId),
+      replay: index === 0 && completed.has(pairId),
+      locked: index > 0,
+    }));
+  }
+
+  function resumeConsequenceCampaign(pairId, checkpointOverride) {
+    if (!isConsequenceCampaign()) return null;
+    const config = consequencePairConfig(pairId || game.flags.consequenceCampaign.activePairId || 'd1_copyright');
+    if (!config) return null;
+    const state = game.flags[config.stateKey];
+    if (!state) return null;
+    game.flags.consequenceCampaign.activePairId = state.complete ? null : config.id;
+    if (checkpointOverride) state.checkpoint = checkpointOverride;
+    const cp = state.checkpoint;
+    game.battle = null;
+    game.dialog = null;
+    game.choice = null;
+    if (cp === 'complete') {
+      state.phase = 'result'; game.map = 'timelinehub'; game.mode = 'world';
+    } else {
+      game.map = 'creationhall'; game.mode = 'world';
+      state.phase = cp === 'finale_start' ? 'finale'
+        : (cp === 'present_start' || cp === 'repairs_done') ? 'present' : 'past';
+    }
+    if (checkpointOverride) {
+      const start = MAPS[game.map].start;
+      Object.assign(game.player, { x: start.x, y: start.y, px: start.x * TS, py: start.y * TS,
+        moving: false, dir: 'up' });
+    }
+    if (!checkpointOverride && cp === 'finale_start') startConsequenceStageBattle();
+    return consequenceRuntime() || { pairId: config.id, phase: state.phase, checkpoint: cp, complete: state.complete };
+  }
+
+  function d1StationRepairIds(prop, active) {
+    const byStation = { visual: 'visual_panel', audio: 'music_cue', text: 'text_panel' };
+    const ids = [];
+    if (byStation[prop.station]) ids.push(byStation[prop.station]);
+    const derived = {
+      visual: 'visual_rights_review', audio: 'music_license_review', text: 'text_replacement',
+      ledger: active.state.pastChoices.ledger === 'partial' ? 'ledger_blank' : 'ledger_fragments',
+    }[prop.station];
+    if (derived && deriveAddedRepairIds(active.config, active.state.pastChoices).includes(derived)) ids.push(derived);
+    return ids.filter((id) => !(active.state.baseRepairs[id] || active.state.addedRepairs[id]));
+  }
+
+  function interactConsequenceProp(prop) {
+    if (!prop) return false;
+    if (game.map === 'timelinehub') {
+      if (prop.kind === 'timelinehub_pair' && prop.pairId === 'd1_copyright') {
+        const lines = creationJournalRows().map((row) => row.kind === 'past-choice'
+          ? `과거 · ${row.label}` : `현재 · ${row.done ? '완료' : '남음'}: ${row.label}`);
+        startDialog(lines.length ? lines : [prop.text], '기록 단말');
+      } else startDialog([prop.text], prop.label);
+      return true;
+    }
+    const active = consequenceActive();
+    if (!active || game.map !== 'creationhall') return false;
+    if (prop.kind === 'd1_public_terminal') {
+      const lines = creationJournalRows().map((row) => row.kind === 'past-choice'
+        ? `과거 기록 · ${row.label}` : `현재 수리 · ${row.done ? '✓' : '○'} ${row.label}`);
+      startDialog(lines.length ? lines : [prop.text], '공개 단말');
+      return true;
+    }
+    if (prop.kind === 'd1_stage') {
+      if (active.state.phase === 'past') startDialog(['무대는 아직 회색 커튼 뒤에 있다.\n먼저 세 작품과 공개 기록을 정하자.'], prop.label);
+      else if (active.state.phase === 'finale') startConsequenceStageBattle();
+      else if (!isPairFinaleReady(active.config, active.state)) startDialog(['아직 이름이 돌아오지 않은 자리가 있다.\n현재의 수리를 먼저 마치자.'], prop.label);
+      else beginConsequenceFinale();
+      return true;
+    }
+    if (active.state.phase === 'past' && (prop.kind === 'd1_station' || prop.kind === 'd1_ledger')) {
+      if (prop.kind === 'd1_ledger' && active.config.rooms.some((room) => !active.state.pastChoices[room.choiceKey])) {
+        startDialog(['기록 보관함은 아직 잠겨 있다.\n그림·음악·글의 빈칸부터 채워야 한다.'], prop.label);
+        return true;
+      }
+      if (prop.kind === 'd1_ledger' && active.state.checkpoint === 'past_done' &&
+          active.state.pastChoices[prop.station]) {
+        startDialog(['공개 기록까지 남아 있다.\n같은 자리에서 현재의 결과를 확인하자.'], prop.label,
+          beginConsequencePresent);
+        return true;
+      }
+      if (active.state.pastChoices[prop.station]) {
+        startDialog([`이미 남긴 선택: ${active.state.pastChoices[prop.station]}\n기록은 몰래 바꿀 수 없다.`], prop.label);
+        return true;
+      }
+      startChoice(`${prop.label}\n시간은 적지만, 무엇을 남길지는 정할 수 있다.`,
+        prop.pastChoices.map((choice) => `${choice.label} · ${choice.minutes}`), (idx) => {
+          if (idx < 0) return;
+          const picked = prop.pastChoices[idx];
+          startConsequenceEffort(prop, picked);
+        });
+      return true;
+    }
+    if (active.state.phase === 'present' && (prop.kind === 'd1_station' || prop.kind === 'd1_ledger')) {
+      const ids = d1StationRepairIds(prop, active);
+      if (!ids.length) startDialog(['이 자리의 사실은 이미 제자리를 찾았다.'], prop.label);
+      else startChoice(`${prop.label}\n과거의 결과를 현재에서 고친다.`,
+        ids.map((id) => CONSEQUENCE_REPAIR_LABELS[id] || id), (idx) => {
+          if (idx < 0) return;
+          const id = ids[idx];
+          completeConsequenceRepair(id);
+          startDialog([`${CONSEQUENCE_REPAIR_LABELS[id] || id}.\n숨겼던 빈칸 하나가 사실로 바뀌었다.`], prop.label);
+        });
+      return true;
+    }
+    if (prop.kind === 'd1_exit') {
+      startDialog([active.state.complete ? '마음의 문이 허브로 이어진다.' : prop.text], prop.label);
+      return true;
+    }
+    return false;
+  }
+
   function interact() {
     if (game.puzzleRun && interactPuzzle()) return;
     const f = facingTile();
+    const consequenceProp = getPropAt(game.map, f.x, f.y);
+    if (isConsequenceCampaign() && consequenceProp && interactConsequenceProp(consequenceProp)) return;
     const npc = npcAt(game.map, f.x, f.y);
     if (npc) {
       // 1장 보스(담아) — 아직 설득하지 않았으면 설득 배틀로, 이후엔 되돌린 친구로
@@ -4742,9 +5088,10 @@
   // 발밑 히트박스 — 스프라이트(48px)보다 작아 문틀·모서리에 덜 걸린다
   const HB = { ox: 10, oy: 26, w: 28, h: 20 };
   function tileBlocked(tx, ty) {
+    const consequenceProp = isConsequenceCampaign() && getPropAt(game.map, tx, ty);
     return SOLID(tileAt(game.map, tx, ty)) || !!npcAt(game.map, tx, ty) ||
       !!monsterAt(game.map, tx, ty) || !!friendAt(game.map, tx, ty) ||
-      !!(game.puzzleRun && puzzleObjAt(game.map, tx, ty));
+      !!consequenceProp || !!(game.puzzleRun && puzzleObjAt(game.map, tx, ty));
   }
   function rectBlocked(px, py) {
     const x0 = px + HB.ox, y0 = py + HB.oy, x1 = x0 + HB.w - 1, y1 = y0 + HB.h - 1;
@@ -5100,7 +5447,7 @@
         b.mercyChoiceKind = choice.kind;
         if (choice.kind === 'mercy') {
           // X-6 재대결은 winRematch에서 자비를 상향 판정하므로 여기서 누적하지 않는다(중복 방지).
-          if (!b.rematch) game.flags.mercy += 1;
+          if (!b.rematch && !b.consequenceStage) game.flags.mercy += 1;
           Sound.badge();
         } else {
           Sound.select();
@@ -5343,6 +5690,17 @@
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
+    if (b.consequenceStage) {
+      if (b.mercyChoiceKind === 'mercy') completeStagePersuasion();
+      else {
+        game.battle = null;
+        game.mode = 'world';
+        save();
+        Sound.playMapBgm(MAPS[game.map].song);
+        startDialog(['무대는 아직 겹쳐 있다.\n이름표를 한데 묶지 말고, 각자의 자리로 돌려보내자.'], '반디');
+      }
+      return;
+    }
     // X-6 재대결(기억의 방)은 진행 플래그를 건드리지 않고 별도 처리한다 — 모든 승리 경로보다 앞.
     if (b.rematch) { winRematch(); return; }
     // 챕터 보스 — 별도 진행 플래그(chapterNClear)로 처리한다
@@ -5732,7 +6090,7 @@
       rankWrong: 0,
       rankHits: 0,
     };
-    game.flags.battleCount += 1;
+    if (p.subjectKind !== 'place') game.flags.battleCount += 1;
     enterMenuPhase(game.battle);
     if (game.battle.prologueTutorial) {
       pushFloat('* 먼저 「가만히 듣기」로\n속마음을 들어 보자.');
@@ -5819,7 +6177,9 @@
   // 응답 판정 — 옛 「응답의 문」 판정과 같은 수치 (+26/32 · -6 역효과)
   function resolveResponse(b, correct, viaNote) {
     const claim = currentClaim();
-    const st = pStats();
+    const st = b.consequenceStage
+      ? { gateRight: 0, gateWrong: 0, backfire: 0, verifyWrong: 0 }
+      : pStats();
     const r = b.p.react;
     let text;
     if (correct) {
@@ -5830,7 +6190,7 @@
       st.gateRight += 1;
       const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
       const topic = cardId ? EVIDENCE_CARDS[cardId].topic : monTopic(b);
-      recordTopicResult(game.currentSlot, topic, true);
+      if (!b.consequenceStage) recordTopicResult(game.currentSlot, topic, true);
       text = claim.okLine || r.evidenceRight || '…그랬구나.';
       b.shake = 14; b.flinchT = 40; Sound.correct(); // 흠칫 — 말이 닿았다 (N-1)
       // 연속 정답 콤보(Q-5) — 잘 읽고 연달아 맞히는 것 자체가 보상이 되게.
@@ -5845,13 +6205,20 @@
         Sound.blip(660 + b.combo * 90);
       }
       b.claimIdx += 1; // 다음 주장으로
+      if (b.consequenceStage) {
+        const active = consequenceActive();
+        if (active) {
+          active.state.finale.segment = Math.min(3, Math.max(active.state.finale.segment || 0, b.claimIdx));
+          save();
+        }
+      }
       if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
     } else {
       b.combo = 0; // 콤보(Q-5)는 오답에서 끊긴다 — ×N 카운터(Y-7)도 이 값으로 함께 꺼진다
       b.rankWrong = (b.rankWrong || 0) + 1; // B-2 등급 집계 — 오답 문 카운트
       b.gauge = clamp(b.gauge - 6, 0, b.gaugeMax);
       st.gateWrong += 1; st.backfire += 1;
-      recordTopicResult(game.currentSlot, monTopic(b), false);
+      if (!b.consequenceStage) recordTopicResult(game.currentSlot, monTopic(b), false);
       text = claim.onWrong || '…아니야. 그런 게 아니야.';
       if (viaNote) text += '\n' + viaNote;
       // 읽기 게이트(Q-1): 틀리면 속마음을 한 번 더 비춰 준다 — 읽고 다시 고르는 순환.
@@ -5912,7 +6279,7 @@
       // 마지막 한 걸음은 반드시 마음에 닿는 '대답'(정답 +26/32)이어야 한다.
       const n = b.p.fragmentsPerWave || 3;
       b.fragmentTotal += n;
-      pStats().fragments += n;
+      if (!b.consequenceStage) pStats().fragments += n;
       const listenCap = Math.max(0, b.gaugeMax - 24);
       b.gauge = clamp(Math.min(b.gauge + n * 2, Math.max(b.gauge, listenCap)), 0, b.gaugeMax);
       persuadeGaugeSync(b);
@@ -6036,6 +6403,7 @@
   }
   function persuadeTriumph() {
     const b = game.battle;
+    if (b.consequenceStage) { completeStagePersuasion(); return; }
     if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
     b.arena.carrying = false;
     if (b.mon.mercy && !b.mercyDone) {
@@ -6076,6 +6444,11 @@
     const bulletMul = (typeof b.p.waveBulletMul === 'function') ? b.p.waveBulletMul(game.flags) : b.p.waveBulletMul;
     let sf = dodgeSpeedFactor() * (bulletMul || 1);
     let rateMul = 1;
+    const consequence = consequenceActive();
+    if (b.consequenceStage && consequence && consequence.state.finale.slowWaveEnabled) {
+      sf *= 0.75;
+      rateMul *= 1.25;
+    }
     if (b.pIntense) { sf *= 1.3; rateMul *= 0.75; b.pIntense = false; }
     b.arena.sf = sf; b.arena.rateMul = rateMul; b.arena.bullets = []; b.arena.spiralA = 0; b.arena.inv = 0;
     b.arena.carrying = false;
@@ -6216,7 +6589,8 @@
     // 탄막 턴 종료: 시간 만료 → 내 턴(메뉴)으로
     if (w.t >= w.dur) {
       // 무피해 보너스 — 연습 파도 제외 + gaugeMax-2 상한 (회피만으로는 만충 불가)
-      if (w.hits === 0 && !w.practice) { grantPatternGauge(b, 6); pStats().perfectWaves += 1;
+      if (w.hits === 0 && !w.practice) { grantPatternGauge(b, 6);
+        if (!b.consequenceStage) pStats().perfectWaves += 1;
         pushFloat('* 끝까지 들어 줬다 — 마음 +6'); }
       enterMenuPhase(b);
     }
@@ -6647,6 +7021,13 @@
   // 하트가 다 닳으면 물러난다 — 단, 상대는 이야기를 절반쯤 기억한다
   function persuadeExhaust() {
     const b = game.battle;
+    if (b.consequenceStage) {
+      const active = consequenceActive();
+      if (active) {
+        active.state.finale.assistLevel = Math.min(3, (active.state.finale.assistLevel || 0) + 1);
+        active.state.finale.slowWaveEnabled = active.state.finale.assistLevel >= 3;
+      }
+    }
     if (!game.flags.persuadeMemory) game.flags.persuadeMemory = {};
     // 저학년(easy)은 게이지를 그대로 기억한다 — 탈진해도 진행이 깎이지 않아
     // 재도전 의욕이 꺾이지 않는다 (기본/고학년은 절반)
@@ -11216,13 +11597,101 @@
     ctx.restore();
   }
 
+  function drawConsequenceObjects(cx, cy) {
+    if (!isConsequenceCampaign() || !['creationhall', 'timelinehub'].includes(game.map)) return;
+    const active = consequenceActive();
+    const props = MAP_PROPS[game.map] || [];
+    const icons = { visual: '✦', audio: '♪', text: '가', ledger: '▤' };
+    if (game.map === 'creationhall') {
+      const zones = [
+        { x: 1, y: 1, w: 7, h: 5, color: '#8f78b8' },
+        { x: 9, y: 1, w: 7, h: 5, color: '#4e9f98' },
+        { x: 17, y: 1, w: 7, h: 5, color: '#c58a5a' },
+        { x: 2, y: 8, w: 9, h: 6, color: '#a86a74' },
+        { x: 14, y: 8, w: 9, h: 6, color: '#647fb0' },
+      ];
+      ctx.save();
+      ctx.globalAlpha = 0.2;
+      for (const zone of zones) {
+        ctx.fillStyle = zone.color;
+        ctx.fillRect(Math.round(zone.x * TS - cx), Math.round(zone.y * TS - cy), zone.w * TS, zone.h * TS);
+      }
+      ctx.restore();
+    }
+    for (const prop of props) {
+      const sx = Math.round(prop.x * TS - cx), sy = Math.round(prop.y * TS - cy);
+      if (sx < -TS || sy < -TS || sx > LW || sy > LH) continue;
+      let done = false;
+      let available = true;
+      if (active && game.map === 'creationhall') {
+        if (active.state.phase === 'past') {
+          done = !!active.state.pastChoices[prop.station];
+          if (prop.kind === 'd1_ledger') available = active.config.rooms.every((room) => active.state.pastChoices[room.choiceKey]);
+        } else if (prop.kind === 'd1_station' || prop.kind === 'd1_ledger') {
+          done = d1StationRepairIds(prop, active).length === 0;
+        } else if (prop.kind === 'd1_stage') available = isPairFinaleReady(active.config, active.state);
+      }
+      const color = !available ? '#777777' : done ? '#8de08d'
+        : active && active.state.phase === 'past' ? '#e7e7e7' : '#72d2c7';
+      ctx.fillStyle = '#11151d';
+      ctx.fillRect(sx + 7, sy + 7, TS - 14, TS - 14);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = done ? 3 : 2;
+      ctx.strokeRect(sx + 7, sy + 7, TS - 14, TS - 14);
+      ctx.fillStyle = color;
+      ctx.font = fs(18, true);
+      ctx.textAlign = 'center';
+      const mark = done ? '✓' : prop.kind === 'd1_stage' ? '▰'
+        : prop.kind === 'd1_public_terminal' ? '▣'
+          : prop.kind === 'timelinehub_pair' ? (prop.locked ? '□' : '◆')
+            : prop.kind === 'timelinehub_exit' || prop.kind === 'd1_exit' ? '↥' : (icons[prop.station] || '·');
+      ctx.fillText(mark, sx + TS / 2, sy + TS / 2 + 7);
+      if (['d1_station', 'd1_ledger', 'd1_stage', 'd1_public_terminal', 'timelinehub_pair'].includes(prop.kind)) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = fs(10, true);
+        const label = prop.kind === 'timelinehub_pair' ? prop.label
+          : prop.station === 'visual' ? '그림'
+            : prop.station === 'audio' ? '음악'
+              : prop.station === 'text' ? '글'
+                : prop.station === 'ledger' ? '공개 기록'
+                  : prop.kind === 'd1_stage' ? '겹친 무대' : '기록 단말';
+        ctx.fillText(label, sx + TS / 2, sy - 3);
+      }
+      ctx.textAlign = 'left';
+    }
+  }
+
+  function consequenceObjectiveText() {
+    const active = consequenceActive();
+    if (game.map === 'timelinehub') return 'D-1 완료 · 기록 단말에서 선택과 수리를 다시 보기';
+    if (!active) return '시간선 기록을 확인하자';
+    if (active.state.phase === 'past') {
+      const rooms = active.config.rooms.filter((room) => active.state.pastChoices[room.choiceKey]).length;
+      return rooms < 3 ? `과거의 빈칸을 채우자 ${rooms}/3`
+        : active.state.pastChoices[active.config.disclosureKey] ? '현재로 돌아갈 준비' : '기록 보관함에서 공개 방식을 정하자';
+    }
+    if (active.state.phase === 'present') {
+      const ids = requiredRepairIds(active.config, active.state.pastChoices);
+      const done = ids.filter((id) => active.state.baseRepairs[id] || active.state.addedRepairs[id]).length;
+      return done < ids.length ? `과거가 남긴 결과를 수리하자 ${done}/${ids.length}` : '작은 무대에서 겹친 전시를 설득하자';
+    }
+    if (active.state.phase === 'finale') return '겹친 무대에서 세 이름표를 되돌리자';
+    return 'D-1 기록이 복원되었다';
+  }
+
   function drawWorld() {
     const m = MAPS[game.map];
     const { cx, cy } = camera();
     const frame = Math.floor(game.time / 30) % 2;
+    const activeConsequence = consequenceActive();
+    const grayTimeline = activeConsequence && game.map === 'creationhall' && activeConsequence.state.phase === 'past';
 
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
+    if (grayTimeline) {
+      ctx.save();
+      ctx.filter = 'grayscale(1) saturate(0.15) contrast(1.08)';
+    }
 
     const x0 = Math.floor(cx / TS), y0 = Math.floor(cy / TS);
     for (let y = y0; y <= y0 + VIEW_H + 1; y++) {
@@ -11255,6 +11724,7 @@
     // 4·5장 허브 — 새 NPC를 늘리지 않고 넓은 공간의 목적지 표식만 띄운다.
     drawChapter4HubMarks(cx, cy);
     drawChapter5HubMarks(cx, cy);
+    drawConsequenceObjects(cx, cy);
     // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
     if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
 
@@ -11336,8 +11806,14 @@
     // 동행자 반디 — 어스름 위에 그려, 황혼 속에서 홀로 빛나는 광원이 된다
     drawCompanion(cx, cy);
 
+    if (grayTimeline) {
+      ctx.restore();
+      ctx.fillStyle = 'rgba(18,22,30,0.28)';
+      ctx.fillRect(0, 0, LW, LH);
+    }
+
     drawHud();
-    if (!game.puzzleRun) drawObjectiveArrow();
+    if (!game.puzzleRun && !isConsequenceCampaign()) drawObjectiveArrow();
     drawControlHint();
     drawNotice();
     if (game.puzzleRun) {
@@ -11708,10 +12184,18 @@
     // 스테이지 + 지역 이름 + 목표
     const m = MAPS[game.map];
     ctx.font = fs(14, true);
-    const title = `${hudBadgeText(game.map, game.flags)} · ${m.name}`;
+    const activeConsequence = consequenceActive();
+    const title = isConsequenceCampaign()
+      ? game.map === 'timelinehub' ? '[시간선 허브] 마음의 문'
+        : activeConsequence && activeConsequence.state.phase === 'past'
+          ? '[과거 ←] 현재보다 1일 전'
+          : '[현재 →] 공동 창작관'
+      : `${hudBadgeText(game.map, game.flags)} · ${m.name}`;
     // 방탈출 중에는 본편 퀘스트 대신 방 맥락 목표를 보여 준다 (클리어 후엔 보스방 안내)
     let objText;
-    if (game.puzzleRun) {
+    if (isConsequenceCampaign()) {
+      objText = consequenceObjectiveText();
+    } else if (game.puzzleRun) {
       const puz = game.puzzleRun.puzzle;
       objText = game.flags.privacyRecoveryActive
         ? `노출도 MAX — 정보 조각 회수 ${game.flags.privacyRecovery || 0}/${PRIVACY_RECOVERY_NEED}`
@@ -11752,7 +12236,12 @@
     }
     // X-8 수업 모드 — 목표 배너에 "이번 시간" 접두를 붙여 차시 목표임을 보여 준다.
     const obj = objectiveBannerPrefix() + objText;
-    const recordText = recordHudText(game.flags, isTouchDevice);
+    const recordText = isConsequenceCampaign()
+      ? (game.map === 'timelinehub' ? 'D-1 ✓ · D-3 / D-5 / D-7 / D-10 잠김'
+        : activeConsequence && activeConsequence.state.phase === 'past'
+          ? '선택은 한 번 저장되며, 현재에서 결과가 돌아옵니다'
+          : '기록 단말에서 과거 선택과 현재 수리를 다시 볼 수 있습니다')
+      : recordHudText(game.flags, isTouchDevice);
     const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width, ctx.measureText(recordText).width) + 20;
     utBox(8, 8, w, 74, 4);
     ctx.fillStyle = '#ffd644';
@@ -11913,7 +12402,25 @@
       ? (b.flinchT > 0 ? 'flinch'
         : (b.phase === 'mercy' || b.phase === 'mercyReply') ? 'mercy' : b.pState)
       : null;
-    drawMon(ctx, b.monId, mx, my, monScale, false, mood, game.time);
+    if (b.consequenceStage) {
+      ctx.save();
+      ctx.translate(mcx, my + 72);
+      const colors = ['#72d2c7', '#d8b4ff', '#ffd07a'];
+      for (let i = 0; i < 3; i++) {
+        const ox = (i - 1) * 34 + (game.reduceFx ? 0 : Math.sin(game.time / 18 + i) * 4);
+        ctx.fillStyle = '#10151e';
+        ctx.fillRect(ox - 25, i * 16 - 20, 50, 64);
+        ctx.strokeStyle = colors[i];
+        ctx.lineWidth = 3;
+        ctx.strokeRect(ox - 25, i * 16 - 20, 50, 64);
+        ctx.fillStyle = colors[i];
+        ctx.font = fs(14, true);
+        ctx.textAlign = 'center';
+        ctx.fillText(i === 0 ? '✦' : i === 1 ? '♪' : '가', ox, i * 16 + 16);
+      }
+      ctx.textAlign = 'left';
+      ctx.restore();
+    } else drawMon(ctx, b.monId, mx, my, monScale, false, mood, game.time);
     // 인물 이름 + 마음 게이지·상태 — 마음이 활짝 열리면 이름이 노래진다 (안아 줄 수 있다는 신호)
     utBox(24, 24, 240, 64, 6);
     ctx.fillStyle = b.spareReady ? '#ffd644' : '#fff';
@@ -12716,6 +13223,17 @@
       });
       return;
     }
+    if (game.experienceKind === 'consequence-pairs') {
+      game.introDim = null;
+      game.flags.talkedProf = true;
+      game.flags.bandiJoined = true;
+      save();
+      startDialog([
+        '[과거 ←] 현재보다 1일 전\n공동 창작관의 전시 마감까지 시간이 얼마 남지 않았다.',
+        '그림·음악·글의 빈칸을 채우자.\n빠른 방법도, 확인하는 방법도 있다. 선택은 기록에 남는다.',
+      ], '반디', () => Sound.playMapBgm(MAPS.creationhall.song));
+      return;
+    }
     // 인트로 암전 — 첫 3줄(컴퓨터실 장면) 동안 화면을 거의 검게 덮는다.
     // 4번째 줄부터 걷히기 시작한다(drawWorld에서 처리).
     // 인트로 동안은 아무 음악도 흐르지 않는다 — 침묵으로 시작해, 눈을 뜬 뒤에야
@@ -12787,6 +13305,7 @@
     //        '이번 시간 목표' 배너/CLASS_END_LINE이 잘못 붙는 것을 막는다.
     game.flags.classSession = false;
     game.mode = 'world';
+    if (game.experienceKind === 'consequence-pairs') resumeConsequenceCampaign();
     syncPuzzleRun(); // 방탈출 방 안에서 저장된 세이브면 퍼즐을 새로 시작
     const meta = recordPlayDay(slot);
     checkUnlocks(slot);
@@ -13243,6 +13762,11 @@
       txt = reportPageAnnouncement();
     } else if (game.mode === 'ending' && game.endingType === 'true') {
       txt = endingAnnouncement(game.flags.endingId) + '. ' + endingContinuationAnnouncement();
+    } else if (game.mode === 'world' && isConsequenceCampaign()) {
+      const active = consequenceActive();
+      const timeline = game.map === 'timelinehub' ? '시간선 허브'
+        : active && active.state.phase === 'past' ? '과거, 현재보다 1일 전' : '현재, 공동 창작관';
+      txt = `${timeline}. ${consequenceObjectiveText()}`;
     } else if (game.dialog && game.dialog.lines && typeof game.dialog.lines[game.dialog.idx] === 'string') {
       txt = game.dialog.lines[game.dialog.idx];
     } else if (game.notice && game.notice.t > 0 && game.notice.text) {
@@ -13605,6 +14129,12 @@
     }),
     clampedCanvasLabelX,
     startNewGameForRoute, continueGame,
+    consequenceRuntime, consequenceRepairIds, consequenceEffortProjection,
+    recordConsequencePastChoice, beginConsequencePresent,
+    completeConsequenceRepair, beginConsequenceFinale, completeStagePersuasion,
+    creationJournalRows, consequenceHubProjection, resumeConsequenceCampaign, interactConsequenceProp,
+    restartConsequenceStage: startConsequenceStageBattle, retreatPersuasion: persuadeExhaust,
+    enterBattleWave: enterWave,
     recordForChapter, recordHudText, recordEvidenceStatus, unlockDamagedRecord, startDamagedRecord,
     openAdministratorTerminal, startTimelineRestoration,
     startTimelineOrdering, placeTimelineCard, undoTimelineCard, submitTimelineOrder,
