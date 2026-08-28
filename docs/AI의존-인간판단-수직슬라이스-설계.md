@@ -392,9 +392,14 @@ judgmentSlice = {
 | 권한 공개 | 네 선택과 `past_done` | 같은 카메라 전환 직전 |
 | 현재 전환 | `present_start`와 현재 좌표 | 현재 첫 결과 대사 |
 | 각 수리 완료 | 기본·파생 수리 완료 사실 | 해당 방 출구 앞 |
-| 피날레 진입 | `repairs_done`와 해금 사실 | 무피해 연습 파도 |
+| 수리 전체 완료 | `phase: present`, `checkpoint: repairs_done`, 모든 수리·해금 사실 | 대신 결정하는 집 문 앞 |
+| 피날레 시작 | `phase: finale`, `checkpoint: finale_start`, `segment: 0` | 첫 무피해 연습 파도 |
 | 피날레 단계 | 현재 단계와 보조 단계 | 다음 단계 첫 파도 |
 | 결과 완료 | `stageRestored`, `complete` | 다섯 카드가 열린 마음의 문 |
+
+`repairs_done`에서 재개하면 피날레 문 앞이며 파도는 열리지 않는다. 문을 여는
+입력이 `phase: finale`, `checkpoint: finale_start`, `segment: 0`을 한 원자 저장으로
+바꾼 뒤에만 첫 연습 파도를 시작한다.
 
 일시정지와 오프라인 재개는 모든 체크포인트에서 동작한다. 전환 연출과 이미 읽은
 결과 대사만 건너뛸 수 있고, 선택·수리·피날레는 건너뛰기로 완료되지 않는다.

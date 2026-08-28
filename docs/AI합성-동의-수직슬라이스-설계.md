@@ -420,9 +420,14 @@ TTS 큐는 저장하지 않으며 알 수 없는 미래 필드를 삭제하지 �
 | 과거 공개 | 네 선택과 `past_done`, 전환 좌표 | 공개 부스 같은 카메라 전환 직전 |
 | 현재 시작 | `phase: present`, 현재 좌표 | 컬러 첫 뒤섞임 대사 |
 | 수리 완료 | 기본·파생 수리 완료 사실 | 해당 방 출구 앞 |
-| 피날레 진입 | `repairs_done`, 해금한 사실 | 무피해 연습 파도 |
+| 수리 전체 완료 | `phase: present`, `checkpoint: repairs_done`, 모든 수리·해금 사실 | 뒤섞인 방송실 문 앞 |
+| 피날레 시작 | `phase: finale`, `checkpoint: finale_start`, `segment: 0` | 첫 무피해 연습 파도 |
 | 피날레 구간 | `segment`, 보조 단계 | 그 구간의 첫 파도 |
 | 결과 | `stageRestored`, `complete`, 캠페인 완료 목록 | 공통 마음의 문 허브 |
+
+`repairs_done`에서 재개하면 피날레 문 앞에 머문다. 문을 여는 입력에서
+`phase: finale`, `checkpoint: finale_start`, `segment: 0`을 한 번에 저장한 뒤에만
+첫 연습 파도를 연다.
 
 V11 슬롯 격리, PairState 공통 필드, 허브 복귀, 다섯 쌍 완료 뒤 `ending-rule-v1` 계산은
 통합 설계를 참조한다. D-3은 엔딩을 계산하거나 `chapter*Clear`, `chapter*Mercy`,
