@@ -166,21 +166,27 @@ async function screenshotStableCanvas(page, file, redrawWorld) {
 
 async function captureCanvasPng(page, file, redrawWorld) {
   if (redrawWorld) await page.evaluate(() => window.__test.drawWorld());
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))));
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const session = await page.context().newCDPSession(page);
-  try {
-    const shot = await session.send('Page.captureScreenshot', {
-      format: 'png', captureBeyondViewport: false, fromSurface: true,
-    });
-    const png = Buffer.from(shot.data, 'base64');
-    const viewport = page.viewportSize();
-    if (!viewport || png.readUInt32BE(16) !== viewport.width || png.readUInt32BE(20) !== viewport.height) {
-      throw new Error(`Viewport screenshot size mismatch: expected ${viewport && viewport.width}x${viewport && viewport.height}`);
-    }
-    fs.writeFileSync(file, png);
-  } finally {
-    await session.detach();
+  const png = await page.screenshot({ type: 'png', fullPage: false });
+  const viewport = page.viewportSize();
+  if (!viewport || png.readUInt32BE(16) !== viewport.width || png.readUInt32BE(20) !== viewport.height) {
+    throw new Error(`Viewport screenshot size mismatch: expected ${viewport && viewport.width}x${viewport && viewport.height}`);
   }
+  fs.writeFileSync(file, png);
+}
+
+async function touchControlsFit(page, viewport) {
+  return page.evaluate(({ width, height }) => ['t-stick', 't-a', 't-menu', 't-pause'].every((id) => {
+    const el = document.getElementById(id);
+    if (!el) return false;
+    const style = getComputedStyle(el), rect = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 &&
+      rect.width >= 44 && rect.height >= 44 && rect.left >= 0 && rect.top >= 0 &&
+      rect.right <= width && rect.bottom <= height && !!hit && (hit === el || el.contains(hit));
+  }), viewport);
 }
 
 (async () => {
@@ -462,6 +468,10 @@ async function captureCanvasPng(page, file, redrawWorld) {
       check(`${vp.name} ${pair.id}: 과거 방향이 목표보다 먼저 낭독`, mobilePast.started &&
         /\[과거 ←\]/.test(mobilePast.live) && mobilePast.spoken.length > 0 &&
         mobilePast.spoken[0].indexOf('[과거 ←]') <= mobilePast.spoken[0].indexOf('.'));
+      await page.evaluate(() => {
+        const p = window.__game.player;
+        Object.assign(p, { x: 4, y: 4, px: 4 * 48, py: 4 * 48, dir: 'up', moving: false });
+      });
       const fit = await page.evaluate(() => {
         const canvas = document.getElementById('game').getBoundingClientRect();
         const touch = getComputedStyle(document.getElementById('touch-ui')).display !== 'none';
@@ -475,13 +485,11 @@ async function captureCanvasPng(page, file, redrawWorld) {
           uiProfile.hudFont >= 18 && uiProfile.focusFont >= 18 && uiProfile.focusFullWidth === true &&
           uiProfile.staticLabels === false);
       }
+      check(`${vp.name} ${pair.id}: 과거의 메뉴·수첩·스틱·결정 버튼은 보이고 누를 수 있다`,
+        await touchControlsFit(page, vp));
       await captureCanvasPng(page, path.join(dir, `${pair.shot}-past-${vp.name}.png`), true);
 
       if (index === 0) {
-        await page.evaluate(() => {
-          const p = window.__game.player;
-          Object.assign(p, { x: 4, y: 4, px: 4 * 48, py: 4 * 48, dir: 'up', moving: false });
-        });
         await page.tap('#t-a');
         await page.waitForFunction(() => window.__game.mode === 'choice');
         check(`${vp.name}: 터치 A로 후속 시간선의 실제 선택창을 연다`,
@@ -499,6 +507,8 @@ async function captureCanvasPng(page, file, redrawWorld) {
         mobilePresent.began && mobilePresent.transition.duration === 2 &&
         mobilePresent.runtime.phase === 'present' && mobilePresent.runtime.requiredRepairIds.length === 5);
       await page.waitForFunction(() => !window.__game.consequenceTransition);
+      check(`${vp.name} ${pair.id}: 현재의 메뉴·수첩·스틱·결정 버튼도 보이고 누를 수 있다`,
+        await touchControlsFit(page, vp));
       await captureCanvasPng(page, path.join(dir, `${pair.shot}-present-${vp.name}.png`), true);
       const completed = await page.evaluate((pairId) => {
         const T = window.__test, g = window.__game;
@@ -842,10 +852,6 @@ async function captureCanvasPng(page, file, redrawWorld) {
           throw new Error(`${journey.pairId}: later-pair hub start/map contract is unavailable`);
         }
         check(`${journey.pairId}: 고유 지도 과거가 회색 [과거 ←]로 안내`, /\[과거 ←\]/.test(past.live));
-        await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, `${journey.shot}-past-desktop.png`), true);
-        const pastColor = await canvasColorProfile(page, { x: 0, y: 100, w: 720, h: 360 });
-        check(`${journey.pairId}: 과거 지도는 회색 팔레트다`, pastColor.ratio < 0.08);
-
         await page.evaluate(() => {
           const p = window.__game.player;
           Object.assign(p, { x: 4, y: 4, px: 4 * 48, py: 4 * 48, dir: 'up', moving: false });
@@ -853,6 +859,9 @@ async function captureCanvasPng(page, file, redrawWorld) {
           window.__game.dialog = null;
           window.__game.choice = null;
         });
+        await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, `${journey.shot}-past-desktop.png`), true);
+        const pastColor = await canvasColorProfile(page, { x: 0, y: 100, w: 720, h: 360 });
+        check(`${journey.pairId}: 과거 지도는 회색 팔레트다`, pastColor.ratio < 0.08);
         await page.keyboard.press('z');
         await page.waitForFunction(() => window.__game.mode === 'choice' && window.__game.choice.options.length === 3);
         check(`${journey.pairId}: 실제 Z 조사로 첫 방의 3가지 선택을 연다`,
@@ -924,7 +933,7 @@ async function captureCanvasPng(page, file, redrawWorld) {
             const d = window.__game.dialog;
             return d && d.idx === 0 && d.chars >= d.lines[0].length;
           }, { timeout: 1500 });
-          await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, 'd7-identity-desktop.png'), true);
+          await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, 'd7-identity-desktop.png'));
           await page.keyboard.press('z');
           await page.waitForFunction(() => window.__game.dialog && window.__game.dialog.idx === 1, { timeout: 1500 });
           await page.keyboard.press('z');
@@ -932,7 +941,7 @@ async function captureCanvasPng(page, file, redrawWorld) {
             const d = window.__game.dialog;
             return d && d.idx === 1 && d.chars >= d.lines[1].length;
           }, { timeout: 1500 });
-          await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, 'd7-identity-fact-desktop.png'), true);
+          await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, 'd7-identity-fact-desktop.png'));
           for (let i = 0; i < 4 && (await page.evaluate(() => window.__game.mode === 'dialog')); i++) {
             await page.keyboard.press('z');
             await page.waitForTimeout(60);
