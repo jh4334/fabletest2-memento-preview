@@ -62,7 +62,12 @@ console.log('[C-3] 같은 좌표 현재 전환과 파생 수리');
 env.setPlayer(20, 11, 'left');
 check('현재 전환', T.beginConsequencePresent() === true && T.consequenceRuntime().phase === 'present' &&
   T.consequenceRuntime().checkpoint === 'present_start' && g.player.x === 20 && g.player.y === 11);
-g.notice.t = 0; env.step();
+check('과거 종료 안내와 27프레임 전환이 시작', g.consequenceTransition &&
+  g.consequenceTransition.duration === 27 && /\[과거 종료\]/.test(g.notice.text));
+env.step(14);
+check('현재 시작 안내가 과거 종료 뒤 표시', g.consequenceTransition &&
+  g.consequenceTransition.announcedCurrent && /\[현재 시작\]/.test(T.srLiveText()));
+env.step(13);
 check('현재 목표가 aria-live에 안내', /현재, 공동 창작관/.test(T.srLiveText()));
 check('혼합 경로는 정확히 두 파생 수리', JSON.stringify(T.consequenceRuntime().requiredRepairIds) ===
   JSON.stringify(['visual_panel', 'music_cue', 'text_panel', 'music_license_review', 'ledger_blank']));
@@ -81,6 +86,8 @@ check('무대 시작은 finale_start/segment0 원자 기록', T.beginConsequence
   g.battle.p.subjectKind === 'place' && g.battle.p.completionMode === 'stage');
 for (let i = 1; i <= 3; i++) {
   T.retreatPersuasion();
+  if (i === 2) check('두 번째 물러남은 구간 단서를 표시', g.dialog.lines.some((line) => /\[구간 도움\]/.test(line)));
+  if (i === 3) check('세 번째 물러남은 느린 파도 상태를 표시', g.dialog.lines.some((line) => /\[도움 켜짐\].*25%/s.test(line)));
   env.advanceDialog();
   check(`부드러운 물러남 ${i}/3 저장`, T.consequenceRuntime().finale.assistLevel === i && g.mode === 'world');
   T.restartConsequenceStage();

@@ -366,7 +366,7 @@ console.log('[V11] 경험 종류 고정·과거 세이브 격리·미래 필드 
   const campaignSlot = T.loadSlot(2);
   check('새 과거·현재 캠페인은 V11 consequence-pairs와 독립 기본 상태로 저장',
     campaignSlot.v === 11 && campaignSlot.experienceKind === 'consequence-pairs' &&
-    campaignSlot.map === 'creationhall' && campaignSlot.x === 12 && campaignSlot.y === 17 &&
+    campaignSlot.map === 'creationhall' && campaignSlot.x === 12 && campaignSlot.y === 15 &&
     campaignSlot.flags.consequenceCampaign && campaignSlot.flags.consequenceCampaign.activePairId === 'd1_copyright' &&
     Array.isArray(campaignSlot.flags.consequenceCampaign.completedPairIds) &&
     campaignSlot.flags.consequenceCampaign.completedPairIds.length === 0 &&

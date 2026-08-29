@@ -166,15 +166,17 @@ async function screenshotStableCanvas(page, file, redrawWorld) {
 
 async function captureCanvasPng(page, file, redrawWorld) {
   if (redrawWorld) await page.evaluate(() => window.__test.drawWorld());
-  const rect = await page.locator('#game').boundingBox();
-  if (!rect) throw new Error('Canvas bounding box unavailable');
   const session = await page.context().newCDPSession(page);
   try {
     const shot = await session.send('Page.captureScreenshot', {
-      format: 'png', captureBeyondViewport: false,
-      clip: { x: rect.x, y: rect.y, width: rect.width, height: rect.height, scale: 1 },
+      format: 'png', captureBeyondViewport: false, fromSurface: true,
     });
-    fs.writeFileSync(file, Buffer.from(shot.data, 'base64'));
+    const png = Buffer.from(shot.data, 'base64');
+    const viewport = page.viewportSize();
+    if (!viewport || png.readUInt32BE(16) !== viewport.width || png.readUInt32BE(20) !== viewport.height) {
+      throw new Error(`Viewport screenshot size mismatch: expected ${viewport && viewport.width}x${viewport && viewport.height}`);
+    }
+    fs.writeFileSync(file, png);
   } finally {
     await session.detach();
   }
@@ -555,13 +557,21 @@ async function captureCanvasPng(page, file, redrawWorld) {
         map: window.__game.map,
         x: window.__game.player.x, y: window.__game.player.y,
         repairs: T.consequenceRuntime().requiredRepairIds,
+        transition: Object.assign({}, window.__game.consequenceTransition),
       };
     });
     check('D-1: 같은 공동 창작관 좌표에서 현재로 돌아오며 혼합 수리가 드러남',
       present.phase === 'present' && present.checkpoint === 'present_start' && present.map === 'creationhall' &&
       present.x === 4 && present.y === 4 && present.repairs.join(',') ===
         'visual_panel,music_cue,text_panel,music_license_review,ledger_blank');
-    await page.waitForTimeout(160);
+    check('D-1: 과거→현재는 같은 좌표를 유지하는 약 450ms 전환으로 시작', present.transition &&
+      present.transition.duration === 27 && present.x === 4 && present.y === 4);
+    await page.waitForFunction(() => /\[과거 종료\]/.test(window.__test.srLiveText()), { timeout: 1500 });
+    await page.waitForFunction(() => window.__game.consequenceTransition &&
+      window.__game.consequenceTransition.announcedCurrent, { timeout: 1500 });
+    check('D-1: 낭독기는 과거 종료 뒤 현재 시작을 순서대로 안내', await page.evaluate(() =>
+      /\[현재 시작\]/.test(window.__test.srLiveText())));
+    await page.waitForFunction(() => !window.__game.consequenceTransition, { timeout: 1500 });
     await captureCanvasPng(page, path.join(consequenceShotsDir, 'd1-present-desktop.png'), true);
     const presentColor = await canvasColorProfile(page, { x: 0, y: 100, w: 720, h: 360 });
     check('D-1: 같은 공간의 과거는 회색이고 현재는 컬러로 복원', pastColor.ratio < 0.08 &&
@@ -569,16 +579,64 @@ async function captureCanvasPng(page, file, redrawWorld) {
     check('D-1: 현재 방향과 공동 창작관 안내가 aria-live에 표시', await page.evaluate(() =>
       /현재, 공동 창작관/.test(window.__test.srLiveText())));
 
+    const repairStops = [
+      { x: 4, y: 4, times: 1 }, { x: 20, y: 4, times: 2 },
+      { x: 4, y: 12, times: 1 }, { x: 20, y: 12, times: 1 },
+    ];
+    for (const stop of repairStops) {
+      for (let n = 0; n < stop.times; n++) {
+        await page.evaluate(({ x, y }) => {
+          const g = window.__game;
+          g.mode = 'world'; g.dialog = null; g.choice = null;
+          Object.assign(g.player, { x, y, px: x * 48, py: y * 48, dir: 'up', moving: false });
+        }, stop);
+        await page.keyboard.press('z');
+        await page.waitForFunction(() => window.__game.mode === 'choice', { timeout: 1500 });
+        await page.keyboard.press('z');
+        await page.waitForFunction(() => window.__game.mode === 'dialog', { timeout: 1500 });
+        for (let i = 0; i < 3 && (await page.evaluate(() => window.__game.mode === 'dialog')); i++) {
+          await page.keyboard.press('z');
+          await page.waitForTimeout(60);
+        }
+        await page.waitForFunction(() => window.__game.mode === 'world', { timeout: 1500 });
+      }
+    }
+    check('D-1: 다섯 현재 수리를 실제 작업대 입력으로 완료', await page.evaluate(() =>
+      window.__test.consequenceRuntime().checkpoint === 'repairs_done'));
     await page.evaluate(() => {
-      const T = window.__test;
-      T.consequenceRuntime().requiredRepairIds.forEach((id) => T.completeConsequenceRepair(id));
-      T.beginConsequenceFinale({ skipIntro: true });
+      const g = window.__game;
+      Object.assign(g.player, { x: 12, y: 10, px: 12 * 48, py: 10 * 48, dir: 'up', moving: false });
     });
+    await page.keyboard.press('z');
+    await page.waitForFunction(() => window.__game.mode === 'dialog', { timeout: 1500 });
+    for (let i = 0; i < 3 && (await page.evaluate(() => window.__game.mode === 'dialog')); i++) {
+      await page.keyboard.press('z');
+      await page.waitForTimeout(60);
+    }
     await page.waitForFunction(() => window.__game.mode === 'battle' && window.__game.battle.consequenceStage, { timeout: 1500 });
     check('D-1: 모든 수리 뒤 겹친 무대 설득이 독립 배틀로 시작', await page.evaluate(() => {
       const b = window.__game.battle;
       return b && b.consequenceStage && b.p.subjectKind === 'place' && b.p.completionMode === 'stage';
     }));
+    await page.evaluate(() => window.__test.retreatPersuasion());
+    await page.evaluate(() => { window.__game.mode = 'world'; window.__game.dialog = null; window.__test.restartConsequenceStage(); });
+    const secondRetreat = await page.evaluate(() => {
+      window.__test.retreatPersuasion();
+      return window.__game.dialog.lines.slice();
+    });
+    check('D-1: 두 번째 후퇴는 저장된 구간과 다음 단서를 화면에 안내', secondRetreat.some((line) =>
+      /\[구간 도움\]/.test(line) && /이름표 0\/3/.test(line)));
+    await page.evaluate(() => { window.__game.mode = 'world'; window.__game.dialog = null; window.__test.restartConsequenceStage(); });
+    const thirdRetreat = await page.evaluate(() => {
+      window.__test.retreatPersuasion();
+      return {
+        lines: window.__game.dialog.lines.slice(),
+        finale: Object.assign({}, window.__test.consequenceRuntime().finale),
+      };
+    });
+    check('D-1: 세 번째 후퇴는 25% 느린 파도 도움을 켜고 알림', thirdRetreat.finale.assistLevel === 3 &&
+      thirdRetreat.finale.slowWaveEnabled && thirdRetreat.lines.some((line) => /\[도움 켜짐\].*25%/s.test(line)));
+    await page.evaluate(() => { window.__game.mode = 'world'; window.__game.dialog = null; window.__test.restartConsequenceStage(); });
     await captureCanvasPng(page, path.join(consequenceShotsDir, 'd1-finale-desktop.png'));
 
     await page.evaluate(() => {
@@ -610,7 +668,7 @@ async function captureCanvasPng(page, file, redrawWorld) {
     console.log(`[consequence-pairs-d1-${vp.name}] 과거·현재·무대·허브 반응형 표면`);
     const consequenceShotsDir = path.join(ROOT, '.omo', 'evidence', 'consequence-pairs-d1', 'screenshots');
     const ctx = await browser.newContext({
-      viewport: { width: vp.width, height: vp.height }, hasTouch: true, isMobile: true, deviceScaleFactor: 2,
+      viewport: { width: vp.width, height: vp.height }, hasTouch: true, isMobile: true, deviceScaleFactor: 1,
     });
     await installSpeechRecorder(ctx);
     const page = await ctx.newPage();
@@ -648,7 +706,7 @@ async function captureCanvasPng(page, file, redrawWorld) {
     });
     check(`${vp.name}: 현재 전환은 같은 지도에서 수리 목록을 보존`, mobilePresent.phase === 'present' &&
       mobilePresent.checkpoint === 'present_start' && mobilePresent.requiredRepairIds.length === 5);
-    await page.waitForTimeout(160);
+    await page.waitForFunction(() => !window.__game.consequenceTransition, { timeout: 1500 });
     await captureCanvasPng(page, path.join(consequenceShotsDir, `d1-present-${vp.name}.png`), true);
     await page.evaluate(() => {
       const T = window.__test;
