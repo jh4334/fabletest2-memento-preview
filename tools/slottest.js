@@ -357,6 +357,9 @@ console.log('[V11] 경험 종류 고정·과거 세이브 격리·미래 필드 
     T.srLiveText() === '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.' &&
     T.titleSlotNotice() === '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.' &&
     (() => { const box = T.titleSlotNoticeLayout(); return box.x === 48 && box.y === 426 && box.w === 624 && box.h === 56 && box.y + box.h < 498; })());
+  tap('ArrowDown');
+  check('슬롯을 옮기면 이전 종류 불일치 안내가 사라짐', g.slotCursor === 1 && T.titleSlotNotice() === null &&
+    T.srLiveText() !== '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.');
 
   g.mode = 'title';
   T.startNewGameForRoute(2, '과거아이', 'consequence-pairs');

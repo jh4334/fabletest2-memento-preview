@@ -11688,10 +11688,6 @@
 
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
-    if (grayTimeline) {
-      ctx.save();
-      ctx.filter = 'grayscale(1) saturate(0.15) contrast(1.08)';
-    }
 
     const x0 = Math.floor(cx / TS), y0 = Math.floor(cy / TS);
     for (let y = y0; y <= y0 + VIEW_H + 1; y++) {
@@ -11807,9 +11803,14 @@
     drawCompanion(cx, cy);
 
     if (grayTimeline) {
-      ctx.restore();
-      ctx.fillStyle = 'rgba(18,22,30,0.28)';
+      ctx.save();
+      ctx.globalCompositeOperation = 'saturation';
+      ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, LW, LH);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = 'rgba(18,22,30,0.24)';
+      ctx.fillRect(0, 0, LW, LH);
+      ctx.restore();
     }
 
     drawHud();
@@ -13430,6 +13431,7 @@
     // slots 화면
     if (justPressed('menu')) { openDex('title'); return; }
     if (justPressed('up') || justPressed('down')) {
+      if (titleSlotNotice()) game.notice = { text: '', t: 0 };
       game.slotCursor = justPressed('up')
         ? (game.slotCursor + SLOT_COUNT - 1) % SLOT_COUNT
         : (game.slotCursor + 1) % SLOT_COUNT;
