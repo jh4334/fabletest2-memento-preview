@@ -471,7 +471,8 @@ async function captureCanvasPng(page, file, redrawWorld) {
       if (vp.name === 'mobile-portrait') {
         const uiProfile = await page.evaluate(() => window.__test.consequenceUiProfile(true));
         check(`${pair.id}: 세로 화면은 큰 HUD·포커스 라벨과 정적 라벨 숨김을 사용`,
-          uiProfile.hudFont >= 18 && uiProfile.focusFont >= 18 && uiProfile.staticLabels === false);
+          uiProfile.hudFont >= 18 && uiProfile.focusFont >= 18 && uiProfile.focusFullWidth === true &&
+          uiProfile.staticLabels === false);
       }
       await captureCanvasPng(page, path.join(dir, `${pair.shot}-past-${vp.name}.png`), true);
 

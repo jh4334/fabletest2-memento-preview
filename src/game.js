@@ -797,8 +797,10 @@
   }
   function consequenceUiProfile(portrait) {
     return portrait
-      ? { hudFont: 20, hudHeight: 100, hudLines: [33, 64, 95], focusFont: 20, focusHeight: 58, staticLabels: false }
-      : { hudFont: 14, hudHeight: 74, hudLines: [26, 47, 68], focusFont: 14, focusHeight: 42, staticLabels: true };
+      ? { hudFont: 20, hudHeight: 100, hudLines: [33, 64, 95], focusFont: 20, focusHeight: 58,
+        focusFullWidth: true, staticLabels: false }
+      : { hudFont: 14, hudHeight: 74, hudLines: [26, 47, 68], focusFont: 14, focusHeight: 42,
+        focusFullWidth: false, staticLabels: true };
   }
   function isConsequencePortrait() {
     return isTouchDevice && typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
@@ -11907,7 +11909,8 @@
     const info = consequenceFocusInfo();
     if (!info) return;
     const profile = consequenceUiProfile(isConsequencePortrait());
-    const w = Math.min(LW - 32, Math.max(250, (info.title.length + info.action.length + 5) * profile.focusFont));
+    const w = profile.focusFullWidth ? LW - 32
+      : Math.min(LW - 32, Math.max(250, (info.title.length + info.action.length + 5) * profile.focusFont));
     const x = Math.round((LW - w) / 2), y = LH - profile.focusHeight - 12;
     utBox(x, y, w, profile.focusHeight, 5);
     ctx.fillStyle = consequenceActive().state.phase === 'past' ? CANVAS_COLOR.reverseLight : CANVAS_COLOR.restoredCyan;
@@ -11944,9 +11947,10 @@
           ctx.font = fs(12, true);
           const textWidth = ctx.measureText(zone.label).width;
           const labelX = zx + zone.w * TS / 2;
-          if (labelX >= textWidth / 2 + 8 && labelX <= LW - textWidth / 2 - 8) {
+          const labelY = Math.max(18, zy + 20);
+          if (labelY >= uiProfile.hudHeight + 16 && labelX >= textWidth / 2 + 8 && labelX <= LW - textWidth / 2 - 8) {
             ctx.textAlign = 'center';
-            ctx.fillText(zone.label, labelX, Math.max(18, zy + 20));
+            ctx.fillText(zone.label, labelX, labelY);
             ctx.textAlign = 'left';
           }
         }

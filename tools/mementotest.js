@@ -466,7 +466,7 @@ check('세로 터치 화면은 큰 HUD·포커스 라벨만 사용',
     const portrait = T.consequenceUiProfile(true);
     const regular = T.consequenceUiProfile(false);
     return portrait.hudFont >= 18 && portrait.focusFont >= 18 && portrait.staticLabels === false &&
-      regular.staticLabels === true;
+      portrait.focusFullWidth === true && regular.focusFullWidth === false && regular.staticLabels === true;
   })());
 check('장 번호 1~5만 기록에 연결되어 본편 순서를 바꾸지 않음',
   has('recordForChapter') && T.recordForChapter(0) === null && T.recordForChapter(6) === null);
