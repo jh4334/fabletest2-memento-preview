@@ -166,6 +166,7 @@ async function screenshotStableCanvas(page, file, redrawWorld) {
 
 async function captureCanvasPng(page, file, redrawWorld) {
   if (redrawWorld) await page.evaluate(() => window.__test.drawWorld());
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   const session = await page.context().newCDPSession(page);
   try {
     const shot = await session.send('Page.captureScreenshot', {
