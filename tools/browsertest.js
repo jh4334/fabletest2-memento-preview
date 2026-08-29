@@ -960,6 +960,26 @@ async function captureCanvasPng(page, file, redrawWorld) {
         check(`${journey.pairId}: 완료는 허브에서 다음 쌍만 연다`, hub.complete === true &&
           hub.map === 'timelinehub' && (!next || !next.locked) && later.every((pair) => pair.locked));
       }
+      for (let i = 0; i < 4 && (await page.evaluate(() => window.__game.mode === 'dialog')); i++) {
+        await page.keyboard.press('z');
+        await page.waitForTimeout(60);
+      }
+      const completedBeforeReplay = await page.evaluate(() =>
+        JSON.stringify(window.__game.flags.consequenceCampaign.completedPairIds));
+      await page.evaluate(() => {
+        const g = window.__game, p = g.player;
+        g.map = 'timelinehub'; g.mode = 'world'; g.dialog = null;
+        Object.assign(p, { x: 12, y: 11, px: 12 * 48, py: 11 * 48, dir: 'up', moving: false });
+      });
+      await page.keyboard.press('z');
+      await page.waitForFunction(() => window.__game.map === 'cozy_control_room' &&
+        window.__test.consequenceRuntime().phase === 'past', { timeout: 1500 });
+      check('완료한 D-10 허브 카드는 과거 맵의 실제 재현 플레이를 연다', await page.evaluate((before) => {
+        const T = window.__test, g = window.__game, runtime = T.consequenceRuntime();
+        return g.mode === 'world' && runtime.pairId === 'd10_judgment' &&
+          runtime.checkpoint === 'past_start' && runtime.complete === false &&
+          before === JSON.stringify(g.flags.consequenceCampaign.completedPairIds);
+      }, completedBeforeReplay));
       check('D-3~D-10: 순차 여정의 콘솔/페이지 에러 없음', errors.length === 0);
     } finally {
       fs.writeFileSync(path.join(consequencePairs4Dir, 'console-page-errors.json'), JSON.stringify(errors, null, 2) + '\n');

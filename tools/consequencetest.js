@@ -263,9 +263,27 @@ for (let index = 0; index < genericJourneys.length; index++) {
 }
 
 const completedBeforeReplay = JSON.stringify(g.flags.consequenceCampaign.completedPairIds);
-check('완료한 D-10 재현은 완료 ID를 중복하지 않음',
-  T.startConsequencePair('d10_judgment') === true &&
+const replayCoreBefore = snapshotCore();
+const replayStarted = T.startConsequencePair('d10_judgment');
+check('완료한 D-10 재현은 과거 맵에서 실제 플레이로 시작하고 완료 ID를 보존',
+  replayStarted === true && g.map === 'cozy_control_room' && g.mode === 'world' &&
+  T.consequenceRuntime().pairId === 'd10_judgment' && T.consequenceRuntime().phase === 'past' &&
+  T.consequenceRuntime().checkpoint === 'past_start' && T.consequenceRuntime().complete === false &&
   completedBeforeReplay === JSON.stringify(g.flags.consequenceCampaign.completedPairIds));
+if (T.consequenceRuntime().pairId === 'd10_judgment' && T.consequenceRuntime().phase === 'past') {
+  for (const [station, choice] of genericJourneys[genericJourneys.length - 1].choices) {
+    T.recordConsequencePastChoice(station, choice);
+  }
+  T.beginConsequencePresent();
+  for (const repairId of T.consequenceRuntime().requiredRepairIds) T.completeConsequenceRepair(repairId);
+  T.beginConsequenceFinale({ skipIntro: true });
+  T.completeStagePersuasion();
+}
+check('완료한 D-10 재현을 다시 마쳐도 완료 ID와 본편 통계는 중복·오염되지 않음',
+  completedBeforeReplay === JSON.stringify(g.flags.consequenceCampaign.completedPairIds) &&
+  new Set(g.flags.consequenceCampaign.completedPairIds).size === g.flags.consequenceCampaign.completedPairIds.length &&
+  T.consequenceHubProjection()[4].complete && T.consequenceHubProjection()[4].replay &&
+  replayCoreBefore === snapshotCore());
 check('범용 쌍 여정도 본편 장·배틀 통계를 오염시키지 않음', snapshotCore() === legacyBeforeGenericPairs);
 
 console.log('[C-8] 실제 월드 조사 입력과 저장 왕복');

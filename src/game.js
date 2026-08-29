@@ -4445,14 +4445,12 @@
   function startConsequencePair(pairId) {
     if (!isConsequenceCampaign()) return false;
     const config = consequencePairConfig(pairId);
-    const state = config && game.flags[config.stateKey];
+    let state = config && game.flags[config.stateKey];
     const projection = consequenceHubProjection().find((item) => item.pairId === pairId);
     if (!config || !state || !projection || projection.locked) return false;
     if (state.complete) {
-      const lines = creationJournalRows(pairId).map((row) => row.kind === 'past-choice'
-        ? `과거 · ${row.label}` : `현재 · ${row.done ? '완료' : '남음'}: ${row.label}`);
-      startDialog(lines.length ? lines : [config.pairUi.result.copy], config.pairUi.displayLabel);
-      return true;
+      state = createConsequencePairState(config.id);
+      game.flags[config.stateKey] = state;
     }
     game.flags.consequenceCampaign.activePairId = config.id;
     resumeConsequenceCampaign(config.id, state.checkpoint || 'past_start');
