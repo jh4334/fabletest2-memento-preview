@@ -550,6 +550,8 @@ async function captureCanvasPng(page, file, redrawWorld) {
       T.recordConsequencePastChoice('audio', 'audio_instant');
       T.recordConsequencePastChoice('text', 'text_excerpt');
       T.recordConsequencePastChoice('ledger', 'partial');
+      window.__game.tts = true;
+      window.__spoken = [];
       T.beginConsequencePresent();
       return {
         phase: T.consequenceRuntime().phase,
@@ -571,7 +573,10 @@ async function captureCanvasPng(page, file, redrawWorld) {
       window.__game.consequenceTransition.announcedCurrent, { timeout: 1500 });
     check('D-1: 낭독기는 과거 종료 뒤 현재 시작을 순서대로 안내', await page.evaluate(() =>
       /\[현재 시작\]/.test(window.__test.srLiveText())));
+    check('D-1: TTS는 첫 문장을 취소하지 않고 두 안내를 한 번에 순서대로 읽음', await page.evaluate(() =>
+      window.__spoken.length === 1 && /\[과거 종료\].*\[현재 시작\]/.test(window.__spoken[0])));
     await page.waitForFunction(() => !window.__game.consequenceTransition, { timeout: 1500 });
+    await page.evaluate(() => { window.__game.tts = false; });
     await captureCanvasPng(page, path.join(consequenceShotsDir, 'd1-present-desktop.png'), true);
     const presentColor = await canvasColorProfile(page, { x: 0, y: 100, w: 720, h: 360 });
     check('D-1: 같은 공간의 과거는 회색이고 현재는 컬러로 복원', pastColor.ratio < 0.08 &&

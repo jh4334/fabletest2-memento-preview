@@ -4265,7 +4265,7 @@
     game.consequenceTransition = { frame: 0, duration, midpoint: Math.ceil(duration / 2), announcedCurrent: false };
     const msg = '[과거 종료] 선택은 같은 자리에 기록으로 남았다.';
     game.notice = { text: msg, t: 240 };
-    Speech.speak(msg);
+    Speech.speak(`${msg} [현재 시작] 같은 자리에서, 남겨 둔 빈칸을 마주한다.`);
     return true;
   }
 
@@ -4277,7 +4277,6 @@
       transition.announcedCurrent = true;
       const msg = '[현재 시작] 같은 자리에서, 남겨 둔 빈칸을 마주한다.';
       game.notice = { text: msg, t: 240 };
-      Speech.speak(msg);
     }
     if (transition.frame >= transition.duration) game.consequenceTransition = null;
     return true;
