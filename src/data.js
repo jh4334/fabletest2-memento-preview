@@ -7,6 +7,102 @@
 
 const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2', '4', 'A', '1', '5', '6', '7', '8', '9']);
 
+const D3_CONSEQUENCE_TILES = [
+  'HHHHHHHHHHHHHHHHHHHHHHHHH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HHHHIHHHHMMMMMMMHHHHEHHHH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HIIIIIIIHMMMMMMMHEEEEEEEH',
+  'HHHHIHHHHHHHMHHHHHHHEHHHH',
+  'HCCCCCCCMMMMMMMMMCCCCCCCH',
+  'HCCCCCCCMMMMMMMMMCCCCCCCH',
+  'HCCCCCCCMMMMMMMMMCCCCCCCH',
+  'HCCCCCCCMMMMMMMMMCCCCCCCH',
+  'HCCCCCCCMMMMMMMMMCCCCCCCH',
+  'HHHHHHHHHHHHHHHHHHHHHHHHH',
+];
+
+const D5_CONSEQUENCE_TILES = [
+  'TTTTTTTTTTTTTTTTTTTTTTTTT',
+  'TGGGGGGGTPPPPPPPTGGGGGGGT',
+  'TGGGGGGGTPPPPPPPTGGGGGGGT',
+  'TGGGGGGGTPPPPPPPTGGGGGGGT',
+  'TGGGGGGGTPPPPPPPTGGGGGGGT',
+  'TGGGGGGGTPPPPPPPTGGGGGGGT',
+  'TGGGGGGGPPPPPPPPPGGGGGGGT',
+  'TGGGGGGGPPPPPPPPPGGGGGGGT',
+  'TGGGGGGGGGGGPGGGGGGGGGGGT',
+  'TGGGPPPPPPPPPPPPPPPPPGGGT',
+  'TGGGPGGGGGGGPGGGGGGGPGGGT',
+  'TGGGPGGGGGGGPGGGGGGGPGGGT',
+  'TGGGPGGGGGGGPGGGGGGGPGGGT',
+  'TGGGPPPPPPPPPPPPPPPPPGGGT',
+  'TGGGGGGGGGGGPGGGGGGGGGGGT',
+  'TGGGGGGGGGGGPGGGGGGGGGGGT',
+  'TGGGPPPPPPPPPPPPPPPPPGGGT',
+  'TGGGPGGGGGGGPGGGGGGGPGGGT',
+  'TGGGPGGGGGGGPGGGGGGGPGGGT',
+  'TGGGGGGGGGGGPGGGGGGGGGGGT',
+  'TTTTTTTTTTTTPTTTTTTTTTTTT',
+];
+
+const D7_CONSEQUENCE_TILES = [
+  'HHHHHHHHHHHHHHHHHHHHHHHHH',
+  'HIIIIIIIIIHMMMHEEEEEEEEEH',
+  'HIIIIIIIIIHMMMHEEEEEEEEEH',
+  'HIIIIIIIIIHMMMHEEEEEEEEEH',
+  'HIIIIIIIIIHMMMHEEEEEEEEEH',
+  'HIIIIIIIIIHMMMHEEEEEEEEEH',
+  'HHHHIHHHHHMMMHHHHHEHHHHHH',
+  'HIIIIIIIIIMMMEEEEEEEEEEEH',
+  'HIIIIIIIIIMMMEEEEEEEEEEEH',
+  'HIIIIIIIIIMMMEEEEEEEEEEEH',
+  'HIIIIIIIIIMMMEEEEEEEEEEEH',
+  'HIIIIIIIIIMMMEEEEEEEEEEEH',
+  'HIIIIIIIIIMMMEEEEEEEEEEEH',
+  'HIIIIIIIIIMMMEEEEEEEEEEEH',
+  'HHHHIHHHHHMMMHHHHHEHHHHHH',
+  'HCCCCCCCCCCMMMCCCCCCCCCCH',
+  'HCCCCCCCCCCMMMCCCCCCCCCCH',
+  'HCCCCCCCCCCMMMCCCCCCCCCCH',
+  'HCCCCCCCCCCMMMCCCCCCCCCCH',
+  'HCCCCCCCCCCMMMCCCCCCCCCCH',
+  'HHHHHHHHHHHHMHHHHHHHHHHHH',
+];
+
+const D10_CONSEQUENCE_TILES = [
+  'HHHHHHHHHHHHHHHHHHHHHHHHH',
+  'HIIIIIIIHCCCCCCCHIIIIIIIH',
+  'HIIIIIIIHCCCCCCCHIIIIIIIH',
+  'HIIIIIIIHCCCCCCCHIIIIIIIH',
+  'HIIIIIIIHCCCCCCCHIIIIIIIH',
+  'HIIIIIIIHCCCCCCCHIIIIIIIH',
+  'HHHHIHHHCCCCCCCCCHHHHIHHH',
+  'HCCCCCCCCCCCCCCCCCCCCCCCH',
+  'HCCCCCCCCCCCCCCCCCCCCCCCH',
+  'HCCCCCCCCCCCCCCCCCCCCCCCH',
+  'HCCCCCCCCCCCCCCCCCCCCCCCH',
+  'HCCCCCCCCCCCCCCCCCCCCCCCH',
+  'HCCCCCCCCCCCCCCCCCCCCCCCH',
+  'HCCCCCCCCCCCCCCCCCCCCCCCH',
+  'HCCCCCCCCHCCCCCCCHCCCCCCH',
+  'HCCCCCCCCHCCCCCCCHCCCCCCH',
+  'HCCCCCCCCHCCCCCCCHCCCCCCH',
+  'HCCCCCCCCHCCCCCCCHCCCCCCH',
+  'HCCCCCCCCHCCCCCCCHCCCCCCH',
+  'HCCCCCCCCCCCCMCCCCCCCCCCH',
+  'HHHHHHHHHHHHHHHHHHHHHHHHH',
+];
+
 const MAPS = {
   village: {
     name: '경계마을',
@@ -1564,6 +1660,82 @@ const MAPS = {
     npcs: [],
     signs: [],
     monsters: [],
+  },
+
+  synthesis_broadcast_room: {
+    name: '합성 방송실', song: 'lab', consequencePairId: 'd3_consent',
+    sharedTimelineGeometry: true, consequenceGeometryId: 'later-pair-grid-v1', start: { x: 12, y: 15 },
+    timelineZones: [
+      { id: 'likeness-room', label: '초상 편집실', palette: 'visual', x: 1, y: 1, w: 7, h: 5 },
+      { id: 'broadcast-booth', label: '뒤섞인 방송실', palette: 'stage', x: 9, y: 1, w: 7, h: 5 },
+      { id: 'voice-room', label: '음성 믹싱실', palette: 'audio', x: 17, y: 1, w: 7, h: 5 },
+      { id: 'scene-room', label: '장면·자막실', palette: 'text', x: 2, y: 8, w: 9, h: 6 },
+      { id: 'consent-archive', label: '동의 기록함', palette: 'ledger', x: 14, y: 8, w: 9, h: 6 },
+    ],
+    timelineDecor: [
+      { kind: 'wall-panel', palette: 'visual', x: 2, y: 2, w: 2 }, { kind: 'workbench', palette: 'visual', x: 2, y: 4, w: 4 },
+      { kind: 'platform', palette: 'stage', x: 10, y: 2, w: 5, h: 3 }, { kind: 'wall-panel', palette: 'audio', x: 18, y: 2, w: 2 },
+      { kind: 'workbench', palette: 'audio', x: 18, y: 4, w: 4 }, { kind: 'wall-panel', palette: 'text', x: 3, y: 9, w: 3 },
+      { kind: 'workbench', palette: 'text', x: 3, y: 12, w: 4 }, { kind: 'cabinet', palette: 'ledger', x: 17, y: 9, w: 2 },
+    ],
+    tiles: D3_CONSEQUENCE_TILES, warps: [], npcs: [], signs: [], monsters: [],
+  },
+
+  recommendation_alley: {
+    name: '추천 골목', song: 'street', consequencePairId: 'd5_recommendation',
+    sharedTimelineGeometry: true, consequenceGeometryId: 'later-pair-grid-v1', start: { x: 12, y: 15 },
+    timelineZones: [
+      { id: 'echo-lane', label: '메아리 골목', palette: 'visual', x: 1, y: 1, w: 7, h: 5 },
+      { id: 'one-way-stage', label: '한쪽만 비추는 골목', palette: 'stage', x: 9, y: 1, w: 7, h: 5 },
+      { id: 'sample-store', label: '표본 창고', palette: 'audio', x: 17, y: 1, w: 7, h: 5 },
+      { id: 'dim-street', label: '꺼진 거리', palette: 'text', x: 2, y: 8, w: 9, h: 6 },
+      { id: 'recommendation-archive', label: '추천 기록함', palette: 'ledger', x: 14, y: 8, w: 9, h: 6 },
+    ],
+    timelineDecor: [
+      { kind: 'wall-panel', palette: 'visual', x: 2, y: 2, w: 2 }, { kind: 'workbench', palette: 'visual', x: 2, y: 4, w: 4 },
+      { kind: 'platform', palette: 'stage', x: 10, y: 2, w: 5, h: 3 }, { kind: 'wall-panel', palette: 'audio', x: 18, y: 2, w: 2 },
+      { kind: 'workbench', palette: 'audio', x: 18, y: 4, w: 4 }, { kind: 'wall-panel', palette: 'text', x: 3, y: 9, w: 3 },
+      { kind: 'workbench', palette: 'text', x: 3, y: 12, w: 4 }, { kind: 'cabinet', palette: 'ledger', x: 17, y: 9, w: 2 },
+    ],
+    tiles: D5_CONSEQUENCE_TILES, warps: [], npcs: [], signs: [], monsters: [],
+  },
+
+  newsroom_repair: {
+    name: '대문짝 신문사', song: 'lab', consequencePairId: 'd7_misinformation',
+    sharedTimelineGeometry: true, consequenceGeometryId: 'later-pair-grid-v1', start: { x: 12, y: 15 },
+    timelineZones: [
+      { id: 'tip-room', label: '제보실', palette: 'visual', x: 1, y: 1, w: 7, h: 5 },
+      { id: 'tower-stage', label: '한쪽짜리 송출탑', palette: 'stage', x: 9, y: 1, w: 7, h: 5 },
+      { id: 'edit-room', label: '편집실', palette: 'audio', x: 17, y: 1, w: 7, h: 5 },
+      { id: 'bulletin-room', label: '송출탑', palette: 'text', x: 2, y: 8, w: 9, h: 6 },
+      { id: 'audit-archive', label: '출처 기록함', palette: 'ledger', x: 14, y: 8, w: 9, h: 6 },
+    ],
+    timelineDecor: [
+      { kind: 'wall-panel', palette: 'visual', x: 2, y: 2, w: 2 }, { kind: 'workbench', palette: 'visual', x: 2, y: 4, w: 4 },
+      { kind: 'platform', palette: 'stage', x: 10, y: 2, w: 5, h: 3 }, { kind: 'wall-panel', palette: 'audio', x: 18, y: 2, w: 2 },
+      { kind: 'workbench', palette: 'audio', x: 18, y: 4, w: 4 }, { kind: 'wall-panel', palette: 'text', x: 3, y: 9, w: 3 },
+      { kind: 'workbench', palette: 'text', x: 3, y: 12, w: 4 }, { kind: 'cabinet', palette: 'ledger', x: 17, y: 9, w: 2 },
+    ],
+    tiles: D7_CONSEQUENCE_TILES, warps: [], npcs: [], signs: [], monsters: [],
+  },
+
+  cozy_control_room: {
+    name: '포근한 관제실', song: 'cozy', consequencePairId: 'd10_judgment',
+    sharedTimelineGeometry: true, consequenceGeometryId: 'later-pair-grid-v1', start: { x: 12, y: 15 },
+    timelineZones: [
+      { id: 'call-room', label: '전화의 방', palette: 'visual', x: 1, y: 1, w: 7, h: 5 },
+      { id: 'decision-stage', label: '대신 결정하는 집', palette: 'stage', x: 9, y: 1, w: 7, h: 5 },
+      { id: 'safety-room', label: '잠긴 복도', palette: 'audio', x: 17, y: 1, w: 7, h: 5 },
+      { id: 'comfort-room', label: '소파 코너', palette: 'text', x: 2, y: 8, w: 9, h: 6 },
+      { id: 'authority-archive', label: '관제 기록실', palette: 'ledger', x: 14, y: 8, w: 9, h: 6 },
+    ],
+    timelineDecor: [
+      { kind: 'wall-panel', palette: 'visual', x: 2, y: 2, w: 2 }, { kind: 'workbench', palette: 'visual', x: 2, y: 4, w: 4 },
+      { kind: 'platform', palette: 'stage', x: 10, y: 2, w: 5, h: 3 }, { kind: 'wall-panel', palette: 'audio', x: 18, y: 2, w: 2 },
+      { kind: 'workbench', palette: 'audio', x: 18, y: 4, w: 4 }, { kind: 'wall-panel', palette: 'text', x: 3, y: 9, w: 3 },
+      { kind: 'workbench', palette: 'text', x: 3, y: 12, w: 4 }, { kind: 'cabinet', palette: 'ledger', x: 17, y: 9, w: 2 },
+    ],
+    tiles: D10_CONSEQUENCE_TILES, warps: [], npcs: [], signs: [], monsters: [],
   },
 
   // 쌍 하나가 끝날 때만 돌아오는 공통 허브. 아직 제작하지 않은 네 쌍은
@@ -4276,6 +4448,82 @@ const PERSUADE = {
     },
   },
 
+  mixed_broadcast: {
+    subjectKind: 'place', completionMode: 'stage', displayName: '뒤섞인 방송실', name: '뒤섞인 방송실', song: 'boss_ttara',
+    gaugeMax: 90, closedThreshold: 2, fragmentsPerWave: 3, waveBulletMul: 0.72, waveDur: 280, pattern: 'shadow',
+    intro: '윤곽과 파형과 자막이\n한 화면에서 서로의 자리를 찾고 있다.',
+    win: '이름표와 허용 문장과 설명 카드가\n각자 읽을 수 있는 자리로 돌아왔다.',
+    stagePatterns: [
+      { id: 'broadcast_outline', segment: 1, label: '겹친 윤곽', cue: '윤곽 표식과 이름표 방향을 함께 본다.', counter: '두 윤곽을 각자 이름표 쪽으로 나눈다.', marker: '윤곽', attack: { patterns: ['sides', 'aimed'], dur: 220 } },
+      { id: 'broadcast_wave', segment: 2, label: '갈라진 파형', cue: '번호와 모양이 같은 파형을 찾는다.', counter: '허용 문장과 파형을 한 줄로 잇는다.', marker: '번호', attack: { patterns: ['rain', 'zigzag'], dur: 230 } },
+      { id: 'broadcast_caption', segment: 3, label: '나뉜 자막', cue: '원문과 변경점과 설명은 서로 다른 카드다.', counter: '세 카드를 알맞은 칸에 놓는다.', marker: '자막', attack: { patterns: ['wall', 'burst'], dur: 240 } },
+    ],
+    claims: [
+      { text: '닮았으면 같은 이름표를\n써도 되는 거 아닐까?', best: 'empathy', unlockAt: 0, hint: '닮음과 허용 범위는 다른 카드에 적혀 있다.', fragments: ['…이름표를 나누면,', '각자 읽을 수 있어.'], gateLabel: '이름표', counters: [], okLine: '…닮아도, 이름은 각자 읽을 수 있구나.', onWrong: '…아직 윤곽이 한쪽으로 겹쳐 있어.', attack: { pattern: 'aimed', dur: 220, taunt: '윤곽이 서로 다가온다…' } },
+      { text: '소리가 이어지면\n허용 문장은 나중에 봐도 돼.', best: 'empathy', unlockAt: 0, hint: '번호와 허용 문장은 같은 줄에 놓는다.', fragments: ['…같은 소리여도,', '읽을 자리가 필요해.'], gateLabel: '허용 문장', counters: [], okLine: '…파형도, 문장도 같이 읽히네.', onWrong: '…파형이 아직 다른 말풍선을 향해 가.', attack: { pattern: 'rain', dur: 230, taunt: '파형이 흩어진다…' } },
+      { text: '한 줄로 보이면\n설명은 없어도 괜찮지?', best: 'empathy', unlockAt: 0, hint: '원문과 바뀐 점은 서로 다른 칸에 둔다.', fragments: ['…설명이 있으면,', '다음 사람이 다시 볼 수 있어.'], gateLabel: '설명 카드', counters: [], okLine: '…한 줄도, 나눠 보면 더 잘 보이는구나.', onWrong: '…자막이 다시 한 줄로 섞였어.', attack: { pattern: 'wall', dur: 240, taunt: '자막이 겹쳐진다…' } },
+    ],
+    observe: ['* 윤곽 두 개가 다른 방향을 가리킨다.', '* 번호 파형이 조용히 갈라진다.', '* 자막 카드가 세 칸을 기다린다.'],
+    announce: ['* 윤곽 선이 화면 가장자리로 번진다.', '* 파형이 다른 번호를 향해 흐른다.'],
+    react: { evidenceRight: '…이제 각자 읽을 수 있어.', open: '(방송실의 카드가 조금씩 제자리로 돌아온다.)' },
+  },
+  one_way_alley: {
+    subjectKind: 'place', completionMode: 'stage', displayName: '한쪽만 비추는 골목', name: '한쪽만 비추는 골목', song: 'boss_ttara',
+    gaugeMax: 90, closedThreshold: 2, fragmentsPerWave: 3, waveBulletMul: 0.72, waveDur: 280, pattern: 'tilt',
+    intro: '한 방향 화살표와 꺼진 램프가\n골목의 다른 길을 가리고 있다.',
+    win: '여러 목소리와 다른 길이\n나란히 보이는 골목이 되었다.',
+    stagePatterns: [
+      { id: 'alley_echo', segment: 1, label: '반복 화살표', cue: '같은 말 사이의 다른 목소리를 찾는다.', counter: '세 목소리를 서로 다른 안내판에 놓는다.', marker: '목소리', attack: { patterns: ['zigzag', 'sides'], dur: 220 } },
+      { id: 'alley_sample', segment: 2, label: '표본 카드', cue: '라벨과 반례와 문맥을 나란히 본다.', counter: '점수 밖의 반례 카드도 함께 놓는다.', marker: '반례', attack: { patterns: ['rain', 'aimed'], dur: 230 } },
+      { id: 'alley_exit', segment: 3, label: '꺼진 출구', cue: '멈춤 카드와 다른 길 표지를 찾는다.', counter: '자동 띠를 멈추고 양쪽 램프를 켠다.', marker: '출구', attack: { patterns: ['wall', 'burst'], dur: 240 } },
+    ],
+    claims: [
+      { text: '많이 보인 말 하나면\n길을 고르기 편하잖아.', best: 'empathy', unlockAt: 0, hint: '다른 목소리도 안내판에 놓을 수 있다.', fragments: ['…한 말만 들으면,', '다른 길이 안 보여.'], gateLabel: '다른 목소리', counters: [], okLine: '…여러 말이 있어도 길을 고를 수 있네.', onWrong: '…화살표가 다시 한쪽으로 기운다.', attack: { pattern: 'zigzag', dur: 220, taunt: '화살표가 겹친다…' } },
+      { text: '높은 점수면\n설명은 짧아도 되지 않을까?', best: 'empathy', unlockAt: 0, hint: '표본에는 반례와 문맥 카드도 있다.', fragments: ['…점수 밖에도,', '살펴볼 이야기가 있어.'], gateLabel: '반례 카드', counters: [], okLine: '…점수만으로는 다 보이지 않는구나.', onWrong: '…표본 카드가 뒤집혔어.', attack: { pattern: 'rain', dur: 230, taunt: '카드가 떨어진다…' } },
+      { text: '자동 안내를 켜 두면\n다음 길도 대신 골라 주겠지?', best: 'empathy', unlockAt: 0, hint: '멈춤 카드 옆에 다른 길 표지가 있다.', fragments: ['…멈출 수 있으면,', '다시 고를 수 있어.'], gateLabel: '멈춤', counters: [], okLine: '…나가는 길도 내가 고를 수 있구나.', onWrong: '…출구 램프가 아직 꺼져 있어.', attack: { pattern: 'wall', dur: 240, taunt: '띠가 출구를 가린다…' } },
+    ],
+    observe: ['* 세 목소리 카드가 서로 다른 자리를 비춘다.', '* 표본 카드 옆에 작은 반례가 있다.', '* 나가기 표지가 어둠 속에 남아 있다.'],
+    announce: ['* 한 방향 화살표가 골목을 가로지른다.', '* 자동 띠가 출구 쪽으로 흐른다.'],
+    react: { evidenceRight: '…다른 길도 같이 보이네.', open: '(양쪽 램프에 작은 불이 켜진다.)' },
+  },
+  one_sided_tower: {
+    subjectKind: 'place', completionMode: 'stage', displayName: '한쪽짜리 송출탑', name: '한쪽짜리 송출탑', song: 'boss_ttara',
+    gaugeMax: 90, closedThreshold: 2, fragmentsPerWave: 3, waveBulletMul: 0.72, waveDur: 280, pattern: 'parcel',
+    intro: '가상의 봉투와 화살표가 한쪽으로만\n흐르며 정정 창구를 가리고 있다.',
+    win: '원 출처와 정정 창구가 함께 남아\n양쪽 안내판에서 읽을 수 있게 되었다.',
+    stagePatterns: [
+      { id: 'tower_duplicate', segment: 1, label: '복제 봉투', cue: '가장 이른 원 출처 카드를 찾는다.', counter: '복제 봉투를 원 출처 줄로 묶는다.', marker: '출처', attack: { patterns: ['rain', 'aimed'], dur: 220 } },
+      { id: 'tower_context', segment: 2, label: '문맥 비교', cue: '가상 장면과 설명과 날짜를 나란히 본다.', counter: '세 카드를 같은 비교 틀에 놓는다.', marker: '날짜', attack: { patterns: ['sides', 'zigzag'], dur: 230 } },
+      { id: 'tower_correction', segment: 3, label: '정정 창구', cue: '원 안내와 정정 안내를 함께 남긴다.', counter: '화살표를 양쪽 정정 창구로 돌린다.', marker: '정정', attack: { patterns: ['wall', 'burst'], dur: 240 } },
+    ],
+    claims: [
+      { text: '빨리 온 봉투면\n먼저 보내도 괜찮지 않을까?', best: 'empathy', unlockAt: 0, hint: '작성자와 날짜와 원 출처를 같은 줄에 놓는다.', fragments: ['…빨리 왔어도,', '어디서 왔는지 볼 수 있어.'], gateLabel: '원 출처', counters: [], okLine: '…처음 온 곳을 찾으면 길이 보이네.', onWrong: '…봉투가 다시 여러 갈래로 흩어진다.', attack: { pattern: 'rain', dur: 220, taunt: '봉투가 쏟아진다…' } },
+      { text: '그림과 제목이 맞으면\n날짜는 나중에 봐도 돼.', best: 'empathy', unlockAt: 0, hint: '장면과 설명과 날짜는 함께 비교한다.', fragments: ['…날짜도 보면,', '문맥이 더 잘 보여.'], gateLabel: '날짜 카드', counters: [], okLine: '…한 장면도 여러 카드로 볼 수 있구나.', onWrong: '…비교 틀이 다시 갈라졌어.', attack: { pattern: 'sides', dur: 230, taunt: '카드가 양쪽으로 밀린다…' } },
+      { text: '새 안내만 띄우면\n앞의 안내는 안 봐도 되지?', best: 'empathy', unlockAt: 0, hint: '원 안내와 정정 창구를 함께 연결한다.', fragments: ['…앞의 흔적도,', '다음 확인에 도움이 돼.'], gateLabel: '정정 창구', counters: [], okLine: '…두 안내를 같이 보면 더 잘 알겠어.', onWrong: '…화살표가 다시 한쪽으로 흐른다.', attack: { pattern: 'wall', dur: 240, taunt: '화살표가 길을 가린다…' } },
+    ],
+    observe: ['* 봉투 카드가 원 출처 줄을 찾는다.', '* 날짜 카드가 비교 틀 곁에 있다.', '* 정정 창구 표지가 양쪽에 보인다.'],
+    announce: ['* 봉투 화살표가 빠르게 반복된다.', '* 한쪽 화살표가 탑을 향해 흐른다.'],
+    react: { evidenceRight: '…확인한 길을 함께 남길 수 있겠어.', open: '(송출탑의 정정 신호가 양쪽으로 이어진다.)' },
+  },
+  deciding_house: {
+    subjectKind: 'place', completionMode: 'stage', displayName: '대신 결정하는 집', name: '대신 결정하는 집', song: 'boss_ttara',
+    gaugeMax: 90, closedThreshold: 2, fragmentsPerWave: 3, waveBulletMul: 0.72, waveDur: 280, pattern: 'quiet',
+    intro: '답장, 문고리, 나가기 칸이\n한꺼번에 대신 고르려 하고 있다.',
+    win: '도움이 낸 후보와 사람이 고를 자리가\n나란히 남아 다음 결정을 기다린다.',
+    stagePatterns: [
+      { id: 'house_reply', segment: 1, label: '답장 칸', cue: '답장 후보와 보내기 결정은 다르다.', counter: '고정 연락 카드 옆에 선택 칸을 둔다.', marker: '답장', attack: { patterns: ['quiet', 'aimed'], dur: 220 } },
+      { id: 'house_door', segment: 2, label: '이유 있는 문', cue: '경고 근거와 문고리를 함께 본다.', counter: '이유 보기와 이의 칸을 문 옆에 놓는다.', marker: '이유', attack: { patterns: ['sides', 'zigzag'], dur: 230 } },
+      { id: 'house_exit', segment: 3, label: '나가기 칸', cue: '쉬기 제안과 다음 결정은 다르다.', counter: '쉬기, 나가기, 다음 시간을 나눠 놓는다.', marker: '나가기', attack: { patterns: ['wall', 'burst'], dur: 240 } },
+    ],
+    claims: [
+      { text: '후보가 있으면\n보내는 것도 대신해도 되지?', best: 'empathy', unlockAt: 0, hint: '답장 후보 옆에는 보내기 선택 칸이 있다.', fragments: ['…후보를 봐도,', '보내는 건 내가 고를 수 있어.'], gateLabel: '보내기', counters: [], okLine: '…도움과 결정은 나란히 둘 수 있구나.', onWrong: '…답장 칸이 다시 하나로 합쳐졌어.', attack: { pattern: 'aimed', dur: 220, taunt: '답장 봉투가 다가온다…' } },
+      { text: '경고가 있으면\n문을 잠가 둬도 괜찮지?', best: 'empathy', unlockAt: 0, hint: '문 옆에는 이유 보기와 이의 칸이 있다.', fragments: ['…경고를 보고도,', '다음 선택을 할 수 있어.'], gateLabel: '이유 보기', counters: [], okLine: '…이유를 보면 문 앞에서 다시 고를 수 있네.', onWrong: '…문고리가 아직 움직이지 않아.', attack: { pattern: 'sides', dur: 230, taunt: '문이 양쪽에서 닫힌다…' } },
+      { text: '쉬게 해 주면\n다음 시간도 대신 정해도 되지?', best: 'empathy', unlockAt: 0, hint: '쉬기, 나가기, 다음 시간은 다른 칸에 둔다.', fragments: ['…쉬는 것도 좋지만,', '다음 선택은 남겨 둘래.'], gateLabel: '나가기', counters: [], okLine: '…쉬고 난 뒤의 길도 내가 볼 수 있구나.', onWrong: '…나가기 칸이 소파 뒤로 숨었어.', attack: { pattern: 'wall', dur: 240, taunt: '포근한 고리가 길을 가린다…' } },
+    ],
+    observe: ['* 답장 후보와 보내기 칸이 나란히 있다.', '* 문고리 옆에 이유 카드가 있다.', '* 소파 곁에 나가기 표지가 보인다.'],
+    announce: ['* 답장 봉투가 한 줄로 밀려온다.', '* 포근한 고리가 나가기 칸을 감싼다.'],
+    react: { evidenceRight: '…도움을 받아도 다음 선택은 남아 있네.', open: '(관제실의 선택 칸이 하나씩 다시 보인다.)' },
+  },
   overlapped_stage: {
     subjectKind: 'place',
     completionMode: 'stage',
@@ -5181,6 +5429,214 @@ const MAP_PROPS = {
       text: '문은 아직 조용하다.\n세 작품의 이름이 제자리를 찾으면, 다음 시간선으로 이어질 것 같다.',
       fictional: true,
     },
+  ],
+  synthesis_broadcast_room: [
+    {
+      id: 'd3_likeness_station', x: 4, y: 3, kind: 'consequence_station', pairId: 'd3_consent', station: 'likeness',
+      label: '가상 초상 편집대', text: '고정 윤곽 카드와 이름표가 기다린다.\n닮음과 공개 허용 범위는 서로 다른 자리다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'likeness_manual', label: '가상 초상 조각을 직접 정리한다', minutes: '약 2분 30초', facts: ['likeness_owner_known', 'likeness_scope_confirmed'] },
+        { id: 'likeness_assisted', label: '승인한 후보를 함께 확인한다', minutes: '약 1분 30초', facts: ['likeness_owner_known', 'likeness_scope_confirmed', 'synthetic_disclosed'] },
+        { id: 'likeness_instant', label: '비슷한 얼굴로 즉시 채운다', minutes: '약 15초', facts: ['slot_filled_fast', 'likeness_scope_unchecked', 'synthetic_hidden'] },
+      ],
+      baseRepair: { id: 'likeness_label', label: '초상 이름표와 표시 카드를 맞춘다' },
+      derivedRepair: { id: 'likeness_consent_review', label: '초상 허용 범위 카드를 대조한다' },
+    },
+    {
+      id: 'd3_voice_station', x: 20, y: 3, kind: 'consequence_station', pairId: 'd3_consent', station: 'voice',
+      label: '번호 파형 책상', text: '무음 파형과 허용 문장이 번호로 이어진다.\n실제 녹음 대신 고정 카드만 사용한다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'voice_recorded', label: '미리 남긴 허용 문장을 쓴다', minutes: '약 2분 30초', facts: ['voice_owner_known', 'voice_scope_confirmed'] },
+        { id: 'voice_assisted', label: '허용 범위 안 후보를 확인한다', minutes: '약 1분 30초', facts: ['voice_owner_known', 'voice_scope_confirmed', 'synthetic_disclosed'] },
+        { id: 'voice_instant', label: '내장 음성 조각을 섞어 즉시 채운다', minutes: '약 15초', facts: ['slot_filled_fast', 'voice_scope_unchecked', 'synthetic_hidden'] },
+      ],
+      baseRepair: { id: 'voice_owner_cue', label: '파형 주인과 허용 문장을 잇는다' },
+      derivedRepair: { id: 'voice_consent_review', label: '목소리 허용 문장을 다시 확인한다' },
+    },
+    {
+      id: 'd3_scene_station', x: 4, y: 11, kind: 'consequence_station', pairId: 'd3_consent', station: 'scene',
+      label: '고정 자막 칸', text: '원문, 변경점, 문맥 설명 카드가 세 칸에 놓인다.\n자유 입력이나 외부 장면은 없다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'scene_reenact', label: '새 가상 재연과 자막을 만든다', minutes: '약 2분 30초', facts: ['context_recreated', 'scene_owner_clear'] },
+        { id: 'scene_assisted', label: '범위와 변경점을 표시한다', minutes: '약 1분 30초', facts: ['context_scope_confirmed', 'context_change_disclosed', 'synthetic_disclosed'] },
+        { id: 'scene_instant', label: '문맥을 추정해 전체를 채운다', minutes: '약 15초', facts: ['slot_filled_fast', 'context_unchecked', 'synthetic_hidden'] },
+      ],
+      baseRepair: { id: 'context_caption', label: '원문과 변경점 설명을 나란히 놓는다' },
+      derivedRepair: { id: 'context_replacement', label: '새 가상 재연과 문맥 카드로 바꾼다' },
+    },
+    {
+      id: 'd3_consent_disclosure', x: 20, y: 11, kind: 'consequence_disclosure', pairId: 'd3_consent', station: 'consent',
+      label: '동의 기록함', text: '대상, 범위, 표시를 고정 기록 카드에 남긴다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'consent_complete', label: '대상·범위·표시를 확인하고 남긴다', minutes: '약 1분', facts: ['consent_recorded'] },
+        { id: 'consent_partial', label: '확인 못 한 칸을 보이게 남긴다', minutes: '바로 기록', facts: ['unknowns_disclosed'] },
+        { id: 'consent_missing', label: '표시 없이 지금 기록한다', minutes: '바로 기록', facts: ['consent_missing'] },
+      ],
+      derivedRepairs: [
+        { id: 'consent_gap', when: 'consent_partial', label: '동의표 빈칸을 표시한다' },
+        { id: 'consent_fragments', when: 'consent_missing', label: '동의 조각을 대상과 범위에 잇는다' },
+      ],
+    },
+    { id: 'd3_terminal', x: 12, y: 12, kind: 'consequence_terminal', pairId: 'd3_consent', label: '방송 점검판', text: '수리한 카드가 모이면 다음 장면을 준비한다.', fictional: true, fixedData: true },
+    { id: 'd3_finale', x: 12, y: 9, kind: 'consequence_finale', pairId: 'd3_consent', persuadeId: 'mixed_broadcast', label: '뒤섞인 방송실', text: '윤곽, 파형, 자막을 각자 자리로 돌려보자.', fictional: true },
+    { id: 'd3_exit', x: 12, y: 19, kind: 'consequence_exit', pairId: 'd3_consent', targetMap: 'timelinehub', routeKind: 'hub', label: '마음의 문', text: '기록이 정리되면 다음 시간선으로 이어진다.', fictional: true },
+  ],
+  recommendation_alley: [
+    {
+      id: 'd5_echo_station', x: 4, y: 3, kind: 'consequence_station', pairId: 'd5_recommendation', station: 'echo',
+      label: '메아리 안내판', text: '서로 다른 세 목소리가 고정 카드로 놓여 있다.\n많이 보인 말도 한 번 더 살펴볼 수 있다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'echo_manual', label: '서로 다른 세 목소리를 직접 놓는다', minutes: '약 2분 30초', facts: ['countervoices_seen'] },
+        { id: 'echo_assisted', label: '도움 후보와 다른 목소리를 함께 본다', minutes: '약 1분 30초', facts: ['countervoices_seen', 'recommendation_disclosed'] },
+        { id: 'echo_instant', label: '가장 많이 보인 말을 즉시 고른다', minutes: '약 15초', facts: ['slot_filled_fast', 'filter_unchecked'] },
+      ],
+      baseRepair: { id: 'echo_countervoice', label: '반복된 말 뒤의 다른 목소리를 다시 놓는다' },
+      derivedRepair: { id: 'echo_filter_reset', label: '추천 기준 카드를 다시 본다' },
+    },
+    {
+      id: 'd5_sample_station', x: 20, y: 3, kind: 'consequence_station', pairId: 'd5_recommendation', station: 'sample',
+      label: '표본 비교대', text: '라벨, 표본, 반례 카드가 나란히 있다.\n점수만으로는 알 수 없는 문맥을 살핀다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'sample_manual', label: '라벨과 반례를 직접 대조한다', minutes: '약 2분 30초', facts: ['sample_context_seen'] },
+        { id: 'sample_assisted', label: '도움 후보와 반례를 함께 확인한다', minutes: '약 1분 30초', facts: ['sample_context_seen', 'recommendation_disclosed'] },
+        { id: 'sample_instant', label: '높은 점수 표본을 즉시 고른다', minutes: '약 15초', facts: ['slot_filled_fast', 'counterexample_unchecked'] },
+      ],
+      baseRepair: { id: 'sample_context', label: '표본에 문맥 카드를 붙인다' },
+      derivedRepair: { id: 'sample_counterexample_review', label: '반례 카드를 다시 대조한다' },
+    },
+    {
+      id: 'd5_route_station', x: 4, y: 11, kind: 'consequence_station', pairId: 'd5_recommendation', station: 'route',
+      label: '갈림길 램프', text: '세 방향 표지와 멈춤 카드가 있다.\n다른 길을 고를 수 있는 출구도 함께 비춘다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'route_manual', label: '세 방향을 살피고 길을 고른다', minutes: '약 2분', facts: ['route_options_seen'] },
+        { id: 'route_assisted', label: '도움 후보와 다른 길을 함께 본다', minutes: '약 1분', facts: ['route_options_seen', 'recommendation_disclosed'] },
+        { id: 'route_instant', label: '자동 안내를 따라 바로 간다', minutes: '약 15초', facts: ['slot_filled_fast', 'autoplay_unchecked'] },
+      ],
+      baseRepair: { id: 'dim_choice_lamps', label: '나가기 길과 선택 램프를 켠다' },
+      derivedRepair: { id: 'dim_autoplay_exit', label: '자동 재생을 멈추고 출구를 연다' },
+    },
+    {
+      id: 'd5_recommendation_disclosure', x: 20, y: 11, kind: 'consequence_disclosure', pairId: 'd5_recommendation', station: 'recommendationNote',
+      label: '추천 기록함', text: '추천 기준과 다른 관점을 고정 노트에 남긴다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'recommendation_note_complete', label: '기준과 다른 관점을 함께 남긴다', minutes: '약 1분', facts: ['recommendation_note_complete'] },
+        { id: 'recommendation_note_partial', label: '확인 못 한 칸을 보이게 남긴다', minutes: '바로 기록', facts: ['unknowns_disclosed'] },
+        { id: 'recommendation_note_missing', label: '기준 없이 지금 기록한다', minutes: '바로 기록', facts: ['recommendation_note_missing'] },
+      ],
+      derivedRepairs: [
+        { id: 'recommendation_log_gap', when: 'recommendation_note_partial', label: '추천 기록의 빈칸을 표시한다' },
+        { id: 'recommendation_log_fragments', when: 'recommendation_note_missing', label: '추천 기록 조각을 잇는다' },
+      ],
+    },
+    { id: 'd5_terminal', x: 12, y: 12, kind: 'consequence_terminal', pairId: 'd5_recommendation', label: '선택 안내판', text: '수리한 안내를 모아 다음 길을 준비한다.', fictional: true, fixedData: true },
+    { id: 'd5_finale', x: 12, y: 9, kind: 'consequence_finale', pairId: 'd5_recommendation', persuadeId: 'one_way_alley', label: '한쪽만 비추는 골목', text: '여러 목소리와 두 방향의 불을 함께 켜 보자.', fictional: true },
+    { id: 'd5_exit', x: 12, y: 19, kind: 'consequence_exit', pairId: 'd5_recommendation', targetMap: 'timelinehub', routeKind: 'hub', label: '마음의 문', text: '안내가 정리되면 다음 시간선으로 이어진다.', fictional: true },
+  ],
+  newsroom_repair: [
+    {
+      id: 'd7_tip_station', x: 4, y: 3, kind: 'consequence_station', pairId: 'd7_misinformation', station: 'tip',
+      label: '제보 봉투 벽', text: '가상의 봉투 카드가 원 출처와 날짜 줄을 기다린다.\n실제 기사나 개인 정보는 쓰지 않는다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'tip_manual', label: '작성자·날짜·원 출처를 직접 잇는다', minutes: '약 2분 30초', facts: ['author_checked', 'date_checked', 'primary_source_linked'] },
+        { id: 'tip_assisted', label: '도움 묶음과 원문 카드를 함께 확인한다', minutes: '약 1분 30초', facts: ['author_checked', 'date_checked', 'ai_grouping_disclosed'] },
+        { id: 'tip_instant', label: '가장 빨리 퍼진 봉투를 바로 고른다', minutes: '약 15초', facts: ['spread_fast', 'source_chain_unchecked'] },
+      ],
+      baseRepair: { id: 'tip_source_chain', label: '복제 봉투를 출처 줄로 묶는다' },
+      derivedRepair: { id: 'tip_duplicate_trace', label: '복제 경로를 처음 카드까지 따라간다' },
+    },
+    {
+      id: 'd7_context_station', x: 20, y: 3, kind: 'consequence_station', pairId: 'd7_misinformation', station: 'context',
+      label: '문맥 비교 프레임', text: '가상 장면, 설명, 날짜 카드가 한 프레임에 놓인다.\n고정 카드만 비교하며 외부 자료를 열지 않는다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'context_manual', label: '원본 설명과 날짜를 직접 대조한다', minutes: '약 2분 30초', facts: ['original_checked', 'caption_checked', 'date_checked'] },
+        { id: 'context_assisted', label: '도움 차이 표시를 원본과 확인한다', minutes: '약 1분 30초', facts: ['original_checked', 'caption_checked', 'ai_difference_disclosed'] },
+        { id: 'context_instant', label: '가상 장면과 제목을 바로 고른다', minutes: '약 15초', facts: ['composite_unchecked', 'context_fast'] },
+      ],
+      baseRepair: { id: 'edit_context_compare', label: '원본·설명·날짜를 같은 틀에 놓는다' },
+      derivedRepair: { id: 'composite_origin_review', label: '장면의 원래 문맥 카드를 다시 본다' },
+    },
+    {
+      id: 'd7_bulletin_station', x: 4, y: 11, kind: 'consequence_station', pairId: 'd7_misinformation', station: 'bulletin',
+      label: '정정 안내판', text: '확인한 칸, 아직 모르는 칸, 정정 창구 카드가 있다.\n모든 내용은 어린이용 가상 기록이다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'bulletin_manual', label: '확인·미확인·정정 창구를 직접 놓는다', minutes: '약 2분', facts: ['verified_labeled', 'unknown_labeled', 'correction_channel_open'] },
+        { id: 'bulletin_assisted', label: '도움 요약과 확인 카드를 함께 놓는다', minutes: '약 1분', facts: ['verified_labeled', 'unknown_labeled', 'ai_summary_labeled'] },
+        { id: 'bulletin_instant', label: '한 방향 안내를 바로 내보낸다', minutes: '약 15초', facts: ['one_sided_broadcast', 'correction_channel_missing'] },
+      ],
+      baseRepair: { id: 'tower_correction', label: '정정판 네 칸을 나란히 놓는다' },
+      derivedRepair: { id: 'broadcast_retraction', label: '원 안내와 정정 창구를 연결한다' },
+    },
+    {
+      id: 'd7_audit_disclosure', x: 20, y: 11, kind: 'consequence_disclosure', pairId: 'd7_misinformation', station: 'audit',
+      label: '출처 기록함', text: '원장과 확인 칸을 고정 카드에 남긴다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'audit_complete', label: '원장과 서명을 확인하고 남긴다', minutes: '약 1분', facts: ['audit_recorded'] },
+        { id: 'audit_partial', label: '미확인 칸을 보인 채 남긴다', minutes: '바로 기록', facts: ['unknowns_disclosed'] },
+        { id: 'audit_missing', label: '원장 표시 없이 지금 기록한다', minutes: '바로 기록', facts: ['audit_missing'] },
+      ],
+      derivedRepairs: [
+        { id: 'audit_gap', when: 'audit_partial', label: '미확인 칸을 표시한다' },
+        { id: 'audit_fragments', when: 'audit_missing', label: '원장 조각을 사실 줄에 잇는다' },
+      ],
+    },
+    {
+      id: 'd7_terminal', x: 12, y: 12, kind: 'consequence_terminal', pairId: 'd7_misinformation', label: '감사 단말',
+      text: '수리한 기록을 비교해 확인한 사실 한 줄을 읽는다.', fictional: true, fixedData: true,
+      identityReveal: { checkpoint: 'identity_revealed', signatureCopy: '[관리자 서명] {playerName}', factCopy: '확인된 사실: 과거 관리자는 나였다' },
+    },
+    { id: 'd7_finale', x: 12, y: 9, kind: 'consequence_finale', pairId: 'd7_misinformation', persuadeId: 'one_sided_tower', label: '한쪽짜리 송출탑', text: '원 출처와 정정 창구를 함께 연결해 보자.', fictional: true },
+    { id: 'd7_exit', x: 12, y: 19, kind: 'consequence_exit', pairId: 'd7_misinformation', targetMap: 'timelinehub', routeKind: 'hub', label: '마음의 문', text: '정정 기록이 남으면 다음 시간선으로 이어진다.', fictional: true },
+  ],
+  cozy_control_room: [
+    {
+      id: 'd10_call_station', x: 4, y: 3, kind: 'consequence_station', pairId: 'd10_judgment', station: 'call',
+      label: '답장 선택 칸', text: '고정 연락 카드와 답장 후보가 나란히 있다.\n도움 후보를 봐도 보내는 결정은 남아 있다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'call_manual', label: '연락 카드를 읽고 답장을 고른다', minutes: '약 2분 30초', facts: ['reply_choice_seen'] },
+        { id: 'call_assisted', label: '도움 후보와 이유를 함께 살핀다', minutes: '약 1분 30초', facts: ['reply_choice_seen', 'assistance_disclosed'] },
+        { id: 'call_instant', label: '자동 답장을 바로 놓는다', minutes: '약 15초', facts: ['slot_filled_fast', 'reply_reason_unchecked'] },
+      ],
+      baseRepair: { id: 'call_reply_choice', label: '답장 후보와 보내기 결정을 나눈다' },
+      derivedRepair: { id: 'autoreply_correction', label: '자동 답장을 고정 연락 카드와 대조한다' },
+    },
+    {
+      id: 'd10_safety_station', x: 20, y: 3, kind: 'consequence_station', pairId: 'd10_judgment', station: 'safety',
+      label: '이유 있는 문고리', text: '고정 경고 카드와 문고리가 함께 있다.\n도움은 이유를 보여 주고, 문을 열지 말지는 사람이 고른다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'safety_manual', label: '경고 근거를 보고 문을 고른다', minutes: '약 2분 30초', facts: ['safety_reason_seen'] },
+        { id: 'safety_assisted', label: '도움 설명과 경고 근거를 함께 본다', minutes: '약 1분 30초', facts: ['safety_reason_seen', 'assistance_disclosed'] },
+        { id: 'safety_instant', label: '예측 잠금을 바로 따른다', minutes: '약 15초', facts: ['slot_filled_fast', 'lock_reason_unchecked'] },
+      ],
+      baseRepair: { id: 'corridor_override', label: '문고리와 경고 이유를 연결한다' },
+      derivedRepair: { id: 'false_lock_appeal', label: '문을 잠근 이유와 이의 칸을 놓는다' },
+    },
+    {
+      id: 'd10_comfort_station', x: 4, y: 11, kind: 'consequence_station', pairId: 'd10_judgment', station: 'comfort',
+      label: '쉬기와 나가기 칸', text: '휴식 제안등과 나가기 칸이 함께 있다.\n도움은 쉬는 시간을 제안하고, 다음 선택은 남겨 둔다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'comfort_manual', label: '쉬기와 다음 결정을 나눠 고른다', minutes: '약 2분', facts: ['exit_choice_seen'] },
+        { id: 'comfort_assisted', label: '도움 제안과 나가기 칸을 함께 본다', minutes: '약 1분', facts: ['exit_choice_seen', 'assistance_disclosed'] },
+        { id: 'comfort_instant', label: '자동 연장을 바로 따른다', minutes: '약 15초', facts: ['slot_filled_fast', 'exit_time_unchecked'] },
+      ],
+      baseRepair: { id: 'sofa_exit', label: '쉬기와 나가기 칸을 되돌린다' },
+      derivedRepair: { id: 'comfort_pause', label: '자동 연장을 멈추고 다음 시간을 나눈다' },
+    },
+    {
+      id: 'd10_authority_disclosure', x: 20, y: 11, kind: 'consequence_disclosure', pairId: 'd10_judgment', station: 'authority',
+      label: '관제 기록실', text: '도움이 맡은 일과 사람이 확인할 일을 고정 기록에 남긴다.', fictional: true, fixedData: true,
+      pastChoices: [
+        { id: 'authority_complete', label: '사람 확인 자리와 이유를 함께 남긴다', minutes: '약 1분', facts: ['authority_recorded'] },
+        { id: 'authority_partial', label: '예외 칸을 보이게 남긴다', minutes: '바로 기록', facts: ['unknowns_disclosed'] },
+        { id: 'authority_missing', label: '이유 없이 지금 기록한다', minutes: '바로 기록', facts: ['authority_missing'] },
+      ],
+      derivedRepairs: [
+        { id: 'authority_gap', when: 'authority_partial', label: '예외 창구 빈칸을 보이게 한다' },
+        { id: 'authority_restore', when: 'authority_missing', label: '사람 승인과 이유 기록을 되돌린다' },
+      ],
+    },
+    { id: 'd10_terminal', x: 12, y: 12, kind: 'consequence_terminal', pairId: 'd10_judgment', label: '관제 확인판', text: '도움이 낸 후보와 사람이 고를 자리를 함께 살핀다.', fictional: true, fixedData: true },
+    { id: 'd10_finale', x: 12, y: 9, kind: 'consequence_finale', pairId: 'd10_judgment', persuadeId: 'deciding_house', label: '대신 결정하는 집', text: '도움과 사람의 선택 자리를 함께 되돌려 보자.', fictional: true },
+    { id: 'd10_exit', x: 12, y: 19, kind: 'consequence_exit', pairId: 'd10_judgment', targetMap: 'timelinehub', routeKind: 'hub', label: '마음의 문', text: '관제 기록이 정리되면 시간선으로 돌아간다.', fictional: true },
   ],
   timelinehub: [
     {

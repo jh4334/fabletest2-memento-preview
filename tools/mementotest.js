@@ -439,6 +439,17 @@ const maps = data('Object.keys(MAPS)', []);
 check('프롤로그→다섯 거리→고요의 뜰→코어 맵이 모두 보존',
   ['introlab', 'forest', 'freestreet', 'tiltstreet', 'rumorstreet', 'arcade', 'cozyhome', 'quietyard', 'coreroom']
     .every((id) => maps.includes(id)));
+const laterPairMaps = data(`[
+  'synthesis_broadcast_room', 'recommendation_alley', 'newsroom_repair', 'cozy_control_room'
+].map((id) => ({
+  id, pairId: MAPS[id] && MAPS[id].consequencePairId,
+  shared: MAPS[id] && MAPS[id].sharedTimelineGeometry,
+  geometry: MAPS[id] && MAPS[id].tiles.join('\\n')
+}))`, []);
+check('후속 네 장소는 쌍 내부 과거·현재 지오메트리를 공유',
+  laterPairMaps.length === 4 && laterPairMaps.every((map) => map.shared && map.pairId));
+check('후속 네 장소는 서로 다른 공간 실루엣을 사용',
+  new Set(laterPairMaps.map((map) => map.geometry)).size === laterPairMaps.length);
 check('장 번호 1~5만 기록에 연결되어 본편 순서를 바꾸지 않음',
   has('recordForChapter') && T.recordForChapter(0) === null && T.recordForChapter(6) === null);
 
@@ -547,6 +558,26 @@ check('D-1 설정은 설계의 선택·기본 수리·파생 수리·피날레 I
       config.disclosureRepairByChoice.partial === 'ledger_blank' &&
       config.disclosureRepairByChoice.missing === 'ledger_fragments';
   })()`, false) === true);
+check('D-3·D-5·D-7·D-10은 고유 맵과 범용 UI·수리 라벨 계약을 공개한다',
+  data(`(() => {
+    const expectedMapIds = {
+      d3_consent: 'synthesis_broadcast_room',
+      d5_recommendation: 'recommendation_alley',
+      d7_misinformation: 'newsroom_repair',
+      d10_judgment: 'cozy_control_room',
+    };
+    const present = (value) => typeof value === 'string' && value.trim().length > 0;
+    return Object.entries(expectedMapIds).every(([pairId, mapId]) => {
+      const config = consequencePairConfig(pairId);
+      const ui = config && (config.pairUi || config.ui);
+      const repairIds = config && config.baseRepairIds.concat(
+        Object.values(config.instantRepairByChoice), Object.values(config.disclosureRepairByChoice));
+      return config && config.mapId === mapId && ui &&
+        present(ui.displayLabel) && present(ui.objectiveLabel) && present(ui.finaleLabel) &&
+        config.rooms.every((room) => present(ui.roomLabels && ui.roomLabels[room.choiceKey])) &&
+        repairIds.every((repairId) => present(config.repairLabels && config.repairLabels[repairId]));
+    });
+  })()`, false) === true);
 check('unknown pair lookup은 null이고 pair/campaign state는 안전한 새 기본값을 반환',
   data(`(() => {
     const first = createConsequencePairState('d1_copyright');
@@ -616,6 +647,56 @@ check('D-1 최소·최대·혼합 fixture의 파생 수리와 입력 불변성�
       JSON.stringify(results[0]) === '[]' &&
       JSON.stringify(results[1]) === JSON.stringify(['visual_rights_review', 'music_license_review', 'text_replacement', 'ledger_fragments']) &&
       JSON.stringify(results[2]) === JSON.stringify(['music_license_review', 'ledger_blank']);
+  })()`, false) === true);
+check('D-3·D-5·D-7·D-10 최소·혼합·최대 수리 투영은 정확하고 입력을 바꾸지 않는다',
+  data(`(() => {
+    const fixtures = [
+      {
+        pairId: 'd3_consent',
+        cases: [
+          { choices: { likeness: 'likeness_manual', voice: 'voice_recorded', scene: 'scene_reenact', consent: 'consent_complete' }, added: [] },
+          { choices: { likeness: 'likeness_assisted', voice: 'voice_instant', scene: 'scene_reenact', consent: 'consent_partial' }, added: ['voice_consent_review', 'consent_gap'] },
+          { choices: { likeness: 'likeness_instant', voice: 'voice_instant', scene: 'scene_instant', consent: 'consent_missing' }, added: ['likeness_consent_review', 'voice_consent_review', 'context_replacement', 'consent_fragments'] },
+        ],
+      },
+      {
+        pairId: 'd5_recommendation',
+        cases: [
+          { choices: { echo: 'echo_manual', sample: 'sample_manual', route: 'route_manual', recommendationNote: 'recommendation_note_complete' }, added: [] },
+          { choices: { echo: 'echo_assisted', sample: 'sample_instant', route: 'route_manual', recommendationNote: 'recommendation_note_partial' }, added: ['sample_counterexample_review', 'recommendation_log_gap'] },
+          { choices: { echo: 'echo_instant', sample: 'sample_instant', route: 'route_instant', recommendationNote: 'recommendation_note_missing' }, added: ['echo_filter_reset', 'sample_counterexample_review', 'dim_autoplay_exit', 'recommendation_log_fragments'] },
+        ],
+      },
+      {
+        pairId: 'd7_misinformation',
+        cases: [
+          { choices: { tip: 'tip_manual', context: 'context_manual', bulletin: 'bulletin_manual', audit: 'audit_complete' }, added: [] },
+          { choices: { tip: 'tip_assisted', context: 'context_instant', bulletin: 'bulletin_manual', audit: 'audit_partial' }, added: ['composite_origin_review', 'audit_gap'] },
+          { choices: { tip: 'tip_instant', context: 'context_instant', bulletin: 'bulletin_instant', audit: 'audit_missing' }, added: ['tip_duplicate_trace', 'composite_origin_review', 'broadcast_retraction', 'audit_fragments'] },
+        ],
+      },
+      {
+        pairId: 'd10_judgment',
+        cases: [
+          { choices: { call: 'call_manual', safety: 'safety_manual', comfort: 'comfort_manual', authority: 'authority_complete' }, added: [] },
+          { choices: { call: 'call_assisted', safety: 'safety_instant', comfort: 'comfort_manual', authority: 'authority_partial' }, added: ['false_lock_appeal', 'authority_gap'] },
+          { choices: { call: 'call_instant', safety: 'safety_instant', comfort: 'comfort_instant', authority: 'authority_missing' }, added: ['autoreply_correction', 'false_lock_appeal', 'comfort_pause', 'authority_restore'] },
+        ],
+      },
+    ];
+    return fixtures.every(({ pairId, cases }) => {
+      const config = consequencePairConfig(pairId);
+      return config && cases.every(({ choices, added }) => {
+        const before = JSON.stringify(choices);
+        const projected = deriveAddedRepairIds(config, choices);
+        const required = requiredRepairIds(config, choices);
+        const facts = projectPairFacts(config, choices);
+        return before === JSON.stringify(choices) &&
+          JSON.stringify(projected) === JSON.stringify(added) &&
+          JSON.stringify(required) === JSON.stringify(config.baseRepairIds.concat(added)) &&
+          facts && JSON.stringify(facts.addedRepairIds) === JSON.stringify(added);
+      });
+    });
   })()`, false) === true);
 check('미완료 과거 선택 또는 수리가 빠진 상태는 피날레 준비가 될 수 없다',
   data(`(() => {

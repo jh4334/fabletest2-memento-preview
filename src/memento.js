@@ -185,7 +185,7 @@ const CONSEQUENCE_PAIR_ORDER = consequenceDeepFreeze([
 
 const CONSEQUENCE_PAIR_CONFIGS = consequenceDeepFreeze([
   {
-    id: 'd1_copyright', daysAgo: 1, stateKey: 'copyrightSlice', finaleId: 'overlapped_stage',
+    id: 'd1_copyright', daysAgo: 1, stateKey: 'copyrightSlice', mapId: 'creationhall', finaleId: 'overlapped_stage',
     rooms: [
       consequenceRoom('visual', ['visual_manual', 'visual_assisted', 'visual_instant']),
       consequenceRoom('audio', ['audio_reply', 'audio_licensed', 'audio_instant']),
@@ -201,9 +201,23 @@ const CONSEQUENCE_PAIR_CONFIGS = consequenceDeepFreeze([
       text_instant: 'text_replacement',
     },
     disclosureRepairByChoice: { partial: 'ledger_blank', missing: 'ledger_fragments' },
+    pairUi: {
+      displayLabel: '공동 창작관',
+      objectiveLabel: '세 창작물을 살피고 전시 기록을 남겨 보자.',
+      finaleLabel: '겹친 무대',
+      roomLabels: { visual: '그림 작업실', audio: '녹음실', text: '인쇄실' },
+      disclosure: { label: '전시 기록', prompt: '작품 이름과 도움 표시를 어떻게 남길지 골라 보자.' },
+      terminal: { label: '공개 단말', lockedCopy: '수리 내용을 모은 뒤 전시 기록을 살펴보자.', readyCopy: '준비한 기록을 들고 무대로 가 보자.' },
+      result: { label: '전시 결과', copy: '작품 이름과 도움 표시가 함께 남았다.' },
+    },
+    repairLabels: {
+      visual_panel: '그림 원본 맞추기', music_cue: '허용 음원 찾기', text_panel: '문장 주인 구분하기',
+      visual_rights_review: '그림 사용 범위 확인', music_license_review: '음원 사용 조건 확인',
+      text_replacement: '글 바꾸기', ledger_blank: '이름표 빈칸 채우기', ledger_fragments: '기록 조각 잇기',
+    },
   },
   {
-    id: 'd3_consent', daysAgo: 3, stateKey: 'consentSlice', finaleId: 'mixed_broadcast',
+    id: 'd3_consent', daysAgo: 3, stateKey: 'consentSlice', mapId: 'synthesis_broadcast_room', finaleId: 'mixed_broadcast',
     rooms: [
       consequenceRoom('likeness', ['likeness_manual', 'likeness_assisted', 'likeness_instant']),
       consequenceRoom('voice', ['voice_recorded', 'voice_assisted', 'voice_instant']),
@@ -223,9 +237,23 @@ const CONSEQUENCE_PAIR_CONFIGS = consequenceDeepFreeze([
     disclosureRepairByChoice: {
       consent_partial: 'consent_gap', consent_missing: 'consent_fragments',
     },
+    pairUi: {
+      displayLabel: '합성 방송실',
+      objectiveLabel: '이름표, 허용 문장, 문맥 카드를 맞춰 보자.',
+      finaleLabel: '뒤섞인 방송실',
+      roomLabels: { likeness: '초상 편집실', voice: '음성 믹싱실', scene: '장면·자막실' },
+      disclosure: { label: '동의 기록', prompt: '대상, 범위, 표시를 어떻게 남길지 골라 보자.' },
+      terminal: { label: '방송 점검판', lockedCopy: '수리 내용을 모은 뒤 방송 기록을 살펴보자.', readyCopy: '준비한 카드를 들고 방송실로 가 보자.' },
+      result: { label: '방송 결과', copy: '이름표와 설명 카드가 제자리를 찾았다.' },
+    },
+    repairLabels: {
+      likeness_label: '초상 이름표 맞추기', voice_owner_cue: '목소리 주인 잇기', context_caption: '문맥 설명 놓기',
+      likeness_consent_review: '초상 허용 범위 확인', voice_consent_review: '목소리 허용 문장 확인',
+      context_replacement: '장면 문맥 바꾸기', consent_gap: '동의표 빈칸 표시하기', consent_fragments: '동의 조각 잇기',
+    },
   },
   {
-    id: 'd5_recommendation', daysAgo: 5, stateKey: 'recommendationSlice', finaleId: 'one_way_alley',
+    id: 'd5_recommendation', daysAgo: 5, stateKey: 'recommendationSlice', mapId: 'recommendation_alley', finaleId: 'one_way_alley',
     rooms: [
       consequenceRoom('echo', ['echo_manual', 'echo_assisted', 'echo_instant']),
       consequenceRoom('sample', ['sample_manual', 'sample_assisted', 'sample_instant']),
@@ -250,9 +278,24 @@ const CONSEQUENCE_PAIR_CONFIGS = consequenceDeepFreeze([
       recommendation_note_partial: 'recommendation_log_gap',
       recommendation_note_missing: 'recommendation_log_fragments',
     },
+    pairUi: {
+      displayLabel: '추천 골목',
+      objectiveLabel: '여러 목소리와 다른 길을 함께 살펴보자.',
+      finaleLabel: '한쪽만 비추는 골목',
+      roomLabels: { echo: '메아리 골목', sample: '표본 창고', route: '꺼진 거리' },
+      disclosure: { label: '추천 기록', prompt: '추천 기준과 다른 관점을 어떻게 남길지 골라 보자.' },
+      terminal: { label: '선택 안내판', lockedCopy: '수리 내용을 모은 뒤 추천 기록을 살펴보자.', readyCopy: '준비한 안내를 들고 골목으로 가 보자.' },
+      result: { label: '추천 결과', copy: '여러 목소리와 나가기 길이 다시 보인다.' },
+    },
+    repairLabels: {
+      echo_countervoice: '다른 목소리 다시 듣기', sample_context: '표본에 문맥 붙이기', dim_choice_lamps: '나가기 길 켜기',
+      echo_filter_reset: '추천 기준 다시 보기', sample_counterexample_review: '반례 카드 대조하기',
+      dim_autoplay_exit: '자동 재생 멈추기', recommendation_log_gap: '추천 기록 빈칸 표시하기',
+      recommendation_log_fragments: '추천 기록 조각 잇기',
+    },
   },
   {
-    id: 'd7_misinformation', daysAgo: 7, stateKey: 'misinformationSlice', finaleId: 'one_sided_tower',
+    id: 'd7_misinformation', daysAgo: 7, stateKey: 'misinformationSlice', mapId: 'newsroom_repair', finaleId: 'one_sided_tower',
     rooms: [
       consequenceRoom('tip', ['tip_manual', 'tip_assisted', 'tip_instant']),
       consequenceRoom('context', ['context_manual', 'context_assisted', 'context_instant']),
@@ -270,9 +313,28 @@ const CONSEQUENCE_PAIR_CONFIGS = consequenceDeepFreeze([
       bulletin_instant: 'broadcast_retraction',
     },
     disclosureRepairByChoice: { audit_partial: 'audit_gap', audit_missing: 'audit_fragments' },
+    pairUi: {
+      displayLabel: '대문짝 신문사',
+      objectiveLabel: '원 출처, 날짜, 문맥을 나란히 살펴보자.',
+      finaleLabel: '한쪽짜리 송출탑',
+      roomLabels: { tip: '제보실', context: '편집실', bulletin: '송출탑' },
+      disclosure: { label: '출처 기록', prompt: '확인한 칸과 아직 확인할 칸을 어떻게 남길지 골라 보자.' },
+      terminal: { label: '감사 단말', lockedCopy: '수리 내용을 모은 뒤 기록을 비교해 보자.', readyCopy: '기록을 비교하고 송출탑으로 가 보자.' },
+      identityReveal: {
+        checkpoint: 'identity_revealed',
+        signatureCopy: '[관리자 서명] {playerName}',
+        factCopy: '확인된 사실: 과거 관리자는 나였다',
+      },
+      result: { label: '정정 결과', copy: '원 보도와 정정 안내가 함께 남았다.' },
+    },
+    repairLabels: {
+      tip_source_chain: '출처 줄 잇기', edit_context_compare: '문맥 비교하기', tower_correction: '정정판 채우기',
+      tip_duplicate_trace: '복제 경로 따라가기', composite_origin_review: '장면의 원래 문맥 보기',
+      broadcast_retraction: '정정 창구 연결하기', audit_gap: '미확인 칸 표시하기', audit_fragments: '원장 조각 잇기',
+    },
   },
   {
-    id: 'd10_judgment', daysAgo: 10, stateKey: 'judgmentSlice', finaleId: 'deciding_house',
+    id: 'd10_judgment', daysAgo: 10, stateKey: 'judgmentSlice', mapId: 'cozy_control_room', finaleId: 'deciding_house',
     rooms: [
       consequenceRoom('call', ['call_manual', 'call_assisted', 'call_instant']),
       consequenceRoom('safety', ['safety_manual', 'safety_assisted', 'safety_instant']),
@@ -290,6 +352,20 @@ const CONSEQUENCE_PAIR_CONFIGS = consequenceDeepFreeze([
       comfort_instant: 'comfort_pause',
     },
     disclosureRepairByChoice: { authority_partial: 'authority_gap', authority_missing: 'authority_restore' },
+    pairUi: {
+      displayLabel: '포근한 관제실',
+      objectiveLabel: '도움과 사람의 결정을 나란히 살펴보자.',
+      finaleLabel: '대신 결정하는 집',
+      roomLabels: { call: '전화의 방', safety: '잠긴 복도', comfort: '소파 코너' },
+      disclosure: { label: '관제 기록', prompt: '사람이 확인할 자리와 이유를 어떻게 남길지 골라 보자.' },
+      terminal: { label: '관제 기록실', lockedCopy: '수리 내용을 모은 뒤 관제 기록을 살펴보자.', readyCopy: '준비한 기록을 들고 관제 레버로 가 보자.' },
+      result: { label: '관제 결과', copy: '사람이 고를 자리와 이유 기록이 다시 보인다.' },
+    },
+    repairLabels: {
+      call_reply_choice: '답장 선택 칸 되돌리기', corridor_override: '문고리와 이유 연결하기', sofa_exit: '나가기 칸 되돌리기',
+      autoreply_correction: '자동 답장 고치기', false_lock_appeal: '문을 잠근 이유 보기', comfort_pause: '쉬기와 나가기 나누기',
+      authority_gap: '예외 창구 빈칸 보기', authority_restore: '사람 승인 기록 되돌리기',
+    },
   },
 ]);
 
