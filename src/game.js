@@ -4187,24 +4187,27 @@
     };
   }
 
-  function consequenceRepairIds(pastChoices) {
-    const config = consequencePairConfig('d1_copyright');
+  function consequenceRepairIds(pastChoices, pairId) {
+    const active = consequenceActive();
+    const config = consequencePairConfig(pairId || (active && active.config.id) || 'd1_copyright');
     return requiredRepairIds(config, pastChoices || {});
   }
 
-  function consequenceEffortProjection(choiceId) {
-    const config = consequencePairConfig('d1_copyright');
+  function consequenceEffortProjection(choiceId, pairId) {
+    const active = consequenceActive();
+    const config = consequencePairConfig(pairId || (active && active.config.id) || 'd1_copyright');
     let mode = null;
     for (const room of config.rooms) {
       if (room.choiceModes[choiceId]) { mode = room.choiceModes[choiceId]; break; }
     }
     if (!mode && config.disclosureChoiceIds.includes(choiceId)) {
-      mode = choiceId === 'complete' ? 'manual' : choiceId === 'partial' ? 'assisted' : 'instant';
+      const disclosure = config.disclosureModeByChoice[choiceId];
+      mode = disclosure === 'complete' ? 'manual' : disclosure === 'partial' ? 'assisted' : 'instant';
     }
     const labels = mode === 'manual'
-      ? ['만든 사람을 확인한다', '이용 조건을 확인한다', '이름과 도움 표시를 남긴다']
+      ? ['원래 자료를 직접 살핀다', '조건과 다른 자료를 나란히 본다', '확인한 내용과 빈칸을 남긴다']
       : mode === 'assisted'
-        ? ['도움받은 부분을 확인한다', '이름과 조건 표시를 남긴다']
+        ? ['도움 후보를 원래 자료와 비교한다', '도움받은 부분과 빈칸을 남긴다']
         : mode === 'instant' ? ['즉시 채우기를 실행한다'] : [];
     return { choiceId, mode, steps: labels.length, labels };
   }
@@ -4241,7 +4244,7 @@
           if (step + 1 < effort.steps) { advance(step + 1); return; }
           recordConsequencePastChoice(prop.station, picked.id);
           startDialog([`${picked.label}.\n${effort.steps}단계 작업을 마쳤고, 이 선택이 기록에 남았다.`], prop.label, () => {
-            if (prop.kind === 'd1_ledger') beginConsequencePresent();
+            if (consequencePropRole(prop) === 'disclosure') beginConsequencePresent();
           });
         });
     };
@@ -4257,7 +4260,7 @@
     state.checkpoint = 'present_start';
     state.addedRepairs = {};
     deriveAddedRepairIds(config, state.pastChoices).forEach((id) => { state.addedRepairs[id] = false; });
-    game.map = 'creationhall';
+    game.map = config.mapId;
     game.player.px = game.player.x * TS;
     game.player.py = game.player.y * TS;
     save();
@@ -4278,7 +4281,11 @@
       const msg = '[현재 시작] 같은 자리에서, 남겨 둔 빈칸을 마주한다.';
       game.notice = { text: msg, t: 240 };
     }
-    if (transition.frame >= transition.duration) game.consequenceTransition = null;
+    if (transition.frame >= transition.duration) {
+      game.consequenceTransition = null;
+      const active = consequenceActive();
+      if (active) setScreenReaderLive(`[현재 →] ${active.config.pairUi.displayLabel}. ${consequenceObjectiveText()}`);
+    }
     return true;
   }
 
@@ -4297,38 +4304,37 @@
     return true;
   }
 
-  const CONSEQUENCE_REPAIR_LABELS = Object.freeze({
-    visual_panel: '별표를 기준으로 원본 선을 맞춘다',
-    music_cue: '파형 모양과 번호로 여덟 박자를 분리한다',
-    text_panel: '원문·새 문장·자동 추정문을 나눈다',
-    visual_rights_review: '다솔이 승인한 복원본으로 교체한다',
-    music_license_review: '허용된 음원과 조건을 다시 확인한다',
-    text_replacement: '확인하지 못한 추정문을 바꾼다',
-    ledger_blank: '비어 있는 이름표를 현재 사실로 채운다',
-    ledger_fragments: '세 기록 조각을 작품과 연결한다',
-  });
+  function consequenceRepairLabel(config, id) {
+    return config && config.repairLabels && config.repairLabels[id] || id;
+  }
 
-  function creationJournalRows() {
-    const active = consequenceActive();
+  function creationJournalRows(pairId) {
+    const active = pairId && isConsequenceCampaign()
+      ? (() => {
+        const config = consequencePairConfig(pairId);
+        const state = config && game.flags[config.stateKey];
+        return config && state ? { campaign: game.flags.consequenceCampaign, config, state } : null;
+      })()
+      : consequenceActive();
     if (!active) return [];
     const facts = projectPairFacts(active.config, active.state.pastChoices);
     const rows = [];
     active.config.rooms.forEach((room) => {
       const id = facts.choices[room.choiceKey];
-      const prop = (MAP_PROPS.creationhall || []).find((item) => item.station === room.choiceKey);
-      const choice = prop && prop.pastChoices.find((item) => item.id === id);
+      const prop = (MAP_PROPS[active.config.mapId] || []).find((item) => item.station === room.choiceKey);
+      const choice = prop && Array.isArray(prop.pastChoices) && prop.pastChoices.find((item) => item.id === id);
       if (id) rows.push({ kind: 'past-choice', station: room.choiceKey, id,
         label: choice ? choice.label : id, mode: facts.roomModes[room.choiceKey] });
     });
     if (facts.disclosureChoice) {
-      const prop = (MAP_PROPS.creationhall || []).find((item) => item.station === active.config.disclosureKey);
-      const choice = prop && prop.pastChoices.find((item) => item.id === facts.disclosureChoice);
+      const prop = (MAP_PROPS[active.config.mapId] || []).find((item) => item.station === active.config.disclosureKey);
+      const choice = prop && Array.isArray(prop.pastChoices) && prop.pastChoices.find((item) => item.id === facts.disclosureChoice);
       rows.push({ kind: 'past-choice', station: active.config.disclosureKey,
         id: facts.disclosureChoice, label: choice ? choice.label : facts.disclosureChoice, mode: facts.disclosure });
     }
     for (const id of requiredRepairIds(active.config, active.state.pastChoices)) {
       const done = active.state.baseRepairs[id] === true || active.state.addedRepairs[id] === true;
-      rows.push({ kind: 'repair', id, label: CONSEQUENCE_REPAIR_LABELS[id] || id, done });
+      rows.push({ kind: 'repair', id, label: consequenceRepairLabel(active.config, id), done });
     }
     return rows;
   }
@@ -4357,23 +4363,26 @@
     save();
     Sound.badge();
     Sound.playMapBgm(MAPS.timelinehub.song);
+    const result = config.pairUi && config.pairUi.result;
     startDialog([
-      '세 작품이 각자의 이름을 되찾았다.\n모르는 칸은 숨기지 않고, 다음 확인을 기다린다.',
+      result && result.copy || `${config.pairUi.displayLabel}의 빈칸이 사실로 바뀌었다.`,
       '잊지 않는 건 벌이 아니었다.\n다음 선택을 바꾸기 위한 작은 약속이었다.',
-    ], '반디', () => Sound.playMapBgm(MAPS.timelinehub.song));
+    ], result && result.label || '복원 결과', () => Sound.playMapBgm(MAPS.timelinehub.song));
     return true;
   }
 
   function startConsequenceStageBattle() {
     const active = consequenceActive();
     if (!active) return false;
-    if (!game.flags.evCards) game.flags.evCards = [];
-    for (const id of ['ev_maker', 'ev_source']) {
-      if (!game.flags.evCards.includes(id)) game.flags.evCards.push(id);
+    if (active.config.id === 'd1_copyright') {
+      if (!game.flags.evCards) game.flags.evCards = [];
+      for (const id of ['ev_maker', 'ev_source']) {
+        if (!game.flags.evCards.includes(id)) game.flags.evCards.push(id);
+      }
     }
     startPersuadeBattle('bekkyeomon', active.config.finaleId);
     game.battle.consequenceStage = true;
-    game.battle.mon = Object.assign({}, game.battle.mon, { name: '겹친 무대' });
+    game.battle.mon = Object.assign({}, game.battle.mon, { name: active.config.pairUi.finaleLabel });
     const segment = Math.max(0, Math.min(3, active.state.finale.segment || 0));
     game.battle.claimIdx = segment;
     if (segment > 0) {
@@ -4389,6 +4398,8 @@
   function beginConsequenceFinale(options) {
     const active = consequenceActive();
     if (!active || active.state.phase !== 'present' || !isPairFinaleReady(active.config, active.state)) return false;
+    const identity = active.config.pairUi && active.config.pairUi.identityReveal;
+    if (identity && active.state.checkpoint !== identity.checkpoint) return false;
     active.state.phase = 'finale';
     active.state.checkpoint = 'finale_start';
     active.state.finale.segment = 0;
@@ -4401,12 +4412,43 @@
   function consequenceHubProjection() {
     const campaign = game.flags && game.flags.consequenceCampaign;
     const completed = new Set(campaign && campaign.completedPairIds || []);
-    return CONSEQUENCE_PAIR_ORDER.map((pairId, index) => ({
-      pairId,
-      complete: completed.has(pairId),
-      replay: index === 0 && completed.has(pairId),
-      locked: index > 0,
-    }));
+    return CONSEQUENCE_PAIR_ORDER.map((pairId, index) => {
+      const complete = completed.has(pairId);
+      const priorComplete = CONSEQUENCE_PAIR_ORDER.slice(0, index).every((id) => completed.has(id));
+      return { pairId, complete, replay: complete, locked: !complete && !priorComplete };
+    });
+  }
+
+  function consequenceHubStatusText() {
+    return consequenceHubProjection().map((item) => {
+      const days = consequencePairConfig(item.pairId).daysAgo;
+      return `D-${days} ${item.complete ? '✓' : item.locked ? '□' : '열림'}`;
+    }).join(' · ');
+  }
+
+  function startConsequencePair(pairId) {
+    if (!isConsequenceCampaign()) return false;
+    const config = consequencePairConfig(pairId);
+    const state = config && game.flags[config.stateKey];
+    const projection = consequenceHubProjection().find((item) => item.pairId === pairId);
+    if (!config || !state || !projection || projection.locked) return false;
+    if (state.complete) {
+      const lines = creationJournalRows(pairId).map((row) => row.kind === 'past-choice'
+        ? `과거 · ${row.label}` : `현재 · ${row.done ? '완료' : '남음'}: ${row.label}`);
+      startDialog(lines.length ? lines : [config.pairUi.result.copy], config.pairUi.displayLabel);
+      return true;
+    }
+    game.flags.consequenceCampaign.activePairId = config.id;
+    resumeConsequenceCampaign(config.id, state.checkpoint || 'past_start');
+    save();
+    const direction = state.phase === 'past'
+      ? `[과거 ←] 현재보다 ${config.daysAgo}일 전`
+      : `[현재 →] ${config.pairUi.displayLabel}`;
+    game.notice = { text: `${direction} · ${config.pairUi.objectiveLabel}`, t: 260 };
+    setScreenReaderLive(`${direction}. ${config.pairUi.objectiveLabel}`);
+    Speech.speak(`${direction}. ${config.pairUi.objectiveLabel}`);
+    Sound.playMapBgm(MAPS[config.mapId].song);
+    return true;
   }
 
   function resumeConsequenceCampaign(pairId, checkpointOverride) {
@@ -4425,9 +4467,9 @@
     if (cp === 'complete') {
       state.phase = 'result'; game.map = 'timelinehub'; game.mode = 'world';
     } else {
-      game.map = 'creationhall'; game.mode = 'world';
+      game.map = config.mapId; game.mode = 'world';
       state.phase = cp === 'finale_start' ? 'finale'
-        : (cp === 'present_start' || cp === 'repairs_done') ? 'present' : 'past';
+        : (cp === 'present_start' || cp === 'repairs_done' || cp === 'identity_revealed') ? 'present' : 'past';
     }
     if (checkpointOverride) {
       const start = MAPS[game.map].start;
@@ -4438,51 +4480,81 @@
     return consequenceRuntime() || { pairId: config.id, phase: state.phase, checkpoint: cp, complete: state.complete };
   }
 
-  function d1StationRepairIds(prop, active) {
-    const byStation = { visual: 'visual_panel', audio: 'music_cue', text: 'text_panel' };
+  function consequencePropRole(prop) {
+    const roles = {
+      d1_station: 'station', consequence_station: 'station',
+      d1_ledger: 'disclosure', consequence_disclosure: 'disclosure',
+      d1_public_terminal: 'terminal', consequence_terminal: 'terminal',
+      d1_stage: 'finale', consequence_finale: 'finale',
+      d1_exit: 'exit', consequence_exit: 'exit',
+    };
+    return prop && roles[prop.kind] || null;
+  }
+
+  function consequenceStationRepairIds(prop, active) {
     const ids = [];
-    if (byStation[prop.station]) ids.push(byStation[prop.station]);
-    const derived = {
-      visual: 'visual_rights_review', audio: 'music_license_review', text: 'text_replacement',
-      ledger: active.state.pastChoices.ledger === 'partial' ? 'ledger_blank' : 'ledger_fragments',
-    }[prop.station];
+    const roomIndex = active.config.rooms.findIndex((room) => room.choiceKey === prop.station);
+    if (roomIndex >= 0) ids.push(active.config.baseRepairIds[roomIndex]);
+    const choice = active.state.pastChoices[prop.station];
+    const derived = roomIndex >= 0
+      ? active.config.instantRepairByChoice[choice]
+      : active.config.disclosureRepairByChoice[choice];
     if (derived && deriveAddedRepairIds(active.config, active.state.pastChoices).includes(derived)) ids.push(derived);
     return ids.filter((id) => !(active.state.baseRepairs[id] || active.state.addedRepairs[id]));
+  }
+
+  function revealConsequenceIdentity() {
+    const active = consequenceActive();
+    const identity = active && active.config.pairUi && active.config.pairUi.identityReveal;
+    if (!active || !identity || active.state.phase !== 'present' ||
+        active.state.checkpoint !== 'repairs_done' || !isPairFinaleReady(active.config, active.state)) return false;
+    active.state.checkpoint = identity.checkpoint;
+    save();
+    const signature = identity.signatureCopy.replace('{playerName}', game.playerName);
+    startDialog([signature, identity.factCopy], active.config.pairUi.terminal.label);
+    return true;
   }
 
   function interactConsequenceProp(prop) {
     if (!prop) return false;
     if (game.map === 'timelinehub') {
-      if (prop.kind === 'timelinehub_pair' && prop.locked) {
+      const projection = prop.kind === 'timelinehub_pair' &&
+        consequenceHubProjection().find((item) => item.pairId === prop.pairId);
+      if (projection && projection.locked) {
         startDialog([`[잠김] ${prop.text}`], prop.label);
-      } else if (prop.kind === 'timelinehub_pair' && prop.pairId === 'd1_copyright') {
-        const lines = creationJournalRows().map((row) => row.kind === 'past-choice'
-          ? `과거 · ${row.label}` : `현재 · ${row.done ? '완료' : '남음'}: ${row.label}`);
-        startDialog(lines.length ? lines : [prop.text], '기록 단말');
-      } else startDialog([prop.text], prop.label);
+      } else if (projection) startConsequencePair(prop.pairId);
+      else startDialog([prop.text], prop.label);
       return true;
     }
     const active = consequenceActive();
-    if (!active || game.map !== 'creationhall') return false;
-    if (prop.kind === 'd1_public_terminal') {
+    if (!active || game.map !== active.config.mapId) return false;
+    const role = consequencePropRole(prop);
+    if (role === 'terminal') {
+      if (active.config.pairUi.identityReveal && active.state.checkpoint === 'repairs_done') {
+        return revealConsequenceIdentity();
+      }
       const lines = creationJournalRows().map((row) => row.kind === 'past-choice'
         ? `과거 기록 · ${row.label}` : `현재 수리 · ${row.done ? '✓' : '○'} ${row.label}`);
-      startDialog(lines.length ? lines : [prop.text], '공개 단말');
+      const terminal = active.config.pairUi.terminal;
+      startDialog(lines.length ? lines : [prop.text], terminal.label);
       return true;
     }
-    if (prop.kind === 'd1_stage') {
-      if (active.state.phase === 'past') startDialog(['무대는 아직 회색 커튼 뒤에 있다.\n먼저 세 작품과 공개 기록을 정하자.'], prop.label);
+    if (role === 'finale') {
+      if (active.state.phase === 'past') startDialog(['마지막 장소는 아직 회색 문 뒤에 있다.\n먼저 세 방과 기록을 살펴보자.'], prop.label);
       else if (active.state.phase === 'finale') startConsequenceStageBattle();
-      else if (!isPairFinaleReady(active.config, active.state)) startDialog(['아직 이름이 돌아오지 않은 자리가 있다.\n현재의 수리를 먼저 마치자.'], prop.label);
+      else if (!isPairFinaleReady(active.config, active.state)) startDialog(['아직 돌아오지 않은 사실이 있다.\n현재의 수리를 먼저 마치자.'], prop.label);
+      else if (active.config.pairUi.identityReveal && active.state.checkpoint !== 'identity_revealed') {
+        startDialog([active.config.pairUi.terminal.readyCopy], active.config.pairUi.terminal.label);
+      }
       else beginConsequenceFinale();
       return true;
     }
-    if (active.state.phase === 'past' && (prop.kind === 'd1_station' || prop.kind === 'd1_ledger')) {
-      if (prop.kind === 'd1_ledger' && active.config.rooms.some((room) => !active.state.pastChoices[room.choiceKey])) {
-        startDialog(['기록 보관함은 아직 잠겨 있다.\n그림·음악·글의 빈칸부터 채워야 한다.'], prop.label);
+    if (active.state.phase === 'past' && (role === 'station' || role === 'disclosure')) {
+      if (role === 'disclosure' && active.config.rooms.some((room) => !active.state.pastChoices[room.choiceKey])) {
+        startDialog(['기록함은 아직 잠겨 있다.\n세 방의 선택부터 남겨야 한다.'], prop.label);
         return true;
       }
-      if (prop.kind === 'd1_ledger' && active.state.checkpoint === 'past_done' &&
+      if (role === 'disclosure' && active.state.checkpoint === 'past_done' &&
           active.state.pastChoices[prop.station]) {
         startDialog(['공개 기록까지 남아 있다.\n같은 자리에서 현재의 결과를 확인하자.'], prop.label,
           beginConsequencePresent);
@@ -4500,19 +4572,19 @@
         });
       return true;
     }
-    if (active.state.phase === 'present' && (prop.kind === 'd1_station' || prop.kind === 'd1_ledger')) {
-      const ids = d1StationRepairIds(prop, active);
+    if (active.state.phase === 'present' && (role === 'station' || role === 'disclosure')) {
+      const ids = consequenceStationRepairIds(prop, active);
       if (!ids.length) startDialog(['이 자리의 사실은 이미 제자리를 찾았다.'], prop.label);
       else startChoice(`${prop.label}\n과거의 결과를 현재에서 고친다.`,
-        ids.map((id) => CONSEQUENCE_REPAIR_LABELS[id] || id), (idx) => {
+        ids.map((id) => consequenceRepairLabel(active.config, id)), (idx) => {
           if (idx < 0) return;
           const id = ids[idx];
           completeConsequenceRepair(id);
-          startDialog([`${CONSEQUENCE_REPAIR_LABELS[id] || id}.\n숨겼던 빈칸 하나가 사실로 바뀌었다.`], prop.label);
+          startDialog([`${consequenceRepairLabel(active.config, id)}.\n숨겼던 빈칸 하나가 사실로 바뀌었다.`], prop.label);
         });
       return true;
     }
-    if (prop.kind === 'd1_exit') {
+    if (role === 'exit') {
       startDialog([active.state.complete ? '마음의 문이 허브로 이어진다.' : prop.text], prop.label);
       return true;
     }
@@ -11650,12 +11722,14 @@
   }
 
   function drawConsequenceObjects(cx, cy) {
-    if (!isConsequenceCampaign() || !['creationhall', 'timelinehub'].includes(game.map)) return;
+    if (!isConsequenceCampaign()) return;
     const active = consequenceActive();
+    const onPairMap = active && game.map === active.config.mapId;
+    if (!onPairMap && game.map !== 'timelinehub') return;
     const props = MAP_PROPS[game.map] || [];
     const icons = { visual: '✦', audio: '♪', text: '가', ledger: '▤' };
-    if (game.map === 'creationhall') {
-      const map = MAPS.creationhall;
+    if (onPairMap) {
+      const map = MAPS[active.config.mapId];
       ctx.save();
       for (const zone of map.timelineZones || []) {
         const color = CONSEQUENCE_UI.zones[zone.palette] || CANVAS_COLOR.borderSubtle;
@@ -11718,13 +11792,24 @@
       if (sx < -TS || sy < -TS || sx > LW || sy > LH) continue;
       let done = false;
       let available = !prop.locked;
-      if (active && game.map === 'creationhall') {
+      const role = consequencePropRole(prop);
+      if (prop.kind === 'timelinehub_pair') {
+        const projected = consequenceHubProjection().find((item) => item.pairId === prop.pairId);
+        done = !!(projected && projected.complete);
+        available = !!(projected && !projected.locked);
+      } else if (onPairMap) {
         if (active.state.phase === 'past') {
           done = !!active.state.pastChoices[prop.station];
-          if (prop.kind === 'd1_ledger') available = active.config.rooms.every((room) => active.state.pastChoices[room.choiceKey]);
-        } else if (prop.kind === 'd1_station' || prop.kind === 'd1_ledger') {
-          done = d1StationRepairIds(prop, active).length === 0;
-        } else if (prop.kind === 'd1_stage') available = isPairFinaleReady(active.config, active.state);
+          if (role === 'disclosure') available = active.config.rooms.every((room) => active.state.pastChoices[room.choiceKey]);
+        } else if (role === 'station' || role === 'disclosure') {
+          done = consequenceStationRepairIds(prop, active).length === 0;
+        } else if (role === 'finale') {
+          available = isPairFinaleReady(active.config, active.state) &&
+            (!active.config.pairUi.identityReveal || active.state.checkpoint === 'identity_revealed');
+        } else if (role === 'terminal' && active.config.pairUi.identityReveal) {
+          done = active.state.checkpoint === 'identity_revealed' || active.state.phase === 'finale';
+          available = active.state.checkpoint === 'repairs_done' || done;
+        }
       }
       const color = !available ? CONSEQUENCE_UI.prop.unavailable : done ? CONSEQUENCE_UI.prop.complete
         : active && active.state.phase === 'past' ? CONSEQUENCE_UI.prop.past : CONSEQUENCE_UI.prop.present;
@@ -11736,21 +11821,22 @@
       ctx.fillStyle = color;
       ctx.font = fs(18, true);
       ctx.textAlign = 'center';
-      const mark = done ? '✓' : prop.kind === 'd1_stage' ? '▰'
-        : prop.kind === 'd1_public_terminal' ? '▣'
-          : prop.kind === 'timelinehub_pair' ? (prop.locked ? '□' : '◆')
-            : prop.kind === 'timelinehub_exit' || prop.kind === 'd1_exit' ? '↥' : (icons[prop.station] || '·');
+      const mark = done ? '✓' : role === 'finale' ? '▰'
+        : role === 'terminal' ? '▣'
+          : prop.kind === 'timelinehub_pair' ? (available ? '◆' : '□')
+            : prop.kind === 'timelinehub_exit' || role === 'exit' ? '↥'
+              : (prop.icon || icons[prop.station] || '·');
       ctx.fillText(mark, sx + TS / 2, sy + TS / 2 + 7);
-      if (['d1_station', 'd1_ledger', 'd1_stage', 'd1_public_terminal', 'timelinehub_pair'].includes(prop.kind)) {
+      if (role || prop.kind === 'timelinehub_pair') {
         ctx.fillStyle = CONSEQUENCE_UI.prop.label;
         ctx.font = fs(10, true);
         const label = prop.kind === 'timelinehub_pair' ? prop.label
-          : prop.station === 'visual' ? '그림'
-            : prop.station === 'audio' ? '음악'
-              : prop.station === 'text' ? '글'
-                : prop.station === 'ledger' ? '공개 기록'
-                  : prop.kind === 'd1_stage' ? '겹친 무대' : '기록 단말';
-        ctx.fillText(label, sx + TS / 2, sy - 3);
+          : prop.shortLabel || (role === 'station' && active.config.pairUi.roomLabels[prop.station])
+            || (role === 'disclosure' && active.config.pairUi.disclosure.label)
+            || (role === 'finale' && active.config.pairUi.finaleLabel)
+            || (role === 'terminal' && active.config.pairUi.terminal.label)
+            || prop.label;
+        ctx.fillText(label, sx + TS / 2, sy - 3, 90);
       }
       ctx.textAlign = 'left';
     }
@@ -11758,20 +11844,31 @@
 
   function consequenceObjectiveText() {
     const active = consequenceActive();
-    if (game.map === 'timelinehub') return 'D-1 완료 · 기록 단말에서 선택과 수리를 다시 보기';
+    if (game.map === 'timelinehub') {
+      const projection = consequenceHubProjection();
+      const next = projection.find((item) => !item.complete && !item.locked);
+      return next ? `${consequencePairConfig(next.pairId).pairUi.displayLabel} 시간선이 열렸다`
+        : 'D-10까지의 과거와 현재를 모두 복원했다';
+    }
     if (!active) return '시간선 기록을 확인하자';
     if (active.state.phase === 'past') {
       const rooms = active.config.rooms.filter((room) => active.state.pastChoices[room.choiceKey]).length;
-      return rooms < 3 ? `그림 ↖ · 음악 ↗ · 글 ↙ 작업대 ${rooms}/3`
-        : active.state.pastChoices[active.config.disclosureKey] ? '현재로 돌아갈 준비' : '기록 보관함에서 공개 방식을 정하자';
+      return rooms < active.config.rooms.length
+        ? `${active.config.pairUi.objectiveLabel} ${rooms}/${active.config.rooms.length}`
+        : active.state.pastChoices[active.config.disclosureKey] ? '현재로 돌아갈 준비'
+          : `${active.config.pairUi.disclosure.label}을 정하자`;
     }
     if (active.state.phase === 'present') {
       const ids = requiredRepairIds(active.config, active.state.pastChoices);
       const done = ids.filter((id) => active.state.baseRepairs[id] || active.state.addedRepairs[id]).length;
-      return done < ids.length ? `과거가 남긴 결과를 수리하자 ${done}/${ids.length}` : '작은 무대에서 겹친 전시를 설득하자';
+      if (done < ids.length) return `과거가 남긴 결과를 수리하자 ${done}/${ids.length}`;
+      if (active.config.pairUi.identityReveal && active.state.checkpoint !== 'identity_revealed') {
+        return `${active.config.pairUi.terminal.label}에서 관리자 서명을 확인하자`;
+      }
+      return `${active.config.pairUi.finaleLabel}을 설득하자`;
     }
-    if (active.state.phase === 'finale') return '겹친 무대에서 세 이름표를 되돌리자';
-    return 'D-1 기록이 복원되었다';
+    if (active.state.phase === 'finale') return active.config.pairUi.objectiveLabel;
+    return `${active.config.pairUi.displayLabel} 기록이 복원되었다`;
   }
 
   function drawWorld() {
@@ -11779,7 +11876,8 @@
     const { cx, cy } = camera();
     const frame = Math.floor(game.time / 30) % 2;
     const activeConsequence = consequenceActive();
-    const grayTimeline = activeConsequence && game.map === 'creationhall' && activeConsequence.state.phase === 'past';
+    const grayTimeline = activeConsequence && game.map === activeConsequence.config.mapId &&
+      activeConsequence.state.phase === 'past';
 
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
@@ -12307,8 +12405,8 @@
     const title = isConsequenceCampaign()
       ? game.map === 'timelinehub' ? '[시간선 허브] 마음의 문'
         : activeConsequence && activeConsequence.state.phase === 'past'
-          ? '[과거 ←] 현재보다 1일 전'
-          : '[현재 →] 공동 창작관'
+          ? `[과거 ←] 현재보다 ${activeConsequence.config.daysAgo}일 전`
+          : `[현재 →] ${activeConsequence ? activeConsequence.config.pairUi.displayLabel : m.name}`
       : `${hudBadgeText(game.map, game.flags)} · ${m.name}`;
     // 방탈출 중에는 본편 퀘스트 대신 방 맥락 목표를 보여 준다 (클리어 후엔 보스방 안내)
     let objText;
@@ -12356,7 +12454,7 @@
     // X-8 수업 모드 — 목표 배너에 "이번 시간" 접두를 붙여 차시 목표임을 보여 준다.
     const obj = objectiveBannerPrefix() + objText;
     const recordText = isConsequenceCampaign()
-      ? (game.map === 'timelinehub' ? 'D-1 ✓ · D-3 / D-5 / D-7 / D-10 잠김'
+      ? (game.map === 'timelinehub' ? consequenceHubStatusText()
         : activeConsequence && activeConsequence.state.phase === 'past'
           ? '선택은 한 번 저장되며, 현재에서 결과가 돌아옵니다'
           : '기록 단말에서 과거 선택과 현재 수리를 다시 볼 수 있습니다')
@@ -13871,6 +13969,11 @@
   const srLiveEl = (typeof document !== 'undefined' && document.getElementById)
     ? document.getElementById('sr-live') : null;
   let srLastText = '';
+  function setScreenReaderLive(text) {
+    srLastText = text;
+    if (!srLiveEl) return;
+    try { srLiveEl.textContent = text; } catch (e) { /* 테스트 목 등에서는 무시 */ }
+  }
   function syncSrLive() {
     if (!srLiveEl) return;
     let txt = '';
@@ -13918,7 +14021,8 @@
     } else if (game.mode === 'world' && isConsequenceCampaign()) {
       const active = consequenceActive();
       const timeline = game.map === 'timelinehub' ? '시간선 허브'
-        : active && active.state.phase === 'past' ? '과거, 현재보다 1일 전' : '현재, 공동 창작관';
+        : active && active.state.phase === 'past' ? `[과거 ←] 과거, 현재보다 ${active.config.daysAgo}일 전`
+          : `[현재 →] 현재, ${active ? active.config.pairUi.displayLabel : MAPS[game.map].name}`;
       txt = `${timeline}. ${consequenceObjectiveText()}`;
     } else if (game.dialog && game.dialog.lines && typeof game.dialog.lines[game.dialog.idx] === 'string') {
       txt = game.dialog.lines[game.dialog.idx];
@@ -13926,8 +14030,7 @@
       txt = game.notice.text;
     }
     if (txt !== srLastText) {
-      srLastText = txt;
-      try { srLiveEl.textContent = txt; } catch (e) { /* 테스트 목 등에서는 무시 */ }
+      setScreenReaderLive(txt);
     }
   }
   // 프레임 속도 제한: 90·120·144Hz 등 고주사율 화면에서 게임 로직(타이머·연출)이
@@ -14283,6 +14386,7 @@
     clampedCanvasLabelX,
     startNewGameForRoute, continueGame,
     consequenceRuntime, consequenceRepairIds, consequenceEffortProjection,
+    startConsequencePair, revealConsequenceIdentity,
     recordConsequencePastChoice, beginConsequencePresent,
     completeConsequenceRepair, beginConsequenceFinale, completeStagePersuasion,
     creationJournalRows, consequenceHubProjection, resumeConsequenceCampaign, interactConsequenceProp,

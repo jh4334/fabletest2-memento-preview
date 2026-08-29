@@ -112,7 +112,8 @@ check('장소형 완료가 본편 통계를 바꾸지 않음', snapshotCore() ==
 
 console.log('[C-5] 허브 잠금·재현 및 체크포인트 복원');
 const hub = T.consequenceHubProjection();
-check('D-1 완료/재현, D-3+ 잠김', hub[0].complete && hub[0].replay && hub.slice(1).every((p) => p.locked));
+check('D-1 완료/재현 뒤 D-3만 순차 해금', hub[0].complete && hub[0].replay &&
+  !hub[1].locked && hub.slice(2).every((p) => p.locked));
 for (const checkpoint of ['past_start', 'past_rooms', 'past_done', 'present_start', 'repairs_done', 'finale_start', 'complete']) {
   const result = T.resumeConsequenceCampaign('d1_copyright', checkpoint);
   check(checkpoint + ' 결정적 복원', result && result.checkpoint === checkpoint &&
@@ -160,7 +161,114 @@ for (const [choices, count] of combos) {
   check(choices.join('/') + ' 수리 수 ' + count, ids.length === count && new Set(ids).size === ids.length);
 }
 
-console.log('[C-7] 실제 월드 조사 입력과 저장 왕복');
+console.log('[C-7] 순차 허브 잠금과 D-3/D-5/D-7/D-10 범용 여정');
+check('허브는 공개된 순차 쌍 시작 훅을 제공', typeof T.startConsequencePair === 'function');
+check('D-7 관리자 서명 확인 훅을 제공', typeof T.revealConsequenceIdentity === 'function');
+
+const genericJourneys = [
+  {
+    pairId: 'd3_consent', mapId: 'synthesis_broadcast_room',
+    choices: [['likeness', 'likeness_manual'], ['voice', 'voice_assisted'], ['scene', 'scene_instant'], ['consent', 'consent_partial']],
+  },
+  {
+    pairId: 'd5_recommendation', mapId: 'recommendation_alley',
+    choices: [['echo', 'echo_manual'], ['sample', 'sample_assisted'], ['route', 'route_instant'], ['recommendationNote', 'recommendation_note_partial']],
+  },
+  {
+    pairId: 'd7_misinformation', mapId: 'newsroom_repair',
+    choices: [['tip', 'tip_manual'], ['context', 'context_assisted'], ['bulletin', 'bulletin_instant'], ['audit', 'audit_partial']],
+  },
+  {
+    pairId: 'd10_judgment', mapId: 'cozy_control_room',
+    choices: [['call', 'call_manual'], ['safety', 'safety_assisted'], ['comfort', 'comfort_instant'], ['authority', 'authority_partial']],
+  },
+];
+const legacyBeforeGenericPairs = snapshotCore();
+const d1StateBeforeGenericPairs = JSON.stringify(g.flags.copyrightSlice);
+const outOfOrderBefore = JSON.stringify({
+  map: g.map, mode: g.mode, campaign: g.flags.consequenceCampaign,
+  consent: g.flags.consentSlice, recommendation: g.flags.recommendationSlice,
+});
+check('D-1 뒤에는 D-3만 열리고 D-5 직접 시작은 상태를 바꾸지 않고 거부',
+  T.consequenceHubProjection()[0].complete && !T.consequenceHubProjection()[1].locked &&
+  T.consequenceHubProjection().slice(2).every((pair) => pair.locked) &&
+  T.startConsequencePair('d5_recommendation') === false &&
+  outOfOrderBefore === JSON.stringify({
+    map: g.map, mode: g.mode, campaign: g.flags.consequenceCampaign,
+    consent: g.flags.consentSlice, recommendation: g.flags.recommendationSlice,
+  }));
+
+for (let index = 0; index < genericJourneys.length; index++) {
+  const journey = genericJourneys[index];
+  const priorState = JSON.stringify(g.flags[genericJourneys[index - 1] &&
+    genericJourneys[index - 1].pairId === 'd3_consent' ? 'consentSlice' :
+    genericJourneys[index - 1] && genericJourneys[index - 1].pairId === 'd5_recommendation' ? 'recommendationSlice' :
+    genericJourneys[index - 1] && genericJourneys[index - 1].pairId === 'd7_misinformation' ? 'misinformationSlice' :
+    'copyrightSlice']);
+  const completedIds = genericJourneys.slice(0, index).map((pair) => pair.pairId);
+  check(journey.pairId + '는 열린 허브에서 고유 지도 과거 시작으로 진입',
+    T.startConsequencePair(journey.pairId) === true && g.map === journey.mapId &&
+    T.consequenceRuntime().pairId === journey.pairId && T.consequenceRuntime().phase === 'past' &&
+    T.consequenceRuntime().checkpoint === 'past_start');
+  for (const [station, choice] of journey.choices.slice(0, 3)) {
+    check(journey.pairId + ' ' + station + ' 과거 선택을 한 번 기록',
+      T.recordConsequencePastChoice(station, choice) === true);
+  }
+  check(journey.pairId + ' 세 방 뒤 past_rooms 검사점', T.consequenceRuntime().checkpoint === 'past_rooms');
+  const [disclosureStation, disclosureChoice] = journey.choices[3];
+  check(journey.pairId + ' 공개 선택은 past_done 검사점',
+    T.recordConsequencePastChoice(disclosureStation, disclosureChoice) === true &&
+    T.consequenceRuntime().checkpoint === 'past_done');
+  check(journey.pairId + ' 현재 전환은 고유 지도와 present_start를 보존',
+    T.beginConsequencePresent() === true && g.map === journey.mapId &&
+    T.consequenceRuntime().phase === 'present' && T.consequenceRuntime().checkpoint === 'present_start');
+  const repairs = T.consequenceRuntime().requiredRepairIds.slice();
+  for (const repairId of repairs) check(journey.pairId + ' ' + repairId + ' 현재 수리',
+    T.completeConsequenceRepair(repairId) === true);
+  check(journey.pairId + ' 필요한 수리 뒤 repairs_done 검사점',
+    T.consequenceRuntime().checkpoint === 'repairs_done');
+  if (journey.pairId === 'd7_misinformation') {
+    check('D-7은 관리자 서명을 확인하기 전 무대 진입을 막음',
+      T.beginConsequenceFinale({ skipIntro: true }) === false &&
+      T.consequenceRuntime().checkpoint === 'repairs_done');
+    check('D-7 관리자 서명은 플레이어 이름과 제한된 사실만 공개',
+      T.revealConsequenceIdentity() === true &&
+      T.consequenceRuntime().checkpoint === 'identity_revealed' &&
+      g.dialog.lines.some((line) => line === '[관리자 서명] 기록이') &&
+      g.dialog.lines.some((line) => line === '확인된 사실: 과거 관리자는 나였다') &&
+      g.dialog.lines.every((line) => !/반디.*영이|기억.*지웠|고요.*비상/.test(line)));
+    env.advanceDialog();
+  } else {
+    check(journey.pairId + '에는 관리자 서명 단계가 없음',
+      T.revealConsequenceIdentity() === false &&
+      T.consequenceRuntime().checkpoint === 'repairs_done');
+  }
+  check(journey.pairId + ' 장소형 무대는 stage 완료 계약으로 진입',
+    T.beginConsequenceFinale({ skipIntro: true }) === true && g.mode === 'battle' &&
+    T.consequenceRuntime().checkpoint === 'finale_start' && g.battle.p.subjectKind === 'place' &&
+    g.battle.p.completionMode === 'stage');
+  check(journey.pairId + ' 완료는 중복 없는 ID와 다음 쌍만 해금',
+    T.completeStagePersuasion() === true &&
+    JSON.stringify(g.flags.consequenceCampaign.completedPairIds) === JSON.stringify(['d1_copyright'].concat(completedIds, journey.pairId)) &&
+    new Set(g.flags.consequenceCampaign.completedPairIds).size === g.flags.consequenceCampaign.completedPairIds.length &&
+    T.consequenceHubProjection().slice(index + 3).every((pair) => pair.locked) &&
+    (index === genericJourneys.length - 1 || !T.consequenceHubProjection()[index + 2].locked));
+  check(journey.pairId + ' 완료는 앞선 쌍 상태와 D-1 상태를 바꾸지 않음',
+    d1StateBeforeGenericPairs === JSON.stringify(g.flags.copyrightSlice) &&
+    priorState === JSON.stringify(g.flags[genericJourneys[index - 1] &&
+      genericJourneys[index - 1].pairId === 'd3_consent' ? 'consentSlice' :
+      genericJourneys[index - 1] && genericJourneys[index - 1].pairId === 'd5_recommendation' ? 'recommendationSlice' :
+      genericJourneys[index - 1] && genericJourneys[index - 1].pairId === 'd7_misinformation' ? 'misinformationSlice' :
+      'copyrightSlice']));
+}
+
+const completedBeforeReplay = JSON.stringify(g.flags.consequenceCampaign.completedPairIds);
+check('완료한 D-10 재현은 완료 ID를 중복하지 않음',
+  T.startConsequencePair('d10_judgment') === true &&
+  completedBeforeReplay === JSON.stringify(g.flags.consequenceCampaign.completedPairIds));
+check('범용 쌍 여정도 본편 장·배틀 통계를 오염시키지 않음', snapshotCore() === legacyBeforeGenericPairs);
+
+console.log('[C-8] 실제 월드 조사 입력과 저장 왕복');
 T.startNewGameForRoute(1, '걷는이', 'consequence-pairs');
 env.advanceDialog();
 env.setPlayer(4, 4, 'up');

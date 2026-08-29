@@ -417,6 +417,100 @@ async function captureCanvasPng(page, file, redrawWorld) {
   }
 
   for (const vp of VIEWPORTS.filter((item) => item.mobile)) {
+    console.log(`[consequence-pairs-4-${vp.name}] 후속 네 시간선 반응형·터치·TTS`);
+    const dir = path.join(ROOT, '.omo', 'evidence', 'consequence-pairs-4', 'screenshots');
+    const ctx = await browser.newContext({
+      viewport: { width: vp.width, height: vp.height }, hasTouch: true, isMobile: true, deviceScaleFactor: 1,
+    });
+    await installSpeechRecorder(ctx);
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console.error: ' + m.text());
+    });
+    const pairs = [
+      { id: 'd3_consent', shot: 'd3', choices: [['likeness', 'likeness_manual'], ['voice', 'voice_assisted'], ['scene', 'scene_instant'], ['consent', 'consent_partial']] },
+      { id: 'd5_recommendation', shot: 'd5', choices: [['echo', 'echo_manual'], ['sample', 'sample_assisted'], ['route', 'route_instant'], ['recommendationNote', 'recommendation_note_partial']] },
+      { id: 'd7_misinformation', shot: 'd7', choices: [['tip', 'tip_manual'], ['context', 'context_assisted'], ['bulletin', 'bulletin_instant'], ['audit', 'audit_partial']] },
+      { id: 'd10_judgment', shot: 'd10', choices: [['call', 'call_manual'], ['safety', 'safety_assisted'], ['comfort', 'comfort_instant'], ['authority', 'authority_partial']] },
+    ];
+    await page.goto(base + `?consequence-pairs-4-${vp.name}=1`, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    if (vp.name === 'mobile-portrait') await page.click('#rotate-dismiss');
+    await page.evaluate(() => {
+      const T = window.__test, g = window.__game;
+      T.startNewGameForRoute(0, '모바일순차', 'consequence-pairs');
+      g.tts = true;
+      g.reduceFx = true;
+      g.flags.copyrightSlice.complete = true;
+      g.flags.copyrightSlice.phase = 'result';
+      g.flags.copyrightSlice.checkpoint = 'complete';
+      g.flags.consequenceCampaign.activePairId = null;
+      g.flags.consequenceCampaign.completedPairIds = ['d1_copyright'];
+      g.map = 'timelinehub'; g.mode = 'world'; g.dialog = null; g.choice = null;
+    });
+    for (let index = 0; index < pairs.length; index++) {
+      const pair = pairs[index];
+      const mobilePast = await page.evaluate((pairId) => {
+        window.__spoken.length = 0;
+        const started = window.__test.startConsequencePair(pairId);
+        return { started, live: window.__test.srLiveText(), spoken: window.__spoken.slice() };
+      }, pair.id);
+      check(`${vp.name} ${pair.id}: 과거 방향이 목표보다 먼저 낭독`, mobilePast.started &&
+        /\[과거 ←\]/.test(mobilePast.live) && mobilePast.spoken.length > 0 &&
+        mobilePast.spoken[0].indexOf('[과거 ←]') <= mobilePast.spoken[0].indexOf('.'));
+      const fit = await page.evaluate(() => {
+        const canvas = document.getElementById('game').getBoundingClientRect();
+        const touch = getComputedStyle(document.getElementById('touch-ui')).display !== 'none';
+        return { left: canvas.left, right: canvas.right, top: canvas.top, bottom: canvas.bottom, touch };
+      });
+      check(`${vp.name} ${pair.id}: Canvas와 터치 조작이 화면 안에 유지`, fit.touch &&
+        fit.left >= -1 && fit.right <= vp.width + 1 && fit.top >= -1 && fit.bottom <= vp.height + 1);
+      await captureCanvasPng(page, path.join(dir, `${pair.shot}-past-${vp.name}.png`), true);
+
+      if (index === 0) {
+        await page.evaluate(() => {
+          const p = window.__game.player;
+          Object.assign(p, { x: 4, y: 4, px: 4 * 48, py: 4 * 48, dir: 'up', moving: false });
+        });
+        await page.tap('#t-a');
+        await page.waitForFunction(() => window.__game.mode === 'choice');
+        check(`${vp.name}: 터치 A로 후속 시간선의 실제 선택창을 연다`,
+          await page.evaluate(() => window.__game.choice.options.length === 3));
+        await page.evaluate(() => { window.__game.mode = 'world'; window.__game.choice = null; });
+      }
+
+      const mobilePresent = await page.evaluate((choices) => {
+        const T = window.__test;
+        for (const [station, choice] of choices) T.recordConsequencePastChoice(station, choice);
+        const began = T.beginConsequencePresent();
+        return { began, transition: window.__game.consequenceTransition, runtime: T.consequenceRuntime() };
+      }, pair.choices);
+      check(`${vp.name} ${pair.id}: reduceFx 현재 전환은 2프레임이며 수리 목록을 보존`,
+        mobilePresent.began && mobilePresent.transition.duration === 2 &&
+        mobilePresent.runtime.phase === 'present' && mobilePresent.runtime.requiredRepairIds.length === 5);
+      await page.waitForFunction(() => !window.__game.consequenceTransition);
+      await captureCanvasPng(page, path.join(dir, `${pair.shot}-present-${vp.name}.png`), true);
+      const completed = await page.evaluate((pairId) => {
+        const T = window.__test, g = window.__game;
+        T.consequenceRuntime().requiredRepairIds.forEach((id) => T.completeConsequenceRepair(id));
+        if (pairId === 'd7_misinformation') {
+          T.revealConsequenceIdentity();
+          g.mode = 'world'; g.dialog = null;
+        }
+        const began = T.beginConsequenceFinale({ skipIntro: true });
+        const done = began && T.completeStagePersuasion();
+        g.mode = 'world'; g.dialog = null;
+        return done;
+      }, pair.id);
+      check(`${vp.name} ${pair.id}: 장소형 완료 뒤 다음 쌍으로 복귀`, completed === true);
+    }
+    check(`${vp.name}: 후속 네 시간선 콘솔/페이지 오류 없음`, errors.length === 0);
+    await ctx.close();
+  }
+
+  for (const vp of VIEWPORTS.filter((item) => item.mobile)) {
     console.log(`[memento-gameplay-touch-${vp.name}] 터치·큰 글씨·효과 줄이기`);
     const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
     await installSpeechRecorder(ctx);
@@ -667,6 +761,201 @@ async function captureCanvasPng(page, file, redrawWorld) {
     check('D-1: 키보드 전 경로에서 콘솔/페이지 에러 없음', errors.length === 0);
     errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
     await ctx.close();
+  }
+
+  {
+    console.log('[consequence-pairs-4] D-1 완료→순차 과거·현재→수리→무대→허브');
+    const consequencePairs4Dir = path.join(ROOT, '.omo', 'evidence', 'consequence-pairs-4');
+    const consequencePairs4ShotsDir = path.join(consequencePairs4Dir, 'screenshots');
+    if (!fs.existsSync(consequencePairs4ShotsDir)) fs.mkdirSync(consequencePairs4ShotsDir, { recursive: true });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console.error: ' + m.text());
+    });
+    const journeys = [
+      {
+        pairId: 'd3_consent', mapId: 'synthesis_broadcast_room', shot: 'd3',
+        choices: [['likeness', 'likeness_manual'], ['voice', 'voice_assisted'],
+          ['scene', 'scene_instant'], ['consent', 'consent_partial']],
+      },
+      {
+        pairId: 'd5_recommendation', mapId: 'recommendation_alley', shot: 'd5',
+        choices: [['echo', 'echo_manual'], ['sample', 'sample_assisted'],
+          ['route', 'route_instant'], ['recommendationNote', 'recommendation_note_partial']],
+      },
+      {
+        pairId: 'd7_misinformation', mapId: 'newsroom_repair', shot: 'd7',
+        choices: [['tip', 'tip_manual'], ['context', 'context_assisted'],
+          ['bulletin', 'bulletin_instant'], ['audit', 'audit_partial']],
+      },
+      {
+        pairId: 'd10_judgment', mapId: 'cozy_control_room', shot: 'd10',
+        choices: [['call', 'call_manual'], ['safety', 'safety_assisted'],
+          ['comfort', 'comfort_instant'], ['authority', 'authority_partial']],
+      },
+    ];
+    try {
+      await page.goto(base + '?consequence-pairs-4=1', { waitUntil: 'load' });
+      await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+      await page.locator('#loading').waitFor({ state: 'detached', timeout: 1500 });
+
+      await page.evaluate(() => {
+        const T = window.__test, g = window.__game;
+        T.startNewGameForRoute(0, '순차기록', 'consequence-pairs');
+        g.flags.copyrightSlice.complete = true;
+        g.flags.copyrightSlice.phase = 'result';
+        g.flags.copyrightSlice.checkpoint = 'complete';
+        g.flags.copyrightSlice.stageRestored = true;
+        g.flags.consequenceCampaign.activePairId = null;
+        g.flags.consequenceCampaign.completedPairIds = ['d1_copyright'];
+        g.flags.consequenceCampaign.hubCheckpoint = 'pair_select';
+        g.map = 'timelinehub'; g.mode = 'world'; g.dialog = null; g.choice = null;
+      });
+
+      for (let index = 0; index < journeys.length; index++) {
+        const journey = journeys[index];
+        const past = await page.evaluate((item) => {
+          const T = window.__test, g = window.__game;
+          const start = typeof T.startConsequencePair === 'function' && T.startConsequencePair(item.pairId);
+          const runtime = T.consequenceRuntime();
+          return {
+            start, map: g.map, x: g.player.x, y: g.player.y,
+            runtime, live: T.srLiveText(),
+          };
+        }, journey);
+        check(`${journey.pairId}: 허브 시작 API가 고유 지도 과거를 연다`, past.start === true &&
+          past.map === journey.mapId && past.runtime && past.runtime.pairId === journey.pairId &&
+          past.runtime.phase === 'past' && past.runtime.checkpoint === 'past_start');
+        if (!(past.start === true && past.map === journey.mapId && past.runtime &&
+          past.runtime.pairId === journey.pairId && past.runtime.phase === 'past')) {
+          throw new Error(`${journey.pairId}: later-pair hub start/map contract is unavailable`);
+        }
+        check(`${journey.pairId}: 고유 지도 과거가 회색 [과거 ←]로 안내`, /\[과거 ←\]/.test(past.live));
+        await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, `${journey.shot}-past-desktop.png`), true);
+        const pastColor = await canvasColorProfile(page, { x: 0, y: 100, w: 720, h: 360 });
+        check(`${journey.pairId}: 과거 지도는 회색 팔레트다`, pastColor.ratio < 0.08);
+
+        await page.evaluate(() => {
+          const p = window.__game.player;
+          Object.assign(p, { x: 4, y: 4, px: 4 * 48, py: 4 * 48, dir: 'up', moving: false });
+          window.__game.mode = 'world';
+          window.__game.dialog = null;
+          window.__game.choice = null;
+        });
+        await page.keyboard.press('z');
+        await page.waitForFunction(() => window.__game.mode === 'choice' && window.__game.choice.options.length === 3);
+        check(`${journey.pairId}: 실제 Z 조사로 첫 방의 3가지 선택을 연다`,
+          await page.evaluate(() => window.__game.choice.options.length === 3));
+        await page.keyboard.press('z');
+        await page.waitForFunction(() => window.__game.mode === 'choice' && /작업 1\/3/.test(window.__game.choice.prompt));
+        for (let step = 1; step <= 3; step++) {
+          await page.keyboard.press('z');
+          if (step < 3) {
+            await page.waitForFunction((nextStep) => window.__game.mode === 'choice' &&
+              new RegExp(`작업 ${nextStep}\\/3`).test(window.__game.choice.prompt), step + 1);
+          }
+        }
+        await page.waitForFunction(() => window.__game.mode === 'dialog');
+        const [firstStation, firstChoice] = journey.choices[0];
+        check(`${journey.pairId}: 실제 확인 행동이 첫 과거 선택을 저장`,
+          await page.evaluate(([stationId, choiceId]) =>
+            window.__test.consequenceRuntime().pastChoices[stationId] === choiceId,
+          [firstStation, firstChoice]));
+        for (let i = 0; i < 3 && (await page.evaluate(() => window.__game.mode === 'dialog')); i++) {
+          await page.keyboard.press('z');
+          await page.waitForTimeout(60);
+        }
+        await page.waitForFunction(() => window.__game.mode === 'world');
+
+        for (const [station, choice] of journey.choices.slice(1)) {
+          const recorded = await page.evaluate(([stationId, choiceId]) =>
+            window.__test.recordConsequencePastChoice(stationId, choiceId), [station, choice]);
+          check(`${journey.pairId}: ${station} 과거 선택이 기록된다`, recorded === true);
+        }
+        const present = await page.evaluate(() => {
+          const T = window.__test, g = window.__game;
+          const before = { map: g.map, x: g.player.x, y: g.player.y };
+          const began = T.beginConsequencePresent();
+          return { began, before, map: g.map, x: g.player.x, y: g.player.y, runtime: T.consequenceRuntime() };
+        });
+        check(`${journey.pairId}: 같은 지도·좌표에서 현재로 전환`, present.began === true &&
+          present.map === journey.mapId && present.x === present.before.x && present.y === present.before.y &&
+          present.runtime.phase === 'present' && present.runtime.checkpoint === 'present_start');
+        await page.waitForFunction(() => !window.__game.consequenceTransition, { timeout: 1500 });
+        const presentLive = await page.evaluate(() => window.__test.srLiveText());
+        await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, `${journey.shot}-present-desktop.png`), true);
+        const presentColor = await canvasColorProfile(page, { x: 0, y: 100, w: 720, h: 360 });
+        check(`${journey.pairId}: 컬러 현재와 [현재 →]가 전환 뒤 남는다`,
+          /\[현재 →\]/.test(presentLive) && presentColor.ratio > pastColor.ratio + 0.2);
+
+        const repairs = await page.evaluate(() => window.__test.consequenceRuntime().requiredRepairIds.slice());
+        for (const repairId of repairs) {
+          const repaired = await page.evaluate((id) => window.__test.completeConsequenceRepair(id), repairId);
+          check(`${journey.pairId}: ${repairId} 현재 수리가 완료된다`, repaired === true);
+        }
+        if (journey.pairId === 'd7_misinformation') {
+          const identity = await page.evaluate(() => {
+            const T = window.__test, g = window.__game;
+            const blocked = T.beginConsequenceFinale({ skipIntro: true }) === false;
+            const revealed = typeof T.revealConsequenceIdentity === 'function' && T.revealConsequenceIdentity();
+            return {
+              blocked, revealed, checkpoint: T.consequenceRuntime().checkpoint,
+              lines: g.dialog && g.dialog.lines ? g.dialog.lines.slice() : [],
+            };
+          });
+          check('d7_misinformation: 관리자 서명 전 무대는 잠기고 제한된 사실만 공개',
+            identity.blocked && identity.revealed && identity.checkpoint === 'identity_revealed' &&
+            identity.lines.some((line) => line === '[관리자 서명] 순차기록') &&
+            identity.lines.some((line) => line === '확인된 사실: 과거 관리자는 나였다') &&
+            identity.lines.every((line) => !/반디.*영이|기억.*지웠|고요.*비상/.test(line)));
+          await page.keyboard.press('z');
+          await page.waitForFunction(() => {
+            const d = window.__game.dialog;
+            return d && d.idx === 0 && d.chars >= d.lines[0].length;
+          }, { timeout: 1500 });
+          await page.keyboard.press('z');
+          await page.waitForFunction(() => window.__game.dialog && window.__game.dialog.idx === 1, { timeout: 1500 });
+          await page.keyboard.press('z');
+          await page.waitForFunction(() => {
+            const d = window.__game.dialog;
+            return d && d.idx === 1 && d.chars >= d.lines[1].length;
+          }, { timeout: 1500 });
+          await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, 'd7-identity-desktop.png'), true);
+          for (let i = 0; i < 4 && (await page.evaluate(() => window.__game.mode === 'dialog')); i++) {
+            await page.keyboard.press('z');
+            await page.waitForTimeout(60);
+          }
+          await page.waitForFunction(() => window.__game.mode === 'world', { timeout: 1500 });
+        } else {
+          check(`${journey.pairId}: 관리자 서명 단계는 열리지 않는다`,
+            await page.evaluate(() => window.__test.revealConsequenceIdentity() === false));
+        }
+        const finale = await page.evaluate(() => {
+          const T = window.__test, g = window.__game;
+          const began = T.beginConsequenceFinale({ skipIntro: true });
+          return { began, checkpoint: T.consequenceRuntime().checkpoint, battle: g.battle };
+        });
+        check(`${journey.pairId}: 수리 뒤 장소형 무대에 들어간다`, finale.began === true &&
+          finale.checkpoint === 'finale_start' && finale.battle && finale.battle.consequenceStage &&
+          finale.battle.p && finale.battle.p.subjectKind === 'place' && finale.battle.p.completionMode === 'stage');
+        const hub = await page.evaluate(() => {
+          const T = window.__test;
+          const complete = T.completeStagePersuasion();
+          return { complete, map: window.__game.map, projection: T.consequenceHubProjection() };
+        });
+        const next = hub.projection[index + 2];
+        const later = hub.projection.slice(index + 3);
+        check(`${journey.pairId}: 완료는 허브에서 다음 쌍만 연다`, hub.complete === true &&
+          hub.map === 'timelinehub' && (!next || !next.locked) && later.every((pair) => pair.locked));
+      }
+      check('D-3~D-10: 순차 여정의 콘솔/페이지 에러 없음', errors.length === 0);
+    } finally {
+      fs.writeFileSync(path.join(consequencePairs4Dir, 'console-page-errors.json'), JSON.stringify(errors, null, 2) + '\n');
+      await ctx.close();
+    }
   }
 
   for (const vp of VIEWPORTS.filter((item) => item.mobile)) {
