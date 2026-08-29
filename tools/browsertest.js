@@ -437,6 +437,7 @@ async function captureCanvasPng(page, file, redrawWorld) {
     ];
     await page.goto(base + `?consequence-pairs-4-${vp.name}=1`, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.locator('#loading').waitFor({ state: 'detached', timeout: 1500 });
     if (vp.name === 'mobile-portrait') await page.click('#rotate-dismiss');
     await page.evaluate(() => {
       const T = window.__test, g = window.__game;
@@ -467,6 +468,11 @@ async function captureCanvasPng(page, file, redrawWorld) {
       });
       check(`${vp.name} ${pair.id}: Canvas와 터치 조작이 화면 안에 유지`, fit.touch &&
         fit.left >= -1 && fit.right <= vp.width + 1 && fit.top >= -1 && fit.bottom <= vp.height + 1);
+      if (vp.name === 'mobile-portrait') {
+        const uiProfile = await page.evaluate(() => window.__test.consequenceUiProfile(true));
+        check(`${pair.id}: 세로 화면은 큰 HUD·포커스 라벨과 정적 라벨 숨김을 사용`,
+          uiProfile.hudFont >= 18 && uiProfile.focusFont >= 18 && uiProfile.staticLabels === false);
+      }
       await captureCanvasPng(page, path.join(dir, `${pair.shot}-past-${vp.name}.png`), true);
 
       if (index === 0) {
@@ -916,6 +922,7 @@ async function captureCanvasPng(page, file, redrawWorld) {
             const d = window.__game.dialog;
             return d && d.idx === 0 && d.chars >= d.lines[0].length;
           }, { timeout: 1500 });
+          await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, 'd7-identity-desktop.png'), true);
           await page.keyboard.press('z');
           await page.waitForFunction(() => window.__game.dialog && window.__game.dialog.idx === 1, { timeout: 1500 });
           await page.keyboard.press('z');
@@ -923,7 +930,7 @@ async function captureCanvasPng(page, file, redrawWorld) {
             const d = window.__game.dialog;
             return d && d.idx === 1 && d.chars >= d.lines[1].length;
           }, { timeout: 1500 });
-          await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, 'd7-identity-desktop.png'), true);
+          await captureCanvasPng(page, path.join(consequencePairs4ShotsDir, 'd7-identity-fact-desktop.png'), true);
           for (let i = 0; i < 4 && (await page.evaluate(() => window.__game.mode === 'dialog')); i++) {
             await page.keyboard.press('z');
             await page.waitForTimeout(60);

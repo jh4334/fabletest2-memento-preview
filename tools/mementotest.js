@@ -444,12 +444,30 @@ const laterPairMaps = data(`[
 ].map((id) => ({
   id, pairId: MAPS[id] && MAPS[id].consequencePairId,
   shared: MAPS[id] && MAPS[id].sharedTimelineGeometry,
-  geometry: MAPS[id] && MAPS[id].tiles.join('\\n')
+  geometryId: MAPS[id] && MAPS[id].consequenceGeometryId,
+  geometry: MAPS[id] && MAPS[id].tiles.join('\\n'),
+  decor: (MAPS[id] && MAPS[id].timelineDecor || []).map((item) => item.kind)
 }))`, []);
 check('후속 네 장소는 쌍 내부 과거·현재 지오메트리를 공유',
   laterPairMaps.length === 4 && laterPairMaps.every((map) => map.shared && map.pairId));
 check('후속 네 장소는 서로 다른 공간 실루엣을 사용',
   new Set(laterPairMaps.map((map) => map.geometry)).size === laterPairMaps.length);
+check('후속 네 장소는 고유 지오메트리 ID와 소품 문법을 사용',
+  new Set(laterPairMaps.map((map) => map.geometryId)).size === laterPairMaps.length &&
+  new Set(laterPairMaps.map((map) => map.decor.slice().sort().join(','))).size === laterPairMaps.length &&
+  laterPairMaps.every((map) => new Set(map.decor).size >= 3));
+check('방송실·골목·신문사·관제실의 대표 소품이 데이터에 고정됨',
+  laterPairMaps[0].decor.includes('camera-rig') && laterPairMaps[0].decor.includes('mix-console') &&
+  laterPairMaps[1].decor.includes('way-sign') && laterPairMaps[1].decor.includes('street-lamp') &&
+  laterPairMaps[2].decor.includes('printing-press') && laterPairMaps[2].decor.includes('headline-wall') &&
+  laterPairMaps[3].decor.includes('phone') && laterPairMaps[3].decor.includes('sofa'));
+check('세로 터치 화면은 큰 HUD·포커스 라벨만 사용',
+  typeof T.consequenceUiProfile === 'function' && (() => {
+    const portrait = T.consequenceUiProfile(true);
+    const regular = T.consequenceUiProfile(false);
+    return portrait.hudFont >= 18 && portrait.focusFont >= 18 && portrait.staticLabels === false &&
+      regular.staticLabels === true;
+  })());
 check('장 번호 1~5만 기록에 연결되어 본편 순서를 바꾸지 않음',
   has('recordForChapter') && T.recordForChapter(0) === null && T.recordForChapter(6) === null);
 

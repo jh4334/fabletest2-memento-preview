@@ -49,6 +49,10 @@
     worldMortar: '#586b96', worldWall: '#1a2028', worldWood: '#8a603b',
     worldLavender: '#66617d', worldTeal: '#287b78', figureOutline: '#0a0d12',
     guardianTeal: '#2b8790', guardianStripe: '#9bd6cf',
+    consequenceVisual: '#8f78b8', consequenceStage: '#4e9f98', consequenceAudio: '#c58a5a',
+    consequenceText: '#a86a74', consequenceLedger: '#647fb0', consequenceSurface: '#11151d',
+    consequenceStageSurface: '#10151e', consequenceStageRecess: '#171d28',
+    consequenceStageRail: '#59677a', consequenceStageCurtain: '#32445f', consequenceStageFloor: '#27303d',
   };
 
   const REVERSE_TONES = {
@@ -112,18 +116,20 @@
 
   const CONSEQUENCE_UI = {
     zones: {
-      visual: '#8f78b8', stage: '#4e9f98', audio: '#c58a5a',
-      text: '#a86a74', ledger: '#647fb0',
+      visual: CANVAS_COLOR.consequenceVisual, stage: CANVAS_COLOR.consequenceStage,
+      audio: CANVAS_COLOR.consequenceAudio, text: CANVAS_COLOR.consequenceText,
+      ledger: CANVAS_COLOR.consequenceLedger,
     },
     prop: {
-      surface: '#11151d', unavailable: CANVAS_COLOR.textTertiary,
-      complete: CANVAS_COLOR.statusSuccess, past: '#e7e7e7',
+      surface: CANVAS_COLOR.consequenceSurface, unavailable: CANVAS_COLOR.textTertiary,
+      complete: CANVAS_COLOR.statusSuccess, past: CANVAS_COLOR.reverseLight,
       present: CANVAS_COLOR.restoredCyan, label: CANVAS_COLOR.textPrimary,
     },
     stage: {
-      surface: '#10151e', recess: '#171d28', rail: '#59677a',
-      curtain: '#32445f', floor: '#27303d',
-      cards: [CANVAS_COLOR.restoredCyan, '#d8b4ff', '#ffd07a'],
+      surface: CANVAS_COLOR.consequenceStageSurface, recess: CANVAS_COLOR.consequenceStageRecess,
+      rail: CANVAS_COLOR.consequenceStageRail, curtain: CANVAS_COLOR.consequenceStageCurtain,
+      floor: CANVAS_COLOR.consequenceStageFloor,
+      cards: [CANVAS_COLOR.restoredCyan, CANVAS_COLOR.consequenceVisual, CANVAS_COLOR.accentWarm],
     },
   };
 
@@ -788,6 +794,14 @@
   function lh(px) { return Math.round(px * TF()); }
   function recordScale() {
     return isTouchDevice && typeof window !== 'undefined' && window.innerHeight > window.innerWidth ? 1.4 : 1;
+  }
+  function consequenceUiProfile(portrait) {
+    return portrait
+      ? { hudFont: 20, hudHeight: 100, hudLines: [33, 64, 95], focusFont: 20, focusHeight: 58, staticLabels: false }
+      : { hudFont: 14, hudHeight: 74, hudLines: [26, 47, 68], focusFont: 14, focusHeight: 42, staticLabels: true };
+  }
+  function isConsequencePortrait() {
+    return isTouchDevice && typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
   }
   function recordFs(px, bold) { return fs(Math.round(px * recordScale()), bold); }
   function recordLh(px) { return lh(Math.round(px * recordScale())); }
@@ -11721,6 +11735,188 @@
     ctx.restore();
   }
 
+  function drawConsequenceDecorItem(decor, cx, cy) {
+    const dx = Math.round(decor.x * TS - cx), dy = Math.round(decor.y * TS - cy);
+    const color = CONSEQUENCE_UI.zones[decor.palette] || CANVAS_COLOR.borderSubtle;
+    const width = (decor.w || 1) * TS, height = (decor.h || 1) * TS;
+    if (dx < -TS * 8 || dy < -TS * 4 || dx > LW + TS || dy > LH + TS) return;
+    const panel = (x, y, w, h) => {
+      ctx.fillStyle = CONSEQUENCE_UI.stage.surface;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = color;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    };
+    ctx.globalAlpha = 0.84;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+
+    if (decor.kind === 'threshold') {
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + 6, dy + TS - 7, width - 12, 5);
+    } else if (decor.kind === 'wall-panel') {
+      panel(dx + 8, dy + 8, width - 16, 18);
+    } else if (decor.kind === 'workbench') {
+      panel(dx + 8, dy + 13, width - 16, 24);
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + 14, dy + 19, width - 28, 4);
+    } else if (decor.kind === 'cabinet') {
+      panel(dx + 8, dy + 5, width - 16, TS - 10);
+      ctx.beginPath();
+      ctx.moveTo(dx + 12, dy + TS / 2);
+      ctx.lineTo(dx + width - 12, dy + TS / 2);
+      ctx.stroke();
+    } else if (decor.kind === 'platform') {
+      ctx.globalAlpha = 0.48;
+      ctx.fillStyle = CONSEQUENCE_UI.stage.floor;
+      ctx.fillRect(dx, dy, width, height);
+      ctx.strokeStyle = CONSEQUENCE_UI.stage.rail;
+      ctx.strokeRect(dx + 3, dy + 3, width - 6, height - 6);
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + width / 2 - TS / 2, dy + height - 6, TS, 6);
+    } else if (decor.kind === 'camera-rig') {
+      panel(dx + 8, dy + 7, width - 28, 28);
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + width - 22, dy + 14, 14, 14);
+      ctx.beginPath();
+      ctx.moveTo(dx + width / 2, dy + 35);
+      ctx.lineTo(dx + 18, dy + TS - 5);
+      ctx.moveTo(dx + width / 2, dy + 35);
+      ctx.lineTo(dx + width - 22, dy + TS - 5);
+      ctx.stroke();
+    } else if (decor.kind === 'broadcast-screen') {
+      panel(dx + 6, dy + 5, width - 12, Math.max(42, height - 18));
+      ctx.strokeStyle = color;
+      for (let y = dy + 17; y < dy + Math.max(42, height - 18); y += 12) {
+        ctx.beginPath(); ctx.moveTo(dx + 16, y); ctx.lineTo(dx + width - 16, y); ctx.stroke();
+      }
+    } else if (decor.kind === 'mix-console') {
+      panel(dx + 6, dy + 13, width - 12, 28);
+      for (let x = dx + 18; x < dx + width - 12; x += 18) {
+        ctx.fillStyle = color; ctx.fillRect(x, dy + 19, 3, 14);
+        ctx.fillStyle = CANVAS_COLOR.textPrimary; ctx.fillRect(x - 3, dy + 25, 9, 3);
+      }
+    } else if (decor.kind === 'caption-strip') {
+      for (let i = 0; i < 3; i++) panel(dx + 6 + i * ((width - 16) / 3), dy + 14, (width - 24) / 3, 24);
+    } else if (decor.kind === 'consent-lockers' || decor.kind === 'authority-shelf') {
+      panel(dx + 6, dy + 5, width - 12, TS - 10);
+      for (let x = dx + 18; x < dx + width - 10; x += 24) {
+        ctx.strokeStyle = color; ctx.strokeRect(x, dy + 10, 16, 30);
+      }
+    } else if (decor.kind === 'studio-light' || decor.kind === 'street-lamp' || decor.kind === 'warm-lamp') {
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + TS / 2 - 2, dy + 12, 4, 30);
+      ctx.beginPath(); ctx.arc(dx + TS / 2, dy + 10, decor.kind === 'warm-lamp' ? 9 : 7, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(dx + TS / 2, dy + 39); ctx.lineTo(dx + 13, dy + TS - 3);
+      ctx.moveTo(dx + TS / 2, dy + 39); ctx.lineTo(dx + TS - 13, dy + TS - 3); ctx.stroke();
+    } else if (decor.kind === 'echo-posts') {
+      for (let i = 0; i < 4; i++) {
+        const x = dx + 12 + i * Math.max(18, (width - 24) / 3);
+        ctx.fillStyle = color; ctx.fillRect(x, dy + 14, 5, 25);
+        ctx.strokeStyle = color; ctx.strokeRect(x - 5, dy + 8, 15, 12);
+      }
+    } else if (decor.kind === 'way-sign') {
+      ctx.fillStyle = color; ctx.fillRect(dx + width / 2 - 2, dy + 8, 4, 38);
+      panel(dx + 8, dy + 6, width - 16, 12);
+      panel(dx + width / 2, dy + 23, width / 2 - 8, 12);
+    } else if (decor.kind === 'hedge') {
+      for (let x = dx + 4; x < dx + width - 8; x += 22) {
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x + 10, dy + 27, 12, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (decor.kind === 'path-arrows') {
+      ctx.fillStyle = color;
+      for (let i = 0; i < 3; i++) {
+        const x = dx + 18 + i * Math.max(34, (width - 36) / 3);
+        ctx.beginPath(); ctx.moveTo(x, dy + 12); ctx.lineTo(x + 18, dy + 24); ctx.lineTo(x, dy + 36); ctx.closePath(); ctx.fill();
+      }
+    } else if (decor.kind === 'choice-kiosk') {
+      panel(dx + 8, dy + 6, width - 16, 34);
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + 18, dy + 14, width - 36, 4);
+      ctx.fillRect(dx + 18, dy + 25, width - 52, 4);
+    } else if (decor.kind === 'headline-wall') {
+      panel(dx + 6, dy + 5, width - 12, 36);
+      ctx.fillStyle = color; ctx.fillRect(dx + 14, dy + 12, width - 28, 7);
+      ctx.fillRect(dx + 14, dy + 25, Math.round((width - 28) * 0.64), 4);
+    } else if (decor.kind === 'tower-antenna') {
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.moveTo(dx + width / 2, dy + 8); ctx.lineTo(dx + width / 2, dy + height - 6);
+      ctx.moveTo(dx + width / 2, dy + 15); ctx.lineTo(dx + 9, dy + 42);
+      ctx.moveTo(dx + width / 2, dy + 15); ctx.lineTo(dx + width - 9, dy + 42); ctx.stroke();
+      for (let y = dy + 54; y < dy + height - 8; y += 28) {
+        ctx.fillStyle = color; ctx.fillRect(dx + 8, y, width - 16, 4);
+      }
+    } else if (decor.kind === 'editor-desk') {
+      panel(dx + 6, dy + 12, width - 12, 28);
+      for (let i = 0; i < 3; i++) {
+        ctx.strokeStyle = color; ctx.strokeRect(dx + 15 + i * 24, dy + 18, 18, 13);
+      }
+    } else if (decor.kind === 'printing-press') {
+      panel(dx + 6, dy + 5, width - 12, Math.max(48, height - 10));
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.arc(dx + 30, dy + 35, 17, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(dx + width - 30, dy + 35, 17, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = color; ctx.fillRect(dx + 28, dy + 52, width - 56, 5);
+    } else if (decor.kind === 'paper-stacks') {
+      for (let i = 0; i < 4; i++) panel(dx + 8 + i * 24, dy + 30 - i * 5, 30, 12);
+    } else if (decor.kind === 'source-shelf') {
+      panel(dx + 6, dy + 6, width - 12, 34);
+      for (let x = dx + 15; x < dx + width - 10; x += 14) {
+        ctx.fillStyle = color; ctx.fillRect(x, dy + 12, 8, 21);
+      }
+    } else if (decor.kind === 'phone') {
+      panel(dx + 8, dy + 13, TS - 16, 26);
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.arc(dx + TS / 2, dy + 23, 10, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    } else if (decor.kind === 'control-panel') {
+      panel(dx + 6, dy + 8, width - 12, 32);
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = i % 2 ? CANVAS_COLOR.textPrimary : color;
+        ctx.fillRect(dx + 17 + i * Math.max(17, (width - 38) / 5), dy + 17, 6, 6);
+      }
+    } else if (decor.kind === 'locked-door') {
+      panel(dx + 10, dy + 3, width - 20, TS - 6);
+      ctx.strokeStyle = color; ctx.beginPath(); ctx.arc(dx + width / 2, dy + 20, 8, Math.PI, 0); ctx.stroke();
+      ctx.fillStyle = color; ctx.fillRect(dx + width / 2 - 7, dy + 20, 14, 13);
+    } else if (decor.kind === 'sofa') {
+      panel(dx + 6, dy + 18, width - 12, 23);
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.moveTo(dx + 14, dy + 18); ctx.lineTo(dx + 14, dy + 8);
+      ctx.lineTo(dx + width - 14, dy + 8); ctx.lineTo(dx + width - 14, dy + 18); ctx.stroke();
+      ctx.fillStyle = color; ctx.fillRect(dx + 11, dy + 40, 8, 6); ctx.fillRect(dx + width - 19, dy + 40, 8, 6);
+    } else if (decor.kind === 'round-table') {
+      ctx.fillStyle = CONSEQUENCE_UI.stage.surface;
+      ctx.beginPath(); ctx.ellipse(dx + width / 2, dy + 24, width / 2 - 8, 15, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = color; ctx.stroke();
+      ctx.fillStyle = color; ctx.fillRect(dx + width / 2 - 3, dy + 36, 6, 10);
+    }
+  }
+
+  function consequenceFocusInfo() {
+    const active = consequenceActive();
+    if (!active || game.map !== active.config.mapId) return null;
+    const facing = facingTile();
+    const prop = getPropAt(game.map, facing.x, facing.y);
+    if (prop) return { title: prop.shortLabel || prop.label, action: isTouchDevice ? 'Ⓐ 조사' : 'Z 조사' };
+    const map = MAPS[game.map];
+    const zone = (map.timelineZones || []).find((item) => game.player.x >= item.x && game.player.x < item.x + item.w &&
+      game.player.y >= item.y && game.player.y < item.y + item.h);
+    return { title: zone ? zone.label : map.name, action: isTouchDevice ? '스틱으로 이동' : '방향키로 이동' };
+  }
+
+  function drawConsequenceFocusBanner() {
+    const info = consequenceFocusInfo();
+    if (!info) return;
+    const profile = consequenceUiProfile(isConsequencePortrait());
+    const w = Math.min(LW - 32, Math.max(250, (info.title.length + info.action.length + 5) * profile.focusFont));
+    const x = Math.round((LW - w) / 2), y = LH - profile.focusHeight - 12;
+    utBox(x, y, w, profile.focusHeight, 5);
+    ctx.fillStyle = consequenceActive().state.phase === 'past' ? CANVAS_COLOR.reverseLight : CANVAS_COLOR.restoredCyan;
+    ctx.font = fs(profile.focusFont, true);
+    ctx.textAlign = 'center';
+    ctx.fillText(`${info.title}  ·  ${info.action}`, LW / 2, y + profile.focusHeight / 2 + 6);
+    ctx.textAlign = 'left';
+  }
+
   function drawConsequenceObjects(cx, cy) {
     if (!isConsequenceCampaign()) return;
     const active = consequenceActive();
@@ -11731,6 +11927,7 @@
     if (onPairMap) {
       const map = MAPS[active.config.mapId];
       ctx.save();
+      const uiProfile = consequenceUiProfile(isConsequencePortrait());
       for (const zone of map.timelineZones || []) {
         const color = CONSEQUENCE_UI.zones[zone.palette] || CANVAS_COLOR.borderSubtle;
         const zx = Math.round(zone.x * TS - cx), zy = Math.round(zone.y * TS - cy);
@@ -11741,49 +11938,21 @@
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.strokeRect(zx + 3, zy + 3, zone.w * TS - 6, zone.h * TS - 6);
-        ctx.globalAlpha = 0.9;
-        ctx.fillStyle = CANVAS_COLOR.textPrimary;
-        ctx.font = fs(10, true);
-        ctx.fillText(zone.label, zx + 10, zy + 18);
+        if (uiProfile.staticLabels) {
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = CANVAS_COLOR.textPrimary;
+          ctx.font = fs(12, true);
+          const textWidth = ctx.measureText(zone.label).width;
+          const labelX = zx + zone.w * TS / 2;
+          if (labelX >= textWidth / 2 + 8 && labelX <= LW - textWidth / 2 - 8) {
+            ctx.textAlign = 'center';
+            ctx.fillText(zone.label, labelX, Math.max(18, zy + 20));
+            ctx.textAlign = 'left';
+          }
+        }
       }
       for (const decor of map.timelineDecor || []) {
-        const dx = Math.round(decor.x * TS - cx), dy = Math.round(decor.y * TS - cy);
-        const color = CONSEQUENCE_UI.zones[decor.palette] || CANVAS_COLOR.borderSubtle;
-        if (dx < -TS * 4 || dy < -TS * 2 || dx > LW + TS || dy > LH + TS) continue;
-        ctx.globalAlpha = 0.84;
-        ctx.fillStyle = CONSEQUENCE_UI.stage.surface;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        if (decor.kind === 'threshold') {
-          ctx.fillStyle = color;
-          ctx.fillRect(dx + 6, dy + TS - 7, (decor.w || 1) * TS - 12, 5);
-        } else if (decor.kind === 'wall-panel') {
-          ctx.fillRect(dx + 8, dy + 8, (decor.w || 1) * TS - 16, 18);
-          ctx.strokeRect(dx + 8, dy + 8, (decor.w || 1) * TS - 16, 18);
-        } else if (decor.kind === 'workbench') {
-          const width = (decor.w || 2) * TS;
-          ctx.fillRect(dx + 8, dy + 13, width - 16, 24);
-          ctx.strokeRect(dx + 8, dy + 13, width - 16, 24);
-          ctx.fillStyle = color;
-          ctx.fillRect(dx + 14, dy + 19, width - 28, 4);
-        } else if (decor.kind === 'cabinet') {
-          const width = (decor.w || 1) * TS;
-          ctx.fillRect(dx + 8, dy + 5, width - 16, TS - 10);
-          ctx.strokeRect(dx + 8, dy + 5, width - 16, TS - 10);
-          ctx.beginPath();
-          ctx.moveTo(dx + 12, dy + TS / 2);
-          ctx.lineTo(dx + width - 12, dy + TS / 2);
-          ctx.stroke();
-        } else if (decor.kind === 'platform') {
-          const width = (decor.w || 3) * TS, height = (decor.h || 2) * TS;
-          ctx.globalAlpha = 0.48;
-          ctx.fillStyle = CONSEQUENCE_UI.stage.floor;
-          ctx.fillRect(dx, dy, width, height);
-          ctx.strokeStyle = CONSEQUENCE_UI.stage.rail;
-          ctx.strokeRect(dx + 3, dy + 3, width - 6, height - 6);
-          ctx.fillStyle = color;
-          ctx.fillRect(dx + width / 2 - TS / 2, dy + height - 6, TS, 6);
-        }
+        drawConsequenceDecorItem(decor, cx, cy);
       }
       ctx.restore();
     }
@@ -11827,16 +11996,20 @@
             : prop.kind === 'timelinehub_exit' || role === 'exit' ? '↥'
               : (prop.icon || icons[prop.station] || '·');
       ctx.fillText(mark, sx + TS / 2, sy + TS / 2 + 7);
-      if (role || prop.kind === 'timelinehub_pair') {
+      if (prop.kind === 'timelinehub_pair' || (role && !onPairMap)) {
         ctx.fillStyle = CONSEQUENCE_UI.prop.label;
-        ctx.font = fs(10, true);
+        ctx.font = fs(12, true);
         const label = prop.kind === 'timelinehub_pair' ? prop.label
           : prop.shortLabel || (role === 'station' && active.config.pairUi.roomLabels[prop.station])
             || (role === 'disclosure' && active.config.pairUi.disclosure.label)
             || (role === 'finale' && active.config.pairUi.finaleLabel)
             || (role === 'terminal' && active.config.pairUi.terminal.label)
             || prop.label;
-        ctx.fillText(label, sx + TS / 2, sy - 3, 90);
+        const textWidth = ctx.measureText(label).width;
+        const labelX = sx + TS / 2;
+        if (labelX >= textWidth / 2 + 8 && labelX <= LW - textWidth / 2 - 8) {
+          ctx.fillText(label, labelX, Math.max(16, sy - 3));
+        }
       }
       ctx.textAlign = 'left';
     }
@@ -12183,18 +12356,20 @@
   function drawNotice() {
     if (!game.notice || game.notice.t <= 0) return;
     const txt = game.notice.text;
-    ctx.font = fs(13, true);
+    const consequencePortrait = isConsequenceCampaign() && isConsequencePortrait();
+    ctx.font = fs(consequencePortrait ? 18 : 13, true);
     const tw = ctx.measureText(txt).width;
-    const bw = tw + 28, bh = game.largeText ? 32 : 28;
+    const bw = Math.min(LW - 32, tw + 28), bh = consequencePortrait ? 36 : (game.largeText ? 32 : 28);
     // 퍼즐 HUD(drawPuzzleHud, by=8~최대 74px 높이)와 세로로 겹치지 않도록,
     // 방탈출 중에는 그 아래로 내려서 그린다.
-    const bx = Math.round(LW / 2 - bw / 2), by = game.puzzleRun ? 108 : 90;
+    const bx = Math.round(LW / 2 - bw / 2);
+    const by = game.puzzleRun ? 108 : consequencePortrait ? 116 : 90;
     const fade = Math.min(1, game.notice.t / 40);
     ctx.globalAlpha = fade;
     utBox(bx, by, bw, bh, 6);
     ctx.fillStyle = themeAccent();
     ctx.textAlign = 'center';
-    ctx.fillText(txt, LW / 2, by + bh / 2 + 4);
+    ctx.fillText(txt, LW / 2, by + bh / 2 + 4, bw - 20);
     ctx.textAlign = 'left';
     ctx.globalAlpha = 1;
   }
@@ -12225,7 +12400,7 @@
 
   // 게임을 처음 시작했을 때(박사님과 대화 전)만 보이는 조작 안내
   function drawControlHint() {
-    if (game.flags.talkedProf) return;
+    if (game.flags.talkedProf || isConsequenceCampaign()) return;
     const txt = isTouchDevice ? '스틱으로 이동 · Ⓐ 버튼으로 말 걸기' : '방향키로 이동 · Z(또는 A 버튼)로 말 걸기';
     ctx.font = fs(12, true);
     const tw = ctx.measureText(txt).width;
@@ -12400,8 +12575,9 @@
   function drawHud() {
     // 스테이지 + 지역 이름 + 목표
     const m = MAPS[game.map];
-    ctx.font = fs(14, true);
     const activeConsequence = consequenceActive();
+    const consequenceProfile = consequenceUiProfile(isConsequenceCampaign() && isConsequencePortrait());
+    ctx.font = fs(consequenceProfile.hudFont, true);
     const title = isConsequenceCampaign()
       ? game.map === 'timelinehub' ? '[시간선 허브] 마음의 문'
         : activeConsequence && activeConsequence.state.phase === 'past'
@@ -12456,17 +12632,20 @@
     const recordText = isConsequenceCampaign()
       ? (game.map === 'timelinehub' ? consequenceHubStatusText()
         : activeConsequence && activeConsequence.state.phase === 'past'
-          ? '선택은 한 번 저장되며, 현재에서 결과가 돌아옵니다'
-          : '기록 단말에서 과거 선택과 현재 수리를 다시 볼 수 있습니다')
+          ? (isConsequencePortrait() ? '선택은 저장되고, 현재에서 결과가 돌아옵니다' : '선택은 한 번 저장되며, 현재에서 결과가 돌아옵니다')
+          : (isConsequencePortrait() ? '기록 단말: 과거 선택 · 현재 수리 다시보기' : '기록 단말에서 과거 선택과 현재 수리를 다시 볼 수 있습니다'))
       : recordHudText(game.flags, isTouchDevice);
-    const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width, ctx.measureText(recordText).width) + 20;
-    utBox(8, 8, w, 74, 4);
-    ctx.fillStyle = '#ffd644';
-    ctx.fillText(title, 18, 26);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(obj, 18, 47);
-    ctx.fillStyle = '#8ea8d8';
-    ctx.fillText(recordText, 18, 68);
+    const measuredW = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width, ctx.measureText(recordText).width) + 20;
+    const w = isConsequenceCampaign()
+      ? (isConsequencePortrait() ? LW - 16 : Math.min(LW - 16, measuredW))
+      : measuredW;
+    utBox(8, 8, w, consequenceProfile.hudHeight, 4);
+    ctx.fillStyle = CANVAS_COLOR.accentWarm;
+    ctx.fillText(title, 18, consequenceProfile.hudLines[0]);
+    ctx.fillStyle = CANVAS_COLOR.textPrimary;
+    ctx.fillText(obj, 18, consequenceProfile.hudLines[1], w - 20);
+    ctx.fillStyle = CANVAS_COLOR.consequenceLedger;
+    ctx.fillText(recordText, 18, consequenceProfile.hudLines[2], w - 20);
 
     // 안아 준 마음 (자비)
     if (game.flags.mercy > 0) {
@@ -12490,6 +12669,7 @@
       ctx.font = fs(12);
       ctx.fillText('♪ 꺼짐(M)', LW - 110, 56);
     }
+    drawConsequenceFocusBanner();
   }
 
   // 언더테일풍 — 모서리가 살짝 깎인 픽셀 상자 (r은 모서리 컷 크기로 사용)
@@ -14383,7 +14563,7 @@
       route: Object.assign({}, ROUTE_CHOICE_UI),
       order: Object.assign({}, TIMELINE_ORDER_UI),
     }),
-    clampedCanvasLabelX,
+    clampedCanvasLabelX, consequenceUiProfile,
     startNewGameForRoute, continueGame,
     consequenceRuntime, consequenceRepairIds, consequenceEffortProjection,
     startConsequencePair, revealConsequenceIdentity,
