@@ -11,6 +11,7 @@ try {
 }
 
 const ROOT = path.resolve(__dirname, '..');
+const ROOT_REAL = fs.realpathSync(ROOT);
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -20,14 +21,34 @@ const MIME = {
   '.css': 'text/css',
 };
 
+function resolveStaticFile(rawUrl) {
+  let pathname;
+  try {
+    pathname = decodeURIComponent(rawUrl.split('?')[0]);
+  } catch (error) {
+    return null;
+  }
+  if (pathname === '/') pathname = '/index.html';
+  if (pathname === '/favicon.ico') pathname = '/icons/icon-192.png';
+  const candidate = path.resolve(ROOT, pathname.replace(/^\/+/, ''));
+  const rootPrefix = ROOT_REAL + path.sep;
+  if (candidate !== ROOT_REAL && !candidate.startsWith(rootPrefix)) return null;
+  if (!fs.existsSync(candidate) || fs.statSync(candidate).isDirectory()) return null;
+  let real;
+  try {
+    real = fs.realpathSync(candidate);
+  } catch (error) {
+    return null;
+  }
+  if (real !== ROOT_REAL && !real.startsWith(rootPrefix)) return null;
+  return real;
+}
+
 function startServer() {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
-      let pathname = decodeURIComponent(req.url.split('?')[0]);
-      if (pathname === '/') pathname = '/index.html';
-      if (pathname === '/favicon.ico') pathname = '/icons/icon-192.png';
-      const filename = path.join(ROOT, pathname);
-      if (!filename.startsWith(ROOT) || !fs.existsSync(filename) || fs.statSync(filename).isDirectory()) {
+      const filename = resolveStaticFile(req.url);
+      if (!filename) {
         res.statusCode = 404;
         res.end('not found');
         return;
@@ -49,7 +70,9 @@ function resolveChromium() {
       const executable = path.join(base, dir, 'chrome-linux', 'chrome');
       if (fs.existsSync(executable)) return executable;
     }
-  } catch (error) {}
+  } catch (error) {
+    return undefined;
+  }
   return undefined;
 }
 
@@ -110,6 +133,12 @@ function withinViewport(rect, snapshot) {
 }
 
 (async () => {
+  console.log('[test-server] 정적 파일 경계');
+  check('형제 디렉터리로 나가는 경로를 거부',
+    resolveStaticFile(`/../${path.basename(ROOT)}-secret/file`) === null);
+  check('잘못 인코딩된 URL을 예외 없이 거부', resolveStaticFile('/%E0%A4%A') === null);
+  check('저장소 안의 index.html은 허용', resolveStaticFile('/index.html') === fs.realpathSync(path.join(ROOT, 'index.html')));
+
   const server = await startServer();
   const base = `http://127.0.0.1:${server.address().port}/index.html`;
   const browser = await chromium.launch({ executablePath: resolveChromium() });
@@ -170,10 +199,27 @@ function withinViewport(rect, snapshot) {
         return window.__test.heldKeys().includes('action');
       });
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.waitForTimeout(150);
+      let releasedInTime = true;
+      try {
+        await page.waitForFunction(() => window.__test.heldKeys().length === 0, { timeout: 1000 });
+      } catch (error) {
+        releasedInTime = false;
+      }
       const after = await page.evaluate(() => window.__test.heldKeys());
       check('회전 전 터치 입력 재현', before);
-      check('화면 회전 시 보이지 않는 고정 입력을 해제', after.length === 0, after.join(','));
+      check('화면 회전 시 보이지 않는 고정 입력을 해제', releasedInTime && after.length === 0, after.join(','));
+      await context.close();
+    }
+
+    console.log('[battle-onboarding] 한글 안내 안전 영역');
+    {
+      const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const page = await context.newPage();
+      await load(page, base);
+      const layout = await page.evaluate(() => window.__test.prologueTutorialPanelLayout({ x: 200 }));
+      check('온보딩 패널이 전투 안내 영역과 16px 이상 떨어짐',
+        layout.x + layout.w <= 200 - 16, JSON.stringify(layout));
+      check('온보딩 패널 본문에 안전한 내부 폭이 있음', layout.textWidth >= 120, JSON.stringify(layout));
       await context.close();
     }
 

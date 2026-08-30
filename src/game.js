@@ -13837,6 +13837,12 @@
     ctx.textAlign = 'left';
   }
 
+  function prologueTutorialPanelLayout(box) {
+    const x = 24;
+    const w = Math.max(132, Math.min(160, box.x - x - 16));
+    return { x, y: 154, w, h: 42, textX: x + 12, textWidth: w - 24 };
+  }
+
   function drawDarkArenaVignette(b) {
     const soul = b.arena.soul;
     if (game.reduceFx) {
@@ -14090,18 +14096,19 @@
     drawArenaGuide(box, b.attack ? b.attack.taunt : null, guide);
 
     if (b.prologueTutorial) {
+      const panel = prologueTutorialPanelLayout(box);
       ctx.textAlign = 'left';
       ctx.fillStyle = 'rgba(255,214,68,0.12)';
-      ctx.fillRect(24, 154, 210, 42);
+      ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
       ctx.strokeStyle = 'rgba(255,214,68,0.45)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(24.5, 154.5, 210, 42);
+      ctx.strokeRect(panel.x + 0.5, panel.y + 0.5, panel.w, panel.h);
       ctx.fillStyle = '#ffd644';
       ctx.font = fs(13, true);
-      ctx.fillText('프롤로그 · 따라의 마음 안쪽', 36, 176);
+      ctx.fillText(ellipsizeToWidth('프롤로그 · 따라의 마음', panel.textWidth), panel.textX, panel.y + 22);
       ctx.fillStyle = '#bbb';
       ctx.font = fs(11);
-      ctx.fillText('퀴즈가 아니라, 듣고 피하고 다가가기', 36, 192);
+      ctx.fillText(ellipsizeToWidth('듣고 · 피하고 · 다가가기', panel.textWidth), panel.textX, panel.y + 38);
     }
 
     // 상자 크기 전환 애니메이션 (M-3) — 판정 상자(box)는 즉시 바뀌고
@@ -15388,6 +15395,7 @@
     chapter4HubVisualProfile, chapter4HubVisibleMarks, chapter5HubVisualProfile, chapter5HubVisibleMarks,
     drawWorld,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
+    prologueTutorialPanelLayout,
     heldKeys: () => Array.from(held), // E2E 멀티터치 검증용 — 현재 눌린 논리 키
     srLiveText: () => (srLiveEl ? srLiveEl.textContent : null), // aria-live 미러 검증용
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
