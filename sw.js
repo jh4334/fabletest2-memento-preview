@@ -1,7 +1,7 @@
 // AI 윤리 어드벤처 — 오프라인 서비스워커
 // 모든 정적 자원을 처음 방문 때 캐시해, 이후 네트워크 없이도 실행되게 한다.
 // 게임 코드/콘텐츠가 바뀌면 CACHE 버전을 올리면 된다.
-const CACHE = 'fabletest2-memento-preview-b277011e';
+const CACHE = 'fabletest2-memento-preview-162c2b16';
 const ASSETS = [
   './',
   './index.html',

@@ -324,7 +324,7 @@ V11 로더는 알려진 pair ID만 중복 없이 보존하고 오답 횟수·불
 - `node tools/slottest.js`: 295 통과.
 - `npm run test:browser`: Chromium 377 통과 / 0 실패, WebKit 선택 설치 생략.
 - `npm run pack`과 `unzip -tq`: 오프라인 ZIP 생성·무결성 통과, 산출물은 작업
-  트리 밖 `/tmp/ai-ethics-adventure-offline-consequence-final-b277011e.zip`으로 이동했다.
+  트리 밖 `/tmp/ai-ethics-adventure-offline-consequence-final-162c2b16.zip`으로 이동했다.
 - 1280×800, 390×844(세로 계속하기), 844×390의 파이널·복원·선택·실험실 캡처를
   `.omo/evidence/consequence-finale-browser/screenshots/`에서 확인했다.
 - 모바일 모드 전환 직후 터치 접근성 이름이 한 프레임 늦던 결함을 실제 브라우저
@@ -335,7 +335,7 @@ V11 로더는 알려진 pair ID만 중복 없이 보존하고 오답 횟수·불
   파이널 글자 배율을 적용했다. 모바일 엔딩 복귀와 실험실 나가기는 실제 터치로,
   동작 줄이기 회전 아이콘 정지는 브라우저 선호 설정으로 확인했다.
 - 현재 미리보기 캐시는 `npm run bump`가 계산한
-  `fabletest2-memento-preview-b277011e`이며 현재 자산 해시와 일치한다.
+  `fabletest2-memento-preview-162c2b16`이며 현재 자산 해시와 일치한다.
 
 최종 CI·PR·merge SHA·Pages URL과 전체 검증 결과는 이번 후속 기능을 미리보기
 main에 병합한 뒤 이 절에 이어 기록한다.

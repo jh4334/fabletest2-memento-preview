@@ -4906,7 +4906,7 @@
       ctx.fillStyle = CANVAS_COLOR.textMuted;
       ctx.font = finaleFs(9);
       ctx.textAlign = 'center';
-      ctx.fillText('↑↓ 항목 · ←→ 변경 · Ⓐ 결과 · [처음으로] 초기화 · [나가기] 닫기', LW / 2, 496);
+      ctx.fillText('↑↓ 항목 · ←→ 변경 · Ⓐ 결과 · [처음] 초기화 · [나가기] 닫기', LW / 2, 496);
       ctx.textAlign = 'left';
       return;
     }
@@ -4953,7 +4953,7 @@
     ctx.font = finaleFs(10);
     ctx.textAlign = 'center';
     ctx.fillText(isTouchDevice
-      ? '↑↓ 항목 · ←→ 변경 · Ⓐ 결과 · [처음으로] 초기화 · [나가기] 닫기'
+      ? '↑↓ 항목 · ←→ 변경 · Ⓐ 결과 · [처음] 초기화 · [나가기] 닫기'
       : '↑↓ 항목 · ←→ 변경 · Z 결과 · X 처음으로 · C 나가기', LW / 2, 488);
     ctx.textAlign = 'left';
   }
@@ -8804,7 +8804,7 @@
       ctx.fillStyle = color.helper;
       ctx.font = finaleFs(9);
       ctx.textAlign = 'center';
-      ctx.fillText('Ⓐ 놓기·확인 · [한 칸] 되돌리기 · [메뉴] 저장 후 나가기', LW / 2, 500);
+      ctx.fillText('Ⓐ 놓기·확인 · [한 칸] 되돌리기 · [나가기] 저장 후 닫기', LW / 2, 500);
       ctx.textAlign = 'left';
       return;
     }
@@ -8863,7 +8863,7 @@
     ctx.fillStyle = color.helper;
     ctx.font = finaleFs(11);
     ctx.textAlign = 'center';
-    ctx.fillText(isTouchDevice ? 'Ⓐ 놓기·확인 · [한 칸] 되돌리기 · [메뉴] 저장 후 나가기' :
+    ctx.fillText(isTouchDevice ? 'Ⓐ 놓기·확인 · [한 칸] 되돌리기 · [나가기] 저장 후 닫기' :
       'Z 놓기·확인 · X·Esc 되돌리기 · C 저장 후 나가기', LW / 2, 504);
     ctx.textAlign = 'left';
   }
