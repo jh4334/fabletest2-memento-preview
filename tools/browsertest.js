@@ -453,7 +453,7 @@ async function touchControlsFit(page, viewport) {
         'startConsequenceTimeline', 'placeConsequenceTimelineCard', 'undoConsequenceTimelineCard',
         'submitConsequenceTimeline', 'advanceConsequenceRestoration', 'chooseConsequenceEnding',
         'openTimelineLab', 'setTimelineLabJourney', 'setTimelineLabFinalChoice',
-        'previewTimelineLabEnding', 'closeTimelineLab',
+        'previewTimelineLabEnding', 'resetTimelineLab', 'closeTimelineLab',
       ].every((name) => typeof window.__test[name] === 'function'));
       check('캠페인 파이널과 시간선 실험실 브라우저 훅이 존재', hooksReady);
       if (!hooksReady) throw new Error('consequence finale browser hooks are unavailable');
@@ -643,8 +643,16 @@ async function touchControlsFit(page, viewport) {
         const T = window.__test;
         ['d10_judgment', 'd7_misinformation', 'd5_recommendation', 'd3_consent', 'd1_copyright']
           .forEach((id) => T.placeConsequenceTimelineCard(id));
-        T.submitConsequenceTimeline();
       });
+      const filledOrder = await page.evaluate(() => ({
+        mode: window.__game.mode,
+        cards: window.__game.consequenceTimeline.cards,
+        draft: window.__game.flags.consequenceCampaign.finalTimelineDraft,
+      }));
+      check(`${vp.name}: 배치된 다섯 카드도 의도와 결과를 유지`, filledOrder.mode === 'consequenceorder' &&
+        filledOrder.draft.length === 5 && filledOrder.cards.every((card) => card.intention && card.consequence));
+      await screenshotStableCanvas(page, path.join(screenshotsDir, `final-order-filled-${vp.name}.png`), false);
+      await page.evaluate(() => window.__test.submitConsequenceTimeline());
       const restorationMenuHidden = await page.evaluate(() =>
         getComputedStyle(document.getElementById('t-menu')).visibility === 'hidden' &&
         document.getElementById('t-menu').disabled);
@@ -655,17 +663,22 @@ async function touchControlsFit(page, viewport) {
         mode: window.__game.mode,
         action: document.getElementById('t-a').getAttribute('aria-label'),
         menuHidden: getComputedStyle(document.getElementById('t-menu')).visibility === 'hidden',
+        cancelHidden: getComputedStyle(document.getElementById('t-pause')).visibility === 'hidden' &&
+          document.getElementById('t-pause').disabled,
       }));
       check(`${vp.name}: 네 파이널 선택은 터치 결정 이름과 함께 표시`, choiceSurface.mode === 'consequencechoice' &&
-        /현재 선택 결정/.test(choiceSurface.action) && choiceSurface.menuHidden);
+        /현재 선택 결정/.test(choiceSurface.action) && choiceSurface.menuHidden && choiceSurface.cancelHidden);
       await screenshotStableCanvas(page, path.join(screenshotsDir, `final-choice-${vp.name}.png`), false);
       await page.evaluate(() => {
         const T = window.__test, g = window.__game;
+        g.largeText = false;
         T.chooseConsequenceEnding('restore_together');
         g.endingT = 600;
         g.reduceFx = true;
       });
       await page.waitForTimeout(100);
+      check(`${vp.name}: 기본 글자 모드 엔딩을 모바일 배율로 검증`,
+        await page.evaluate(() => window.__game.largeText === false && window.__test.finaleScale() >= 1.15));
       await screenshotStableCanvas(page, path.join(screenshotsDir, `final-ending-${vp.name}.png`), false);
       await page.tap('#t-a');
       await page.waitForTimeout(100);
@@ -685,15 +698,26 @@ async function touchControlsFit(page, viewport) {
         mode: window.__game.mode,
         action: document.getElementById('t-a').getAttribute('aria-label'),
         cancel: document.getElementById('t-pause').getAttribute('aria-label'),
+        cancelText: document.getElementById('t-pause').textContent,
         menu: document.getElementById('t-menu').textContent,
         menuAria: document.getElementById('t-menu').getAttribute('aria-label'),
         live: window.__test.srLiveText(),
       }));
       check(`${vp.name}: 실험실의 무저장 안내와 터치 나가기가 표시`, labSurface.mode === 'timelinelab' &&
-        /결과 보기/.test(labSurface.action) && /닫기/.test(labSurface.cancel) &&
+        /결과 보기/.test(labSurface.action) && /처음으로/.test(labSurface.cancel) && labSurface.cancelText === '처음' &&
         labSurface.menu === '나가기' && /실험실 닫기/.test(labSurface.menuAria) &&
         /첫 시간선은 바뀌지 않습니다/.test(labSurface.live));
       await screenshotStableCanvas(page, path.join(screenshotsDir, `timeline-lab-result-${vp.name}.png`), false);
+      await page.tap('#t-pause');
+      await page.waitForTimeout(100);
+      const labReset = await page.evaluate((before) => ({
+        mode: window.__game.mode,
+        result: window.__game.timelineLab && window.__game.timelineLab.result,
+        finalChoiceId: window.__game.timelineLab && window.__game.timelineLab.finalChoiceId,
+        unchanged: before === JSON.stringify(Object.keys(localStorage).sort().map((key) => [key, localStorage.getItem(key)])),
+      }), labSeed.before);
+      check(`${vp.name}: 실험실 처음 버튼은 canonical 가정만 무저장 초기화`, labReset.mode === 'timelinelab' &&
+        labReset.result === null && labReset.finalChoiceId === 'restore_together' && labReset.unchanged);
       await page.tap('#t-menu');
       await page.waitForTimeout(100);
       const labClosed = await page.evaluate((before) => ({

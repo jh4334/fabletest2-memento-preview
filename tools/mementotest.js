@@ -43,7 +43,8 @@ check('route choice and timeline ordering reuse semantic Canvas tokens', (() => 
     tokens.route.border === tokens.canvas.borderDefault && tokens.route.selected === '#ffd644' &&
     tokens.route.unselected === '#dddddd' && tokens.route.borderIdle === '#444444' &&
     tokens.order.page === tokens.canvas.surfacePrimary && tokens.order.border === tokens.canvas.borderDefault &&
-    tokens.order.title === '#72d2c7' && tokens.order.success === '#8de08d' && tokens.order.empty === '#777777';
+    tokens.order.title === '#72d2c7' && tokens.order.success === '#8de08d' &&
+    tokens.order.empty === tokens.canvas.textMuted && tokens.order.empty === '#888888';
 })());
 check('world labels clamp their centers inside both Canvas edges',
   typeof T.clampedCanvasLabelX === 'function' &&

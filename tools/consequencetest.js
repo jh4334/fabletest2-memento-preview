@@ -321,7 +321,7 @@ for (const name of [
   'startConsequenceTimeline', 'placeConsequenceTimelineCard', 'undoConsequenceTimelineCard',
   'submitConsequenceTimeline', 'advanceConsequenceRestoration', 'chooseConsequenceEnding',
   'openTimelineLab', 'setTimelineLabJourney', 'setTimelineLabFinalChoice',
-  'previewTimelineLabEnding', 'closeTimelineLab',
+  'previewTimelineLabEnding', 'resetTimelineLab', 'closeTimelineLab',
 ]) check(name + ' 훅이 존재', typeof T[name] === 'function');
 
 T.startNewGameForRoute(2, '잇는이', 'consequence-pairs');
@@ -418,6 +418,10 @@ const labResult = T.previewTimelineLabEnding();
 check('실험 결과는 기존 네 ID 하나를 보여 줌', labResult && ['home', 'silent', 'dawn', 'farewell'].includes(labResult.endingId));
 check('실험 중에도 localStorage는 바뀌지 않음', storageBeforeLab ===
   JSON.stringify(Array.from(env.storage.entries()).sort(([a], [b]) => a.localeCompare(b))));
+check('실험실 처음으로는 canonical 가정만 메모리에서 복원', T.resetTimelineLab() === true &&
+  g.timelineLab.result === null && g.timelineLab.finalChoiceId === 'restore_together' &&
+  g.timelineLab.journeys.find((item) => item.pairId === 'd5_recommendation').profile === 'restore' &&
+  storageBeforeLab === JSON.stringify(Array.from(env.storage.entries()).sort(([a], [b]) => a.localeCompare(b))));
 check('실험실 나가기는 허브로 돌아감', T.closeTimelineLab() === true && g.mode === 'world' && g.map === 'timelinehub');
 check('실험 뒤 슬롯·canonical·pair·위치가 그대로', storageBeforeLab ===
   JSON.stringify(Array.from(env.storage.entries()).sort(([a], [b]) => a.localeCompare(b))) &&
