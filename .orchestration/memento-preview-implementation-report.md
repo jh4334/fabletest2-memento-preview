@@ -1,8 +1,9 @@
 # 마음의 문 메멘토형 이중 시간선 미리보기 구현 보고서
 
-작성 기준: 기능 브랜치 최종 검토 SHA `30653bba2a7c3a6dfaafdb867c78305bc03d3540`,
-기능 PR #7의 merge SHA `bca918ec0eb2ca156dc6aefd151decaa8f22dd95`,
-main CI·Pages 배포 및 공개 URL 실제 브라우저 검증 결과.
+작성 기준: 과거·현재 캠페인 기능 브랜치 최종 검토 SHA
+`bd43553c47a09f83c4888fa545b5c2a18020c0fe`, 기능 PR #9의 merge SHA
+`1784ca958e883e5d60e03b23fec041195e479aeb`, main CI·Pages 배포 및 공개 URL
+실제 브라우저 검증 결과. PR #7은 이 캠페인의 기존 메멘토 기반 구현 이력이다.
 
 ## 1. 원본 저장소 최신 main SHA
 
@@ -17,8 +18,9 @@ main CI·Pages 배포 및 공개 URL 실제 브라우저 검증 결과.
 - Pages URL: `https://jh4334.github.io/fabletest2-memento-preview/`
 - 설명: 마음의 문 메멘토형 이중 시간선 플롯 미리보기
 
-기능 구현은 미리보기 `origin`에만 push했고, 기능 PR #7을 일반 merge한 시점의
-미리보기 `main`은 `bca918ec0eb2ca156dc6aefd151decaa8f22dd95`다.
+기능 구현은 미리보기 `origin`에만 push했다. 과거·현재 캠페인 기능 PR #9를 모든
+필수 검사 성공 뒤 일반 merge한 시점의 미리보기 `main`은
+`1784ca958e883e5d60e03b23fec041195e479aeb`다.
 
 ## 3. remote -v 결과
 
@@ -55,11 +57,12 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 
 ## 6. 구현 브랜치
 
-- `feat/memento-gameplay-loop`
-- 최종 독립 검토 SHA: `30653bba2a7c3a6dfaafdb867c78305bc03d3540`
-- 기능 merge SHA: `bca918ec0eb2ca156dc6aefd151decaa8f22dd95`
-- 설계 및 순수 시간축 모듈, V10 저장 격리, 실제 플레이 루프가 이 브랜치에 있다.
-- Draft PR #7에서 정확한 SHA 대상 목표·코드·QA·보안·맥락·시각·CJK·런타임
+- 현재 캠페인: `feat/consequence-pairs-campaign`
+- 최종 독립 검토 SHA: `bd43553c47a09f83c4888fa545b5c2a18020c0fe`
+- 기능 merge SHA: `1784ca958e883e5d60e03b23fec041195e479aeb`
+- 기반 이력: `feat/memento-gameplay-loop`, PR #7 merge
+  `bca918ec0eb2ca156dc6aefd151decaa8f22dd95`
+- PR #9에서 정확한 SHA 대상 목표·코드·QA·보안·맥락·시각·CJK·런타임
   검토를 통과한 뒤 ready 전환하고 일반 merge했다.
 
 ## 7. 기존 스토리 요약
@@ -115,7 +118,7 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 - `src/data.js`: 메멘토 기록과 본편 인물·장면 복선을 연결했다.
 - `src/game.js`: 타이틀 경로, 기록 해금·건너뛰기·재열람, 관리자 단말, HUD 축, 수동 카드 정렬, 저장 재개, 접근성을 구현했다.
 - `index.html`, `sw.js`: 새 모듈 로드 순서와 preview 캐시를 반영했다.
-- `tools/*.js`: 스모크·슬롯·메멘토·서비스워커·완주 검증을 V10과 새 경로에 맞췄다.
+- `tools/*.js`: 스모크·슬롯·메멘토·서비스워커·완주 검증을 V11과 새 경로에 맞췄다.
 - `README.md`, `CHANGELOG.md`, `docs/출시-준비-체크리스트.md`: 현재 기능과 릴리스 상태를 기록한다.
 
 ## 13. 추가한 상태 키
@@ -134,7 +137,7 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 
 ## 14. 세이브 마이그레이션
 
-`SAVE_VERSION`은 V10이다. `migrateSlotV3`부터 `migrateSlotV10`까지 기존 체인을
+`SAVE_VERSION`은 V11이다. `migrateSlotV3`부터 `migrateSlotV11`까지 기존 체인을
 유지하며, 신규 필드는 안전한 기본값으로 채운다. 기존 V9 기록은 확인·건너뛰기
 상태에서 증거를 안전하게 계산하고, 장 완료 플래그로 보충하되 일반 전투 완료
 표식만으로 기록을 열지 않는다. 카드 배치·오답 횟수·단말 해결 상태는 저장 후
@@ -153,7 +156,10 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 | `dawn` | 충분한 자비와 맡김 | 앞으로의 결정을 AI에 의존 |
 | `farewell` | 그 밖의 따뜻한 조합 | AI를 모두 꺼 가능성과 문제를 함께 단절 |
 
-기존 엔딩 ID와 누적 자비 조건을 보존하며, 마지막 한 선택만으로 결정하지 않는다.
+원래 모험은 기존 엔딩 ID와 누적 자비 조건을 그대로 보존한다. 과거·현재 캠페인은
+다섯 여정 profile을 각 1표, 마지막 선택을 2표로 합산하고 여정 다수·마지막 선택·
+D-10→D-1 순서의 결정적 과거를 동률 규칙으로 사용하므로 마지막 한 선택만으로
+갑자기 결정되지 않는다.
 
 ## 16. 추가한 테스트
 
@@ -161,7 +167,7 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 - 기록 건너뛰기·일지 재열람·증거 회복·관리자 단말 오답/정답
 - 역행 HUD 축과 날짜별 상태 모양
 - 다섯 카드 직접 배치·오답 초안 보존·정답 결합
-- V10 신규 기본값·V9 이하 마이그레이션·중단 상태 재개
+- V11 신규 기본값·V10 이하 마이그레이션·중단 상태 재개
 - 기존 본편 흐름·네 엔딩·금지 어휘·반디/고요 복선
 - 서비스워커 preview 캐시 격리
 - 저장된 슬롯의 실제 시간선 표시와 TTS 안내
@@ -172,35 +178,40 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 
 ## 17. 전체 검증 명령과 실제 결과
 
-현재 기능 브랜치에서 확인한 결과:
+최종 캠페인 기능 브랜치와 병합 후 CI에서 확인한 결과:
 
 | 명령 | 결과 |
 |---|---|
 | `npm run validate` | 성공 |
-| `npm test` | 성공: smoke 1223, slot 95, memento 104, service worker 6 |
+| `npm test` | 성공: smoke 1223, slot 295, memento 121, consequence 180, service worker 6 |
 | `npm run playtest` | 성공: 원래 경로 프롤로그→5장→고요→코어→`home` 완주 |
-| `npm run test:browser` | 성공: Chromium 183, 실패 0; WebKit 미설치로 선택 경로 생략 |
+| `npm run test:browser` | 성공: Chromium 377, 실패 0; WebKit 미설치로 선택 경로 생략 |
 | `npm run pack` | 성공: 오프라인 ZIP 생성, `unzip -tq` 무결성 성공 후 작업 트리에서 산출물 제거 |
 
 ## 18. CI 및 Pages 실행 URL
 
-- 기능 브랜치 push CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32915452366` — 성공
-- Draft PR: `https://github.com/jh4334/fabletest2-memento-preview/pull/7` — 검토 뒤 일반 merge
-- PR CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32915468716` — 성공
-- PR Pages 사전 검증: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32915468654` — 성공
-- main merge CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32915555646` — 성공
-- 최종 Pages 배포: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/32915555630` — verify·deploy 성공
+- 기능 브랜치 push CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/33318179994` — 성공
+- Draft PR: `https://github.com/jh4334/fabletest2-memento-preview/pull/9` — 세 필수 검사 성공 뒤 ready·일반 merge
+- PR CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/33318206065` — 성공
+- PR Pages 사전 검증: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/33318206058` — verify 성공, PR deploy는 의도대로 생략
+- main merge CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/33318287682` — 성공
+- 최종 Pages 배포: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/33318287643` — verify·deploy 성공
 
 ## 19. 최종 미리보기 URL
 
-`https://jh4334.github.io/fabletest2-memento-preview/?v=bca918ec0eb2ca156dc6aefd151decaa8f22dd95`
+`https://jh4334.github.io/fabletest2-memento-preview/?v=1784ca958e883e5d60e03b23fec041195e479aeb`
 
-실제 Chromium에서 HTTP 200, `마음의 문` 제목, 두 시간선 선택, 메멘토 새 게임,
-60초 이내 D-1 기록, 미리보기 전용 저장 키, 역행 `aria-live`, 빈 다섯 칸 수동
-복원, 키보드로 다섯 카드 시간순 배치, 컬러 순행 복원, 모바일 세로 계속하기,
-콘솔·페이지·요청 오류 0을 확인했다. 서비스워커의 소스와 활성 캐시가 모두
-`fabletest2-memento-preview-3742020e`였고 네트워크를 끈 뒤에도 재진입했다.
-실행 로그와 직접 확인한 캡처는 `.omo/evidence/memento-gameplay-live/`에 있다.
+실제 Chromium에서 1280×800, 390×844, 844×390을 각각 열어 HTTP 200과
+`마음의 문` 제목, 회색 D-1 과거, 같은 장소의 컬러 현재, D-10→D-1 수동 복원,
+컬러 실제 시간순, `home` 엔딩, 모든 여정을 의존형으로 바꾼 실험실의 `dawn`
+미리보기와 저장 불변을 확인했다. `index.html`, `src/game.js`, `src/data.js`,
+`src/memento.js`, manifest, SW, 아이콘은 모두 HTTP 200이었다. 배포된 `src/game.js`
+SHA-256은 병합 트리와 동일한
+`03a84ab8a0d4938048d840e5d5a1a839ed357ae6472b19c9f1da0e993bffbb29`였다.
+콘솔·페이지·요청 오류는 0개였고 현재 캐시
+`fabletest2-memento-preview-162c2b16`만 남았으며 네트워크를 끈 뒤 세 뷰포트 모두
+재실행됐다. 실행 기록과 18개 직접 확인 캡처는
+`.omo/evidence/consequence-finale-release/1784ca958e883e5d60e03b23fec041195e479aeb/`에 있다.
 
 ## 20. 원본 저장소가 변경되지 않았다는 검증
 
@@ -208,8 +219,8 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
 - 원본 remote에는 기능 브랜치·기준 태그·보관 브랜치를 쓰지 않았다.
 - 로컬 upstream push URL은 `DISABLED`다.
 - 원본 Pages·PR·설정은 이 기능 브랜치에서 변경하지 않았다.
-- 최종 배포 뒤 다시 확인한 원본 기본 브랜치는 `main`, 열린 PR은 0개, 기능
-  브랜치·기준 태그·보관 브랜치는 원본에 없었다.
+- 최종 배포 뒤 다시 확인한 원본 기본 브랜치는 `main`, 열린 PR은 0개이며,
+  원본에는 미리보기 기능 브랜치·기준 태그·보관 브랜치가 없다.
 - 원본의 최근 성공 CI와 Pages는 모두 원본 SHA `79bdc2a`에 묶여 있으며,
   원본 Pages source는 기존 `main`/GitHub Actions 그대로다.
 
@@ -223,32 +234,29 @@ upstream은 fetch 전용이며, 쓰기 대상은 미리보기 저장소의 `orig
   버전 갱신이 필요하다.
 - 레거시 태그 release 워크플로는 Pages 워크플로보다 좁아 Memento·SW·브라우저·
   playtest 전체를 실행하지 않는다. 다음 stable 태그 발행 전 정렬해야 한다.
-- `tools/mementotest.js`는 476줄의 혼합 책임 테스트 파일이므로 다음 기능 확장 전
-  저장·진행·렌더 계약별 분할을 권장한다.
+- 사용자가 직접 가져오는 비정상적으로 큰 JSON에는 바이트 상한이 없어 로컬
+  메모리 사용이 커질 수 있다. 서버나 외부 공격면은 아니지만 다음 안정화 때
+  크기 제한을 추가하는 편이 안전하다.
+- 대형 classic-script 모듈과 내부 테스트 훅은 장기 유지보수 부채다.
 
 ## 22. git status 및 커밋 목록
 
-구현 브랜치: `feat/memento-gameplay-loop`
-보고서 확정 브랜치: `docs/memento-gameplay-final-report`
+구현 브랜치: `feat/consequence-pairs-campaign`
+보고서 확정 브랜치: `docs/consequence-campaign-release-report`
 
 기능 merge 뒤 구현 브랜치와 보고서 작성 직전 작업 트리는 깨끗했다. 브라우저가
 생성한 추적 PNG는 원래 내용으로 복원했고 ZIP은 작업 트리 밖으로 옮겼다.
 
 ```text
-bca918e Merge pull request #7 from jh4334/feat/memento-gameplay-loop
-30653bb fix(ui): bind memento panels to semantic tokens
-be4d1c3 docs: record final visual hardening
-8f49338 fix(ui): keep memento labels readable
-ce27987 docs: update memento release evidence
-cc67be0 fix(memento): close release review gaps
-402b7b9 merge: sync preview main
-6a6ae2d docs: record interactive memento verification
-2571c86 test(memento): cover interactive timeline journey
-6bbe964 fix(a11y): announce preview storage failures
-e959d7f feat(memento): make timeline restoration playable
-16bcd63 feat(storage): isolate memento preview state
-a3d371d refactor(memento): extract pure timeline module
-ef615b5 docs(memento): define interactive timeline loop
+1784ca9 Merge pull request #9 from jh4334/feat/consequence-pairs-campaign
+bd43553 docs(save): describe v11 slot defaults
+8b02124 docs(release): correct v11 rollback guidance
+3cb52cb fix(copy): align finale touch labels
+381757f fix(ui): complete finale mobile contracts
+ce29d60 fix(ui): close finale visual accessibility gaps
+b25f4c5 docs(release): record final local campaign gates
+c9c785b feat(campaign): complete consequence timeline finale
+2c7822b docs(campaign): record complete consequence journey
 ```
 
 본 보고서는 기능 코드를 바꾸지 않는 별도 문서 PR로 게시한다. 게시 전
@@ -337,5 +345,18 @@ V11 로더는 알려진 pair ID만 중복 없이 보존하고 오답 횟수·불
 - 현재 미리보기 캐시는 `npm run bump`가 계산한
   `fabletest2-memento-preview-162c2b16`이며 현재 자산 해시와 일치한다.
 
-최종 CI·PR·merge SHA·Pages URL과 전체 검증 결과는 이번 후속 기능을 미리보기
-main에 병합한 뒤 이 절에 이어 기록한다.
+### 후속 출시 결과
+
+- 최종 기능 SHA: `bd43553c47a09f83c4888fa545b5c2a18020c0fe`
+- PR #9: `https://github.com/jh4334/fabletest2-memento-preview/pull/9`
+- 기능 merge SHA: `1784ca958e883e5d60e03b23fec041195e479aeb`
+- main CI: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/33318287682` 성공
+- Pages verify·deploy: `https://github.com/jh4334/fabletest2-memento-preview/actions/runs/33318287643` 성공
+- 최종 URL: `https://jh4334.github.io/fabletest2-memento-preview/?v=1784ca958e883e5d60e03b23fec041195e479aeb`
+- 실제 배포 검증: 7개 핵심 자산 HTTP 200, 병합 트리와 `src/game.js` 해시 일치,
+  데스크톱·모바일 세로·가로 Canvas 정상, 회색 과거→컬러 현재→수동 복원→기존
+  엔딩→무저장 실험실 정상, 콘솔·페이지·요청 오류 0, 현재 SW 캐시만 존재,
+  오프라인 재실행 성공.
+- 원본 재검증: `main`은 계속 `79bdc2af7cac4e6e01758ae825bce9c96262c4a1`,
+  열린 PR 0, 최근 원본 CI·Pages는 각각 기존 run `32089167132`, `32089167151`,
+  Pages source는 기존 `main`/GitHub Actions다.
