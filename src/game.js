@@ -74,6 +74,20 @@
     type: { header: 18, meta: 12, label: 14, title: 18, body: 16, helper: 13 },
   };
 
+  const PROLOGUE_TUTORIAL_UI = {
+    color: {
+      page: CANVAS_COLOR.surfaceSecondary,
+      border: CANVAS_COLOR.accentWarm,
+      title: CANVAS_COLOR.accentWarm,
+      body: CANVAS_COLOR.textSecondary,
+    },
+    layout: {
+      x: 24, y: 154, minWidth: 132, maxWidth: 160, height: 42,
+      arenaGap: 16, inset: 12, titleBaseline: 22, bodyBaseline: 38, borderWidth: 1,
+    },
+    type: { title: 13, body: 11 },
+  };
+
   const TIMELINE_VISUALS = {
     present: {
       id: 'present', grayscale: false, direction: 'forward', label: '현재 순행',
@@ -13838,9 +13852,12 @@
   }
 
   function prologueTutorialPanelLayout(box) {
-    const x = 24;
-    const w = Math.max(132, Math.min(160, box.x - x - 16));
-    return { x, y: 154, w, h: 42, textX: x + 12, textWidth: w - 24 };
+    const layout = PROLOGUE_TUTORIAL_UI.layout;
+    const w = Math.max(layout.minWidth, Math.min(layout.maxWidth, box.x - layout.x - layout.arenaGap));
+    return {
+      x: layout.x, y: layout.y, w, h: layout.height,
+      textX: layout.x + layout.inset, textWidth: w - layout.inset * 2,
+    };
   }
 
   function drawDarkArenaVignette(b) {
@@ -14097,18 +14114,21 @@
 
     if (b.prologueTutorial) {
       const panel = prologueTutorialPanelLayout(box);
+      const tutorialUi = PROLOGUE_TUTORIAL_UI;
       ctx.textAlign = 'left';
-      ctx.fillStyle = 'rgba(255,214,68,0.12)';
+      ctx.fillStyle = tutorialUi.color.page;
       ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
-      ctx.strokeStyle = 'rgba(255,214,68,0.45)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = tutorialUi.color.border;
+      ctx.lineWidth = tutorialUi.layout.borderWidth;
       ctx.strokeRect(panel.x + 0.5, panel.y + 0.5, panel.w, panel.h);
-      ctx.fillStyle = '#ffd644';
-      ctx.font = fs(13, true);
-      ctx.fillText(ellipsizeToWidth('프롤로그 · 따라의 마음', panel.textWidth), panel.textX, panel.y + 22);
-      ctx.fillStyle = '#bbb';
-      ctx.font = fs(11);
-      ctx.fillText(ellipsizeToWidth('듣고 · 피하고 · 다가가기', panel.textWidth), panel.textX, panel.y + 38);
+      ctx.fillStyle = tutorialUi.color.title;
+      ctx.font = fs(tutorialUi.type.title, true);
+      ctx.fillText(ellipsizeToWidth('프롤로그 · 따라의 마음', panel.textWidth),
+        panel.textX, panel.y + tutorialUi.layout.titleBaseline);
+      ctx.fillStyle = tutorialUi.color.body;
+      ctx.font = fs(tutorialUi.type.body);
+      ctx.fillText(ellipsizeToWidth('듣고 · 피하고 · 다가가기', panel.textWidth),
+        panel.textX, panel.y + tutorialUi.layout.bodyBaseline);
     }
 
     // 상자 크기 전환 애니메이션 (M-3) — 판정 상자(box)는 즉시 바뀌고
