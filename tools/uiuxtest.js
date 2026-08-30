@@ -245,7 +245,7 @@ function withinViewport(rect, snapshot) {
         const entries = await page.evaluate(async ({ mode, title }) => {
           window.__fillTextLog = [];
           window.__game.mode = mode;
-          await new Promise((resolve) => setTimeout(resolve, 80));
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           return window.__fillTextLog.filter((entry) => entry.y < 70 &&
             (entry.text === title || entry.text.length <= 2));
         }, state);

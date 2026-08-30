@@ -88,6 +88,15 @@
     type: { title: 13, body: 11 },
   };
 
+  const ADMIN_HEADER_UI = {
+    layout: {
+      insetX: 24,
+      hallOfFame: { titleX: 54, baseline: 36, helperBaseline: 56 },
+      report: { titleX: 52, baseline: 38, helperBaseline: 58 },
+    },
+    type: { mark: 20, title: 22, helper: 12 },
+  };
+
   const TIMELINE_VISUALS = {
     present: {
       id: 'present', grayscale: false, direction: 'forward', label: '현재 순행',
@@ -10505,18 +10514,20 @@
     if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeHof();
   }
   function drawHof() {
+    const header = ADMIN_HEADER_UI;
+    const heading = header.layout.hallOfFame;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = themeAccent();
-    ctx.font = fs(20, true);
-    ctx.fillText('☆', 24, 36);
+    ctx.font = fs(header.type.mark, true);
+    ctx.fillText('☆', header.layout.insetX, heading.baseline);
     ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('명예의 전당', 54, 36);
+    ctx.font = fs(header.type.title, true);
+    ctx.fillText('명예의 전당', heading.titleX, heading.baseline);
     ctx.fillStyle = '#888';
-    ctx.font = fs(12);
-    ctx.fillText('이 기기에서 함께한 학생들의 최고 기록이에요. ↑↓로 부문 선택.', 24, 56);
+    ctx.font = fs(header.type.helper);
+    ctx.fillText('이 기기에서 함께한 학생들의 최고 기록이에요. ↑↓로 부문 선택.', header.layout.insetX, heading.helperBaseline);
 
     // 부문 목록(왼쪽) + 순위(오른쪽)
     const listX = 24, listY = 84, rowH = 60;
@@ -11789,20 +11800,22 @@
   }
   function drawReport() {
     const r = game.report;
+    const header = ADMIN_HEADER_UI;
+    const heading = header.layout.report;
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
-    ctx.fillStyle = themeAccent(); ctx.font = fs(22, true);
-    ctx.fillText('+', 24, 38);
-    ctx.fillStyle = '#fff'; ctx.font = fs(22, true);
-    ctx.fillText('학생 진단 리포트', 52, 38);
+    ctx.fillStyle = themeAccent(); ctx.font = fs(header.type.title, true);
+    ctx.fillText('+', header.layout.insetX, heading.baseline);
+    ctx.fillStyle = '#fff'; ctx.font = fs(header.type.title, true);
+    ctx.fillText('학생 진단 리포트', heading.titleX, heading.baseline);
     const isClass = r.slot >= SLOT_COUNT;
-    ctx.fillStyle = '#888'; ctx.font = fs(12);
-    ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, 24, 58);
+    ctx.fillStyle = '#888'; ctx.font = fs(header.type.helper);
+    ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, header.layout.insetX, heading.helperBaseline);
 
     const view = reportPageView(r.slot, r.page);
     r.page = view.current;
     ctx.textAlign = 'right'; ctx.fillStyle = '#888'; ctx.font = fs(12);
-    ctx.fillText(`페이지 ${view.current + 1} / ${view.pages}`, LW - 24, 58);
+    ctx.fillText(`페이지 ${view.current + 1} / ${view.pages}`, LW - header.layout.insetX, heading.helperBaseline);
     ctx.textAlign = 'left';
     let y = 92;
     for (const row of view.rows) {
