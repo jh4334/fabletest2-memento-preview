@@ -1737,7 +1737,8 @@
     cancel.textContent = '메뉴';
   }
 
-  if ('ontouchstart' in window) {
+  if ('ontouchstart' in window ||
+      (typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0)) {
     isTouchDevice = true;
     document.body.classList.add('touch');
     const touchIds = new Map();
@@ -10493,9 +10494,12 @@
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
+    ctx.fillStyle = themeAccent();
+    ctx.font = fs(20, true);
+    ctx.fillText('☆', 24, 36);
     ctx.fillStyle = '#fff';
     ctx.font = fs(22, true);
-    ctx.fillText('🏆 명예의 전당', 24, 36);
+    ctx.fillText('명예의 전당', 54, 36);
     ctx.fillStyle = '#888';
     ctx.font = fs(12);
     ctx.fillText('이 기기에서 함께한 학생들의 최고 기록이에요. ↑↓로 부문 선택.', 24, 56);
@@ -11773,8 +11777,10 @@
     const r = game.report;
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
+    ctx.fillStyle = themeAccent(); ctx.font = fs(22, true);
+    ctx.fillText('+', 24, 38);
     ctx.fillStyle = '#fff'; ctx.font = fs(22, true);
-    ctx.fillText('🩺 학생 진단 리포트', 24, 38);
+    ctx.fillText('학생 진단 리포트', 52, 38);
     const isClass = r.slot >= SLOT_COUNT;
     ctx.fillStyle = '#888'; ctx.font = fs(12);
     ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, 24, 58);
@@ -15312,6 +15318,7 @@
       let bgmBeforeRotate = null;
       const onRotate = (mq) => {
         try {
+          releaseAllInputs();
           if (mq.matches) {
             if (Sound.songName) { bgmBeforeRotate = Sound.songName; Sound.stopSong(); }
             Speech.stop();
