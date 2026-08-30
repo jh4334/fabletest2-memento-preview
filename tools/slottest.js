@@ -500,6 +500,60 @@ console.log('[V11-pairs] 후속 과거·현재 쌍 체크포인트 왕복·이�
   storage.delete('fabletest2-memento-preview-slot-2');
 }
 
+console.log('[V11-finale] 파이널 초안·canonical 결과 정규화와 왕복');
+{
+  const T = windowObj.__test;
+  const key = 'fabletest2-memento-preview-slot-2';
+  T.startNewGameForRoute(2, '파이널아이', 'consequence-pairs');
+  const malformed = JSON.parse(storage.get(key));
+  Object.assign(malformed.flags.consequenceCampaign, {
+    finalTimelineDraft: ['d10_judgment', 'unknown', 'd10_judgment', 'd7_misinformation'],
+    finalTimelineWrong: -3.7,
+    timelineRestored: 1,
+    finalChoiceId: 'unknown_choice',
+    canonicalEndingId: 'unknown_ending',
+    canonicalEndingBasis: 'not-an-object',
+    timelineLabUnlocked: 1,
+    futureFinaleField: { keep: true },
+  });
+  storage.set(key, JSON.stringify(malformed));
+  const normalized = T.loadSlot(2);
+  check('V11 파이널 초안은 고정 pair ID만 중복 없이 순서를 보존',
+    normalized.flags.consequenceCampaign.finalTimelineDraft.join(',') ===
+      'd10_judgment,d7_misinformation');
+  check('V11 파이널 횟수·불리언은 안전하게 정규화',
+    normalized.flags.consequenceCampaign.finalTimelineWrong === 0 &&
+    normalized.flags.consequenceCampaign.timelineRestored === true &&
+    normalized.flags.consequenceCampaign.timelineLabUnlocked === true);
+  check('V11 알 수 없는 파이널 선택·엔딩·basis는 null로 정규화',
+    normalized.flags.consequenceCampaign.finalChoiceId === null &&
+    normalized.flags.consequenceCampaign.canonicalEndingId === null &&
+    normalized.flags.consequenceCampaign.canonicalEndingBasis === null);
+  check('V11 파이널 미래 필드는 보존', normalized.flags.consequenceCampaign.futureFinaleField.keep === true);
+
+  Object.assign(normalized.flags.consequenceCampaign, {
+    finalTimelineDraft: ['d10_judgment', 'd7_misinformation'],
+    finalTimelineWrong: 2,
+    timelineRestored: true,
+    finalChoiceId: 'delegate_all',
+    canonicalEndingId: 'dawn',
+    canonicalEndingBasis: { ruleVersion: 'ending-rule-v1', frozen: true },
+    timelineLabUnlocked: true,
+  });
+  T.writeSlot(2, normalized);
+  const roundtrip = T.loadSlot(2);
+  check('V11 유효한 파이널 초안·선택·canonical basis 왕복 보존',
+    roundtrip.flags.consequenceCampaign.finalTimelineDraft.join(',') === 'd10_judgment,d7_misinformation' &&
+    roundtrip.flags.consequenceCampaign.finalTimelineWrong === 2 &&
+    roundtrip.flags.consequenceCampaign.timelineRestored === true &&
+    roundtrip.flags.consequenceCampaign.finalChoiceId === 'delegate_all' &&
+    roundtrip.flags.consequenceCampaign.canonicalEndingId === 'dawn' &&
+    roundtrip.flags.consequenceCampaign.canonicalEndingBasis.ruleVersion === 'ending-rule-v1' &&
+    roundtrip.flags.consequenceCampaign.canonicalEndingBasis.frozen === true &&
+    roundtrip.flags.consequenceCampaign.timelineLabUnlocked === true);
+  storage.delete(key);
+}
+
 // ── U-5 NG+ 타이틀 흐름 — 클리어 슬롯에서 두 번째 모험 선택 ──
 console.log('[U-5] NG+ 타이틀 흐름 — 클리어 슬롯 선택 → 이어보기 / 처음부터(2회차)');
 {

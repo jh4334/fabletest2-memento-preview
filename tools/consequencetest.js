@@ -316,4 +316,120 @@ check('past_rooms 체크포인트가 V11 슬롯에 즉시 저장', saved.v === 1
   saved.flags.copyrightSlice.checkpoint === 'past_rooms' &&
   saved.flags.copyrightSlice.pastChoices.visual === 'visual_manual');
 
+console.log('[C-9] 다섯 쌍 뒤 수동 시간선 결합과 누적 엔딩');
+for (const name of [
+  'startConsequenceTimeline', 'placeConsequenceTimelineCard', 'undoConsequenceTimelineCard',
+  'submitConsequenceTimeline', 'advanceConsequenceRestoration', 'chooseConsequenceEnding',
+  'openTimelineLab', 'setTimelineLabJourney', 'setTimelineLabFinalChoice',
+  'previewTimelineLabEnding', 'closeTimelineLab',
+]) check(name + ' 훅이 존재', typeof T[name] === 'function');
+
+T.startNewGameForRoute(2, '잇는이', 'consequence-pairs');
+env.advanceDialog();
+const fullPairFixtures = [
+  ['d1_copyright', 'copyrightSlice', { visual: 'visual_manual', audio: 'audio_reply', text: 'text_new', ledger: 'complete' }],
+  ['d3_consent', 'consentSlice', { likeness: 'likeness_manual', voice: 'voice_manual', scene: 'scene_manual', consent: 'consent_complete' }],
+  ['d5_recommendation', 'recommendationSlice', { echo: 'echo_manual', sample: 'sample_manual', route: 'route_manual', recommendationNote: 'recommendation_note_complete' }],
+  ['d7_misinformation', 'misinformationSlice', { tip: 'tip_manual', context: 'context_manual', bulletin: 'bulletin_manual', audit: 'audit_complete' }],
+  ['d10_judgment', 'judgmentSlice', { call: 'call_manual', safety: 'safety_manual', comfort: 'comfort_manual', authority: 'authority_complete' }],
+];
+for (const [pairId, stateKey, pastChoices] of fullPairFixtures) {
+  Object.assign(g.flags[stateKey], {
+    pastChoices, phase: 'result', checkpoint: 'complete', stageRestored: true, complete: true,
+  });
+  g.flags.consequenceCampaign.completedPairIds.push(pairId);
+}
+g.flags.consequenceCampaign.activePairId = null;
+g.map = 'timelinehub'; g.mode = 'world';
+check('다섯 쌍 완료 뒤 파이널 시간선에 진입', T.startConsequenceTimeline() === true &&
+  g.mode === 'consequenceorder' && g.flags.consequenceCampaign.timelineRestored === false);
+const wrongOrder = ['d1_copyright', 'd3_consent', 'd5_recommendation', 'd7_misinformation', 'd10_judgment'];
+for (const pairId of wrongOrder) check('오답 카드 배치 ' + pairId, T.placeConsequenceTimelineCard(pairId) === true);
+check('오답은 배열을 보존하고 횟수만 올림', T.submitConsequenceTimeline() === false &&
+  g.flags.consequenceCampaign.finalTimelineWrong === 1 &&
+  JSON.stringify(g.flags.consequenceCampaign.finalTimelineDraft) === JSON.stringify(wrongOrder) &&
+  g.flags.consequenceCampaign.timelineRestored === false);
+for (let i = 0; i < wrongOrder.length; i++) T.undoConsequenceTimelineCard();
+const chronologicalOrder = ['d10_judgment', 'd7_misinformation', 'd5_recommendation', 'd3_consent', 'd1_copyright'];
+for (const pairId of chronologicalOrder) T.placeConsequenceTimelineCard(pairId);
+check('정답 제출만 시간선을 원자 결합', T.submitConsequenceTimeline() === true &&
+  g.flags.consequenceCampaign.timelineRestored === true &&
+  g.flags.consequenceCampaign.finalTimelineDraft.length === 0 && g.mode === 'consequencerestore');
+check('복원 장면 건너뛰기는 네 파이널 선택으로 이동', T.advanceConsequenceRestoration(true) === true &&
+  g.mode === 'consequencechoice');
+check('누적 복원 여정은 함께 복원 선택으로 기존 home 장면에 도달',
+  T.chooseConsequenceEnding('restore_together') === true && g.mode === 'ending' &&
+  g.flags.endingId === 'home' && g.flags.trueEnding === true &&
+  g.flags.consequenceCampaign.canonicalEndingId === 'home' &&
+  g.flags.consequenceCampaign.canonicalEndingBasis.ruleVersion === 'ending-rule-v1' &&
+  g.flags.consequenceCampaign.timelineLabUnlocked === true);
+
+console.log('[C-10] 불완전·잘못된 입력 거부와 canonical freeze');
+const frozenCanonical = JSON.stringify({
+  id: g.flags.consequenceCampaign.canonicalEndingId,
+  basis: g.flags.consequenceCampaign.canonicalEndingBasis,
+});
+g.flags.consentSlice.complete = false;
+check('첫 canonical 뒤 다른 선택은 다시 계산하지 않음', T.chooseConsequenceEnding('reset_again') === false &&
+  frozenCanonical === JSON.stringify({
+    id: g.flags.consequenceCampaign.canonicalEndingId,
+    basis: g.flags.consequenceCampaign.canonicalEndingBasis,
+  }));
+g.flags.consequenceCampaign.canonicalEndingId = null;
+g.flags.consequenceCampaign.canonicalEndingBasis = null;
+g.flags.endingId = null; g.flags.trueEnding = false;
+check('pair state 하나가 불완전하면 완료 ID가 있어도 엔딩 계산 거부',
+  T.chooseConsequenceEnding('restore_together') === false &&
+  g.flags.consequenceCampaign.canonicalEndingId === null && g.flags.endingId === null);
+g.flags.consentSlice.complete = true;
+check('고정 네 ID 밖 선택은 엔딩 계산 거부', T.chooseConsequenceEnding('unknown_choice') === false &&
+  g.flags.consequenceCampaign.canonicalEndingId === null && g.flags.endingId === null);
+
+console.log('[C-11] 시간선 실험실은 원본 슬롯을 한 바이트도 쓰지 않음');
+check('유효한 canonical을 다시 한 번 만들 수 있음', T.chooseConsequenceEnding('restore_together') === true &&
+  g.flags.consequenceCampaign.canonicalEndingId === 'home');
+g.mode = 'world'; g.map = 'timelinehub';
+const storageBeforeLab = JSON.stringify(Array.from(env.storage.entries()).sort(([a], [b]) => a.localeCompare(b)));
+const canonicalBeforeLab = JSON.stringify({
+  id: g.flags.consequenceCampaign.canonicalEndingId,
+  basis: g.flags.consequenceCampaign.canonicalEndingBasis,
+  pairs: fullPairFixtures.map(([, stateKey]) => g.flags[stateKey]),
+  map: g.map, x: g.player.x, y: g.player.y,
+});
+check('첫 엔딩 뒤 시간선 실험실 진입', T.openTimelineLab() === true && g.mode === 'timelinelab' &&
+  /첫 시간선은 바뀌지 않습니다/.test(T.srLiveText()));
+check('실험실에서 D-5 여정을 의존으로 변경', T.setTimelineLabJourney('d5_recommendation', 'depend') === true);
+check('실험실에서 파이널 선택을 AI 위임으로 변경', T.setTimelineLabFinalChoice('delegate_all') === true);
+const labResult = T.previewTimelineLabEnding();
+check('실험 결과는 기존 네 ID 하나를 보여 줌', labResult && ['home', 'silent', 'dawn', 'farewell'].includes(labResult.endingId));
+check('실험 중에도 localStorage는 바뀌지 않음', storageBeforeLab ===
+  JSON.stringify(Array.from(env.storage.entries()).sort(([a], [b]) => a.localeCompare(b))));
+check('실험실 나가기는 허브로 돌아감', T.closeTimelineLab() === true && g.mode === 'world' && g.map === 'timelinehub');
+check('실험 뒤 슬롯·canonical·pair·위치가 그대로', storageBeforeLab ===
+  JSON.stringify(Array.from(env.storage.entries()).sort(([a], [b]) => a.localeCompare(b))) &&
+  canonicalBeforeLab === JSON.stringify({
+    id: g.flags.consequenceCampaign.canonicalEndingId,
+    basis: g.flags.consequenceCampaign.canonicalEndingBasis,
+    pairs: fullPairFixtures.map(([, stateKey]) => g.flags[stateKey]),
+    map: g.map, x: g.player.x, y: g.player.y,
+  }));
+
+console.log('[C-12] 허브의 실제 조사 동선으로 파이널과 실험실 진입');
+const finalCampaignSnapshot = JSON.parse(JSON.stringify(g.flags.consequenceCampaign));
+Object.assign(g.flags.consequenceCampaign, {
+  timelineRestored: false, finalTimelineDraft: [], canonicalEndingId: null,
+  canonicalEndingBasis: null, finalChoiceId: null, timelineLabUnlocked: false,
+});
+g.mode = 'world'; g.map = 'timelinehub'; g.dialog = null;
+env.setPlayer(10, 14, 'up');
+env.tap('z');
+check('다섯 시간을 잇는 문 앞 실제 Z 조사가 수동 시간선을 연다', g.mode === 'consequenceorder');
+g.consequenceTimeline = null;
+g.flags.consequenceCampaign = finalCampaignSnapshot;
+g.mode = 'world'; g.map = 'timelinehub'; g.dialog = null;
+env.setPlayer(14, 14, 'up');
+env.tap('z');
+check('첫 결말 뒤 시간선 실험실 앞 실제 Z 조사가 무저장 실험을 연다', g.mode === 'timelinelab');
+T.closeTimelineLab();
+
 console.log(`\n✔ consequence runtime ${passed} assertions passed`);

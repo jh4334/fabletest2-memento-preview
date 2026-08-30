@@ -5693,6 +5693,20 @@ const MAP_PROPS = {
       text: '지금은 D-1의 사실 카드만 놓여 있다.\n다음 선택은 빈칸을 숨기지 않는 데서 시작된다.',
       fictional: true,
     },
+    {
+      id: 'timelinehub_final',
+      x: 10, y: 13, kind: 'timelinehub_final',
+      label: '다섯 시간을 잇는 문',
+      text: 'D-10부터 D-1까지 다섯 과거와 현재를 모두 지나야 열린다.',
+      fictional: true,
+    },
+    {
+      id: 'timelinehub_lab',
+      x: 14, y: 13, kind: 'timelinehub_lab',
+      label: '시간선 실험실',
+      text: '첫 결말을 본 뒤, 저장하지 않는 가정을 시험할 수 있다.',
+      fictional: true,
+    },
   ],
   freestreet: [
     { x: 6, y: 6, kind: 'district', label: '접수처 불빛',

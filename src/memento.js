@@ -556,3 +556,29 @@ function computeConsequenceEnding(journeys, finalChoiceId) {
     },
   };
 }
+
+function isConsequenceChronologicalOrder(pairIds) {
+  return Array.isArray(pairIds) && pairIds.length === CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER.length &&
+    pairIds.every((pairId, index) => pairId === CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER[index]);
+}
+
+function consequenceCampaignJourneys(flags) {
+  if (!flags || typeof flags !== 'object') return null;
+  const journeys = [];
+  for (const config of CONSEQUENCE_PAIR_CONFIGS) {
+    const pairState = flags[config.stateKey];
+    if (!pairState || pairState.complete !== true || pairState.checkpoint !== 'complete') return null;
+    const journey = classifyPairJourney(config, pairState.pastChoices);
+    if (!journey) return null;
+    journeys.push(Object.assign({ pairId: config.id }, journey));
+  }
+  return journeys;
+}
+
+function prepareConsequenceFinalization(flags, finalChoiceId) {
+  const campaign = flags && flags.consequenceCampaign;
+  if (!campaign || campaign.timelineRestored !== true || campaign.canonicalEndingId !== null ||
+      !Object.prototype.hasOwnProperty.call(CONSEQUENCE_FINAL_ENDINGS, finalChoiceId)) return null;
+  const journeys = consequenceCampaignJourneys(flags);
+  return journeys ? computeConsequenceEnding(journeys, finalChoiceId) : null;
+}
