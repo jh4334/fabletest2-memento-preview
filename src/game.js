@@ -74,6 +74,29 @@
     type: { header: 18, meta: 12, label: 14, title: 18, body: 16, helper: 13 },
   };
 
+  const PROLOGUE_TUTORIAL_UI = {
+    color: {
+      page: CANVAS_COLOR.surfaceSecondary,
+      border: CANVAS_COLOR.accentWarm,
+      title: CANVAS_COLOR.accentWarm,
+      body: CANVAS_COLOR.textSecondary,
+    },
+    layout: {
+      x: 24, y: 154, minWidth: 132, maxWidth: 160, height: 42,
+      arenaGap: 16, inset: 12, titleBaseline: 22, bodyBaseline: 38, borderWidth: 1,
+    },
+    type: { title: 13, body: 11 },
+  };
+
+  const ADMIN_HEADER_UI = {
+    layout: {
+      insetX: 24,
+      hallOfFame: { titleX: 54, baseline: 36, helperBaseline: 56 },
+      report: { titleX: 52, baseline: 38, helperBaseline: 58 },
+    },
+    type: { mark: 20, title: 22, helper: 12 },
+  };
+
   const TIMELINE_VISUALS = {
     present: {
       id: 'present', grayscale: false, direction: 'forward', label: '현재 순행',
@@ -1737,7 +1760,8 @@
     cancel.textContent = '메뉴';
   }
 
-  if ('ontouchstart' in window) {
+  if ('ontouchstart' in window ||
+      (typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0)) {
     isTouchDevice = true;
     document.body.classList.add('touch');
     const touchIds = new Map();
@@ -10490,15 +10514,20 @@
     if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeHof();
   }
   function drawHof() {
+    const header = ADMIN_HEADER_UI;
+    const heading = header.layout.hallOfFame;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
+    ctx.fillStyle = themeAccent();
+    ctx.font = fs(header.type.mark, true);
+    ctx.fillText('☆', header.layout.insetX, heading.baseline);
     ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('🏆 명예의 전당', 24, 36);
+    ctx.font = fs(header.type.title, true);
+    ctx.fillText('명예의 전당', heading.titleX, heading.baseline);
     ctx.fillStyle = '#888';
-    ctx.font = fs(12);
-    ctx.fillText('이 기기에서 함께한 학생들의 최고 기록이에요. ↑↓로 부문 선택.', 24, 56);
+    ctx.font = fs(header.type.helper);
+    ctx.fillText('이 기기에서 함께한 학생들의 최고 기록이에요. ↑↓로 부문 선택.', header.layout.insetX, heading.helperBaseline);
 
     // 부문 목록(왼쪽) + 순위(오른쪽)
     const listX = 24, listY = 84, rowH = 60;
@@ -11771,18 +11800,22 @@
   }
   function drawReport() {
     const r = game.report;
+    const header = ADMIN_HEADER_UI;
+    const heading = header.layout.report;
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff'; ctx.font = fs(22, true);
-    ctx.fillText('🩺 학생 진단 리포트', 24, 38);
+    ctx.fillStyle = themeAccent(); ctx.font = fs(header.type.title, true);
+    ctx.fillText('+', header.layout.insetX, heading.baseline);
+    ctx.fillStyle = '#fff'; ctx.font = fs(header.type.title, true);
+    ctx.fillText('학생 진단 리포트', heading.titleX, heading.baseline);
     const isClass = r.slot >= SLOT_COUNT;
-    ctx.fillStyle = '#888'; ctx.font = fs(12);
-    ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, 24, 58);
+    ctx.fillStyle = '#888'; ctx.font = fs(header.type.helper);
+    ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, header.layout.insetX, heading.helperBaseline);
 
     const view = reportPageView(r.slot, r.page);
     r.page = view.current;
     ctx.textAlign = 'right'; ctx.fillStyle = '#888'; ctx.font = fs(12);
-    ctx.fillText(`페이지 ${view.current + 1} / ${view.pages}`, LW - 24, 58);
+    ctx.fillText(`페이지 ${view.current + 1} / ${view.pages}`, LW - header.layout.insetX, heading.helperBaseline);
     ctx.textAlign = 'left';
     let y = 92;
     for (const row of view.rows) {
@@ -13831,6 +13864,15 @@
     ctx.textAlign = 'left';
   }
 
+  function prologueTutorialPanelLayout(box) {
+    const layout = PROLOGUE_TUTORIAL_UI.layout;
+    const w = Math.max(layout.minWidth, Math.min(layout.maxWidth, box.x - layout.x - layout.arenaGap));
+    return {
+      x: layout.x, y: layout.y, w, h: layout.height,
+      textX: layout.x + layout.inset, textWidth: w - layout.inset * 2,
+    };
+  }
+
   function drawDarkArenaVignette(b) {
     const soul = b.arena.soul;
     if (game.reduceFx) {
@@ -14084,18 +14126,22 @@
     drawArenaGuide(box, b.attack ? b.attack.taunt : null, guide);
 
     if (b.prologueTutorial) {
+      const panel = prologueTutorialPanelLayout(box);
+      const tutorialUi = PROLOGUE_TUTORIAL_UI;
       ctx.textAlign = 'left';
-      ctx.fillStyle = 'rgba(255,214,68,0.12)';
-      ctx.fillRect(24, 154, 210, 42);
-      ctx.strokeStyle = 'rgba(255,214,68,0.45)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(24.5, 154.5, 210, 42);
-      ctx.fillStyle = '#ffd644';
-      ctx.font = fs(13, true);
-      ctx.fillText('프롤로그 · 따라의 마음 안쪽', 36, 176);
-      ctx.fillStyle = '#bbb';
-      ctx.font = fs(11);
-      ctx.fillText('퀴즈가 아니라, 듣고 피하고 다가가기', 36, 192);
+      ctx.fillStyle = tutorialUi.color.page;
+      ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
+      ctx.strokeStyle = tutorialUi.color.border;
+      ctx.lineWidth = tutorialUi.layout.borderWidth;
+      ctx.strokeRect(panel.x + 0.5, panel.y + 0.5, panel.w, panel.h);
+      ctx.fillStyle = tutorialUi.color.title;
+      ctx.font = fs(tutorialUi.type.title, true);
+      ctx.fillText(ellipsizeToWidth('프롤로그 · 따라의 마음', panel.textWidth),
+        panel.textX, panel.y + tutorialUi.layout.titleBaseline);
+      ctx.fillStyle = tutorialUi.color.body;
+      ctx.font = fs(tutorialUi.type.body);
+      ctx.fillText(ellipsizeToWidth('듣고 · 피하고 · 다가가기', panel.textWidth),
+        panel.textX, panel.y + tutorialUi.layout.bodyBaseline);
     }
 
     // 상자 크기 전환 애니메이션 (M-3) — 판정 상자(box)는 즉시 바뀌고
@@ -15312,6 +15358,7 @@
       let bgmBeforeRotate = null;
       const onRotate = (mq) => {
         try {
+          releaseAllInputs();
           if (mq.matches) {
             if (Sound.songName) { bgmBeforeRotate = Sound.songName; Sound.stopSong(); }
             Speech.stop();
@@ -15381,6 +15428,7 @@
     chapter4HubVisualProfile, chapter4HubVisibleMarks, chapter5HubVisualProfile, chapter5HubVisibleMarks,
     drawWorld,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
+    prologueTutorialPanelLayout,
     heldKeys: () => Array.from(held), // E2E 멀티터치 검증용 — 현재 눌린 논리 키
     srLiveText: () => (srLiveEl ? srLiveEl.textContent : null), // aria-live 미러 검증용
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,

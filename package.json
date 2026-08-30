@@ -10,6 +10,7 @@
     "test": "node tools/smoketest.js && node tools/slottest.js && node tools/mementotest.js && node tools/consequencetest.js && node tools/swtest.js",
     "test:sw": "node tools/swtest.js",
     "test:browser": "node tools/browsertest.js",
+    "test:uiux": "node tools/uiuxtest.js",
     "shots": "node tools/shots.js",
     "icons": "node tools/icons.js",
     "docs": "node tools/quizlist.js",

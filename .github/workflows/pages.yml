@@ -36,6 +36,8 @@ jobs:
         run: npm run playtest
       - name: Chromium 설치
         run: npx playwright install --with-deps chromium
+      - name: UI/UX 회귀
+        run: npm run test:uiux
       - name: 브라우저 스모크
         run: npm run test:browser
       - name: 오프라인 ZIP 검증
