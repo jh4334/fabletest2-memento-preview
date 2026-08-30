@@ -316,9 +316,15 @@ V11 로더는 알려진 pair ID만 중복 없이 보존하고 오답 횟수·불
 
 ### 현재 검증 결과
 
+- `npm run validate`: 모든 검사 통과.
+- `npm test`: smoke 1223, slot 295, memento 121, consequence runtime 174,
+  service worker 6 통과.
+- `npm run playtest`: 프롤로그→다섯 장→고요→코어→`home` 완주.
 - `node tools/consequencetest.js`: 174 통과.
 - `node tools/slottest.js`: 295 통과.
 - `npm run test:browser`: Chromium 359 통과 / 0 실패, WebKit 선택 설치 생략.
+- `npm run pack`과 `unzip -tq`: 오프라인 ZIP 생성·무결성 통과, 산출물은 작업
+  트리 밖 `/tmp/ai-ethics-adventure-offline-consequence-final.zip`으로 이동.
 - 1280×800, 390×844(세로 계속하기), 844×390의 파이널·복원·선택·실험실 캡처를
   `.omo/evidence/consequence-finale-browser/screenshots/`에서 확인했다.
 - 모바일 모드 전환 직후 터치 접근성 이름이 한 프레임 늦던 결함을 실제 브라우저
