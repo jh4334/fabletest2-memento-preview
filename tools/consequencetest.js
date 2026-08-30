@@ -343,12 +343,26 @@ g.flags.consequenceCampaign.activePairId = null;
 g.map = 'timelinehub'; g.mode = 'world';
 check('다섯 쌍 완료 뒤 파이널 시간선에 진입', T.startConsequenceTimeline() === true &&
   g.mode === 'consequenceorder' && g.flags.consequenceCampaign.timelineRestored === false);
+check('파이널 카드에 날짜·장소·의도·결과가 모두 있음',
+  g.consequenceTimeline.cards.length === 5 && g.consequenceTimeline.cards.every((card) =>
+    card.daysAgo && card.title && card.intention && card.consequence));
+check('파이널 선택 문구가 책임·의존·단절 계약을 보존',
+  JSON.stringify(T.consequenceFinalChoices().map((choice) => choice.label)) === JSON.stringify([
+    '함께 기록을 복원한다', '기억을 다시 잠근다',
+    '앞으로의 결정을 AI에 맡긴다', 'AI 연결을 모두 끊는다',
+  ]));
 const wrongOrder = ['d1_copyright', 'd3_consent', 'd5_recommendation', 'd7_misinformation', 'd10_judgment'];
 for (const pairId of wrongOrder) check('오답 카드 배치 ' + pairId, T.placeConsequenceTimelineCard(pairId) === true);
 check('오답은 배열을 보존하고 횟수만 올림', T.submitConsequenceTimeline() === false &&
   g.flags.consequenceCampaign.finalTimelineWrong === 1 &&
   JSON.stringify(g.flags.consequenceCampaign.finalTimelineDraft) === JSON.stringify(wrongOrder) &&
   g.flags.consequenceCampaign.timelineRestored === false);
+g.consequenceTimeline.feedback = null;
+check('두 번째 오답은 인과 질문을 제공', T.submitConsequenceTimeline() === false &&
+  g.flags.consequenceCampaign.finalTimelineWrong === 2 && /편리한 의도/.test(g.consequenceTimeline.feedback));
+g.consequenceTimeline.feedback = null;
+check('세 번째 오답은 날짜 테두리 힌트를 제공', T.submitConsequenceTimeline() === false &&
+  g.flags.consequenceCampaign.finalTimelineWrong === 3 && /날짜 테두리/.test(g.consequenceTimeline.feedback));
 for (let i = 0; i < wrongOrder.length; i++) T.undoConsequenceTimelineCard();
 const chronologicalOrder = ['d10_judgment', 'd7_misinformation', 'd5_recommendation', 'd3_consent', 'd1_copyright'];
 for (const pairId of chronologicalOrder) T.placeConsequenceTimelineCard(pairId);

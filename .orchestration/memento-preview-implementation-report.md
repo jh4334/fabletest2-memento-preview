@@ -317,18 +317,24 @@ V11 로더는 알려진 pair ID만 중복 없이 보존하고 오답 횟수·불
 ### 현재 검증 결과
 
 - `npm run validate`: 모든 검사 통과.
-- `npm test`: smoke 1223, slot 295, memento 121, consequence runtime 174,
+- `npm test`: smoke 1223, slot 295, memento 121, consequence runtime 178,
   service worker 6 통과.
 - `npm run playtest`: 프롤로그→다섯 장→고요→코어→`home` 완주.
-- `node tools/consequencetest.js`: 174 통과.
+- `node tools/consequencetest.js`: 178 통과.
 - `node tools/slottest.js`: 295 통과.
-- `npm run test:browser`: Chromium 359 통과 / 0 실패, WebKit 선택 설치 생략.
+- `npm run test:browser`: Chromium 371 통과 / 0 실패, WebKit 선택 설치 생략.
 - `npm run pack`과 `unzip -tq`: 오프라인 ZIP 생성·무결성 통과, 산출물은 작업
-  트리 밖 `/tmp/ai-ethics-adventure-offline-consequence-final.zip`으로 이동.
+  트리 밖 `/tmp/ai-ethics-adventure-offline-consequence-final-ec322b62.zip`으로 이동.
 - 1280×800, 390×844(세로 계속하기), 844×390의 파이널·복원·선택·실험실 캡처를
   `.omo/evidence/consequence-finale-browser/screenshots/`에서 확인했다.
 - 모바일 모드 전환 직후 터치 접근성 이름이 한 프레임 늦던 결함을 실제 브라우저
   RED로 확인하고 각 모드 경계의 즉시 동기화로 고쳤다.
+- 독립 시각 검토에서 발견한 모바일 축소 글자, 카드 인과 정보 누락, 의미 토큰 밖
+  배경색, 오답 3회차 힌트, `수첩` 버튼 의미 불일치를 수정했다. 세로 화면은 카드
+  선택 정보와 실험 결과를 전체 폭 하단 패널로 바꾸고, 세로 1.5배·가로 1.15배
+  파이널 글자 배율을 적용했다. 모바일 엔딩 복귀와 실험실 나가기는 실제 터치로,
+  동작 줄이기 회전 아이콘 정지는 브라우저 선호 설정으로 확인했다.
+- 최종 미리보기 캐시 이름은 `fabletest2-memento-preview-ec322b62`이다.
 
 최종 CI·PR·merge SHA·Pages URL과 전체 검증 결과는 이번 후속 기능을 미리보기
 main에 병합한 뒤 이 절에 이어 기록한다.

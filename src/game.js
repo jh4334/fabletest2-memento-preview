@@ -114,6 +114,16 @@
     success: CANVAS_COLOR.statusSuccess, helper: CANVAS_COLOR.textMuted,
   };
 
+  const TIMELINE_CARD_UI = {
+    page: CANVAS_COLOR.surfaceSecondary,
+    border: CANVAS_COLOR.borderSubtle,
+  };
+
+  const RESTORED_PANEL_UI = {
+    page: CANVAS_COLOR.surfaceSecondary,
+    border: CANVAS_COLOR.restoredCyan,
+  };
+
   const CONSEQUENCE_UI = {
     zones: {
       visual: CANVAS_COLOR.consequenceVisual, stage: CANVAS_COLOR.consequenceStage,
@@ -842,6 +852,12 @@
   }
   function recordFs(px, bold) { return fs(Math.round(px * recordScale()), bold); }
   function recordLh(px) { return lh(Math.round(px * recordScale())); }
+  function finaleScale() {
+    if (!isTouchDevice) return 1;
+    return isConsequencePortrait() ? 1.5 : 1.15;
+  }
+  function finaleFs(px, bold) { return fs(Math.round(px * finaleScale()), bold); }
+  function finaleLh(px) { return lh(Math.round(px * finaleScale())); }
   // 의미 색상 — 색약 모드에서는 빨강/초록 대신 구분이 쉬운 파랑/주황(Okabe-Ito 계열)
   function monName(id) { const m = MONSTERS[id]; return (m && m.name) || id; }
   function okColor() { return game.colorBlind ? '#3b8ed0' : '#5cb85c'; }   // 정답·높음
@@ -1613,9 +1629,18 @@
     if (!isTouchDevice) return;
     const action = document.getElementById('t-a');
     const cancel = document.getElementById('t-pause');
-    if (!action || !cancel) return;
+    const menu = document.getElementById('t-menu');
+    if (!action || !cancel || !menu) return;
     const actionSub = action.querySelector('.sub');
     const setActionSub = (text) => { if (actionSub) actionSub.textContent = text; };
+    const setMenu = (label, ariaLabel, visible) => {
+      menu.textContent = label;
+      menu.setAttribute('aria-label', ariaLabel);
+      menu.setAttribute('aria-hidden', visible ? 'false' : 'true');
+      menu.style.visibility = visible ? '' : 'hidden';
+      menu.disabled = !visible;
+    };
+    setMenu('수첩', '친구 수첩 열기', true);
     if (game.mode === 'title' && game.titleScreen === 'routechoice') {
       action.setAttribute('aria-label', '선택한 시간선 결정');
       setActionSub('시간선 선택');
@@ -1625,6 +1650,7 @@
     }
     if (game.mode === 'timelineorder') {
       const remaining = timelineOrderRemaining();
+      setMenu('나가기', '시간순 저장 후 나가기', true);
       action.setAttribute('aria-label', remaining.length ? '선택한 시간 카드 놓기' : '시간순 확인');
       setActionSub(remaining.length ? '카드 놓기' : '순서 확인');
       cancel.setAttribute('aria-label', '마지막 카드 되돌리기');
@@ -1633,6 +1659,7 @@
     }
     if (game.mode === 'consequenceorder') {
       const remaining = consequenceTimelineRemaining();
+      setMenu('나가기', '과거 시간순 저장 후 나가기', true);
       action.setAttribute('aria-label', remaining.length ? '선택한 과거 카드 놓기' : '과거 시간순 확인');
       setActionSub(remaining.length ? '카드 놓기' : '순서 확인');
       cancel.setAttribute('aria-label', '마지막 과거 카드 되돌리기');
@@ -1640,6 +1667,7 @@
       return;
     }
     if (game.mode === 'consequencerestore') {
+      setMenu('', '복원 중에는 사용할 수 없는 버튼', false);
       action.setAttribute('aria-label', '복원된 다음 시간 보기');
       setActionSub('다음 시간');
       cancel.setAttribute('aria-label', '복원 요약 건너뛰기');
@@ -1647,6 +1675,7 @@
       return;
     }
     if (game.mode === 'consequencechoice') {
+      setMenu('', '선택 중에는 사용할 수 없는 버튼', false);
       action.setAttribute('aria-label', '현재 선택 결정');
       setActionSub('결정');
       cancel.setAttribute('aria-label', '방향 버튼으로 선택하세요');
@@ -1654,6 +1683,7 @@
       return;
     }
     if (game.mode === 'timelinelab') {
+      setMenu('나가기', '시간선 실험실 닫기', true);
       action.setAttribute('aria-label', '가정한 시간선 결과 보기');
       setActionSub('결과 보기');
       cancel.setAttribute('aria-label', '시간선 실험실 닫기');
@@ -1668,6 +1698,7 @@
       return;
     }
     if (game.mode === 'ending') {
+      setMenu('', '엔딩 중에는 사용할 수 없는 버튼', false);
       const ready = endingContinueReady();
       action.setAttribute('aria-label', ready ? '마을로 돌아가기' : '엔딩이 끝날 때까지 잠시 기다리기');
       setActionSub(ready ? '마을로' : '잠시만');
@@ -4508,15 +4539,30 @@
 
   const CONSEQUENCE_FINAL_CHOICES = [
     { id: 'restore_together', label: '함께 기록을 복원한다', endingId: 'home' },
-    { id: 'reset_again', label: '기억을 다시 지운다', endingId: 'silent' },
+    { id: 'reset_again', label: '기억을 다시 잠근다', endingId: 'silent' },
     { id: 'delegate_all', label: '앞으로의 결정을 AI에 맡긴다', endingId: 'dawn' },
-    { id: 'disconnect_all', label: '도시의 AI를 모두 끈다', endingId: 'farewell' },
+    { id: 'disconnect_all', label: 'AI 연결을 모두 끊는다', endingId: 'farewell' },
   ];
+
+  const CONSEQUENCE_TIMELINE_SUMMARY = {
+    d10_judgment: { intention: '대신 결정', consequence: '사람 확인 약화' },
+    d7_misinformation: { intention: '빠른 전달', consequence: '출처 확인 약화' },
+    d5_recommendation: { intention: '오래 보기', consequence: '다른 관점 축소' },
+    d3_consent: { intention: '빠른 합성', consequence: '동의 확인 누락' },
+    d1_copyright: { intention: '빠른 완성', consequence: '창작 출처 누락' },
+  };
 
   function consequenceTimelineCards() {
     return CONSEQUENCE_PAIR_ORDER.map((pairId) => {
       const config = consequencePairConfig(pairId);
-      return { id: pairId, daysAgo: config.daysAgo, title: config.pairUi.displayLabel };
+      const summary = CONSEQUENCE_TIMELINE_SUMMARY[pairId];
+      return {
+        id: pairId,
+        daysAgo: config.daysAgo,
+        title: config.pairUi.displayLabel,
+        intention: summary.intention,
+        consequence: summary.consequence,
+      };
     });
   }
 
@@ -4608,9 +4654,11 @@
     if (!state || !campaign || state.feedback || campaign.finalTimelineDraft.length !== 5) return false;
     if (!isConsequenceChronologicalOrder(campaign.finalTimelineDraft)) {
       campaign.finalTimelineWrong += 1;
-      state.feedback = campaign.finalTimelineWrong >= 2
-        ? '날짜가 큰 D-10부터 D-1 쪽으로 이어 보자.'
-        : '순서가 이어지지 않는다. 더 먼 과거부터 살펴보자.';
+      state.feedback = campaign.finalTimelineWrong >= 3
+        ? '날짜 테두리를 보자. D-10에서 D-1 쪽으로 이어진다.'
+        : campaign.finalTimelineWrong >= 2
+          ? '어떤 편리한 의도가 다음 결과를 만들었는지 이어 보자.'
+          : '순서가 이어지지 않는다. 더 먼 과거부터 살펴보자.';
       save();
       Sound.wrong();
       announceConsequenceTimeline();
@@ -4793,54 +4841,95 @@
   function drawTimelineLab() {
     const lab = game.timelineLab;
     if (!lab) return;
-    ctx.fillStyle = '#10151d';
+    ctx.fillStyle = CANVAS_COLOR.surfaceSecondary;
     ctx.fillRect(0, 0, LW, LH);
     ctx.fillStyle = CANVAS_COLOR.restoredCyan;
-    ctx.font = fs(22, true);
+    ctx.font = finaleFs(18, true);
     ctx.fillText('[시간선 실험실 · 저장하지 않는 가정]', 28, 40);
     ctx.fillStyle = CANVAS_COLOR.accentWarm;
-    ctx.font = fs(13, true);
+    ctx.font = finaleFs(11, true);
     ctx.fillText('첫 시간선은 바뀌지 않습니다. 여기서 바꾼 값은 나가면 사라집니다.', 28, 66);
+    if (isConsequencePortrait()) {
+      lab.journeys.forEach((journey, index) => {
+        const config = consequencePairConfig(journey.pairId);
+        const y = 82 + index * 43;
+        utBox(28, y, 664, 36, 5, TIMELINE_CARD_UI);
+        ctx.fillStyle = index === lab.cursor ? CANVAS_COLOR.accentWarm : CANVAS_COLOR.textPrimary;
+        ctx.font = finaleFs(12, index === lab.cursor);
+        ctx.fillText(`${index === lab.cursor ? '▶' : ' '} D-${config.daysAgo} ${config.pairUi.displayLabel} · ` +
+          TIMELINE_LAB_PROFILE_LABELS[journey.profile], 42, y + 24);
+      });
+      const finalChoice = CONSEQUENCE_FINAL_CHOICES.find((choice) => choice.id === lab.finalChoiceId);
+      utBox(28, 297, 664, 38, 5, TIMELINE_CARD_UI);
+      ctx.fillStyle = lab.cursor === 5 ? CANVAS_COLOR.accentWarm : CANVAS_COLOR.textPrimary;
+      ctx.font = finaleFs(12, lab.cursor === 5);
+      ctx.fillText(`${lab.cursor === 5 ? '▶' : ' '} 마지막 선택 · ${finalChoice.label}`, 42, 322);
+      utBox(28, 347, 664, 104, 7, RESTORED_PANEL_UI);
+      ctx.fillStyle = CANVAS_COLOR.textSecondary;
+      ctx.font = finaleFs(11, true);
+      ctx.fillText('가정 결과', 46, 372);
+      if (lab.result) {
+        const scene = endingScene(lab.result.endingId);
+        ctx.fillStyle = scene.color;
+        ctx.font = finaleFs(14, true);
+        ctx.fillText(scene.title, 164, 372);
+        ctx.fillStyle = CANVAS_COLOR.textPrimary;
+        ctx.font = finaleFs(11);
+        ctx.fillText('여섯 선택을 다시 비교해 보자.', 46, 408);
+        ctx.fillText('첫 시간선과 저장은 바뀌지 않는다.', 358, 408);
+      } else {
+        ctx.fillStyle = CANVAS_COLOR.textMuted;
+        ctx.font = finaleFs(11);
+        ctx.fillText('값을 바꾼 뒤 결정 버튼으로 가능한 결말을 미리 봅니다.', 46, 414);
+      }
+      ctx.fillStyle = CANVAS_COLOR.textMuted;
+      ctx.font = finaleFs(9);
+      ctx.textAlign = 'center';
+      ctx.fillText('↑↓ 항목 · ←→ 가정 변경 · Z 결과 보기 · X 나가기', LW / 2, 496);
+      ctx.textAlign = 'left';
+      return;
+    }
     lab.journeys.forEach((journey, index) => {
       const config = consequencePairConfig(journey.pairId);
       const y = 88 + index * 58;
-      utBox(28, y, 430, 46, 6);
+      utBox(28, y, 430, 46, 6, TIMELINE_CARD_UI);
       ctx.fillStyle = index === lab.cursor ? CANVAS_COLOR.accentWarm : CANVAS_COLOR.textPrimary;
-      ctx.font = fs(13, index === lab.cursor);
+      ctx.font = finaleFs(11, index === lab.cursor);
       ctx.fillText(`${index === lab.cursor ? '▶' : ' '} D-${config.daysAgo} ${config.pairUi.displayLabel}`, 42, y + 19);
       ctx.fillStyle = CANVAS_COLOR.textSecondary;
-      ctx.font = fs(12);
+      ctx.font = finaleFs(10);
       ctx.fillText(`‹ ${TIMELINE_LAB_PROFILE_LABELS[journey.profile]} ›`, 56, y + 38);
     });
     const finalY = 378;
-    utBox(28, finalY, 430, 50, 6);
+    utBox(28, finalY, 430, 50, 6, TIMELINE_CARD_UI);
     const finalChoice = CONSEQUENCE_FINAL_CHOICES.find((choice) => choice.id === lab.finalChoiceId);
     ctx.fillStyle = lab.cursor === 5 ? CANVAS_COLOR.accentWarm : CANVAS_COLOR.textPrimary;
-    ctx.font = fs(13, lab.cursor === 5);
+    ctx.font = finaleFs(11, lab.cursor === 5);
     ctx.fillText(`${lab.cursor === 5 ? '▶' : ' '} 마지막 선택`, 42, finalY + 20);
     ctx.fillStyle = CANVAS_COLOR.textSecondary;
-    ctx.font = fs(12);
+    ctx.font = finaleFs(10);
     ctx.fillText(`‹ ${finalChoice.label} ›`, 56, finalY + 41);
-    utBox(478, 88, 214, 340, 8);
+    utBox(478, 88, 214, 340, 8, RESTORED_PANEL_UI);
     ctx.fillStyle = CANVAS_COLOR.textSecondary;
-    ctx.font = fs(13, true);
+    ctx.font = finaleFs(12, true);
     ctx.fillText('가정 결과', 496, 118);
     if (lab.result) {
       const scene = endingScene(lab.result.endingId);
       ctx.fillStyle = scene.color;
-      ctx.font = fs(20, true);
-      drawQuestionText(scene.title, 496, 162, 178, lh(28));
+      ctx.font = finaleFs(17, true);
+      drawQuestionText(scene.title, 496, 162, 178, finaleLh(25));
       ctx.fillStyle = CANVAS_COLOR.textPrimary;
-      ctx.font = fs(13);
-      drawQuestionText('왜 달라졌는지 여섯 선택을 다시 비교해 보자. 실제 기록과 저장은 변하지 않았다.',
-        496, 224, 178, lh(24));
+      ctx.font = finaleFs(11);
+      drawQuestionText('여섯 선택을 다시 비교해 보자.', 496, 224, 178, finaleLh(22));
+      drawQuestionText('첫 시간선과 저장은 바뀌지 않는다.', 496, 286, 178, finaleLh(22));
     } else {
       ctx.fillStyle = CANVAS_COLOR.textMuted;
-      ctx.font = fs(13);
-      drawQuestionText('값을 바꾼 뒤 결정 버튼을 누르면 가능한 결말을 미리 봅니다.', 496, 162, 178, lh(24));
+      ctx.font = finaleFs(11);
+      drawQuestionText('값을 바꾼 뒤 결정 버튼을 누르면 가능한 결말을 미리 봅니다.',
+        496, 162, 178, finaleLh(22));
     }
     ctx.fillStyle = CANVAS_COLOR.textMuted;
-    ctx.font = fs(12);
+    ctx.font = finaleFs(10);
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ 항목 · ←→ 가정 변경 · Z 결과 보기 · X 나가기', LW / 2, 488);
     ctx.textAlign = 'left';
@@ -8639,51 +8728,112 @@
     ctx.fillStyle = color.page;
     ctx.fillRect(0, 0, LW, LH);
     ctx.fillStyle = CANVAS_COLOR.reverseLight;
-    ctx.font = fs(22, true);
+    ctx.font = finaleFs(19, true);
     ctx.fillText('[과거 ← 현재 · 다섯 선택의 시간선]', 28, 40);
     ctx.fillStyle = color.body;
-    ctx.font = fs(13);
+    ctx.font = finaleFs(13);
     ctx.fillText('가장 먼 과거 D-10부터 현재와 가까운 D-1까지 직접 잇자.', 28, 64);
+    if (isConsequencePortrait()) {
+      for (let i = 0; i < 5; i++) {
+        const y = 78 + i * 48;
+        const id = campaign.finalTimelineDraft[i];
+        const card = state.cards.find((item) => item.id === id);
+        utBox(28, y, 664, 40, 5, TIMELINE_CARD_UI);
+        ctx.fillStyle = card ? CANVAS_COLOR.reverseLight : color.empty;
+        ctx.font = finaleFs(12, true);
+        ctx.fillText(`${i + 1}. ${card ? `D-${card.daysAgo} · ${card.title}` : '○ 빈 시간순 칸'}`, 42, y + 24);
+        if (card && state.feedback && campaign.finalTimelineWrong >= 3) {
+          ctx.strokeStyle = CANVAS_COLOR.accentWarm;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(66, y + 7, 68, 24);
+        }
+      }
+      utBox(28, 326, 664, 120, 7, TIMELINE_CARD_UI);
+      if (state.feedback) {
+        ctx.fillStyle = badColor();
+        ctx.font = finaleFs(13, true);
+        drawQuestionText(`△ ${state.feedback}`, 46, 360, 628, finaleLh(24));
+      } else if (remaining.length) {
+        const card = remaining[Math.min(state.cursor, remaining.length - 1)];
+        ctx.fillStyle = color.selected;
+        ctx.font = finaleFs(13, true);
+        ctx.fillText(`● D-${card.daysAgo} · ${card.title}`, 46, 354);
+        ctx.fillStyle = CANVAS_COLOR.textSecondary;
+        ctx.font = finaleFs(12);
+        ctx.fillText(`편리한 의도: ${card.intention}`, 46, 388);
+        ctx.fillText(`뒤따른 결과: ${card.consequence}`, 354, 388);
+        ctx.fillStyle = color.helper;
+        ctx.font = finaleFs(10);
+        ctx.fillText(`${state.cursor + 1}/${remaining.length} · ↑↓ 카드 선택`, 46, 424);
+      } else {
+        ctx.fillStyle = color.success;
+        ctx.font = finaleFs(13, true);
+        ctx.fillText('◆ 다섯 과거 배치 완료', 46, 366);
+        ctx.fillStyle = color.body;
+        ctx.font = finaleFs(12);
+        ctx.fillText('결정 버튼으로 이어진 시간을 확인하자.', 46, 408);
+      }
+      ctx.fillStyle = color.helper;
+      ctx.font = finaleFs(9);
+      ctx.textAlign = 'center';
+      ctx.fillText('Ⓐ 놓기·확인 · [한 칸] 되돌리기 · [메뉴] 저장 후 나가기', LW / 2, 500);
+      ctx.textAlign = 'left';
+      return;
+    }
     for (let i = 0; i < 5; i++) {
-      const y = 88 + i * 61;
+      const y = 82 + i * 60;
       const id = campaign.finalTimelineDraft[i];
       const card = state.cards.find((item) => item.id === id);
-      utBox(28, y, 390, 49, 6, color);
-      ctx.fillStyle = card ? color.title : color.empty;
-      ctx.font = fs(14, true);
-      ctx.fillText(`${i + 1}. ${card ? `D-${card.daysAgo} · ${card.title}` : '○ 빈 시간순 칸'}`, 44, y + 30);
+      utBox(28, y, 402, 51, 6, TIMELINE_CARD_UI);
+      ctx.fillStyle = card ? CANVAS_COLOR.reverseLight : color.empty;
+      ctx.font = finaleFs(13, true);
+      ctx.fillText(`${i + 1}. ${card ? `D-${card.daysAgo} · ${card.title}` : '○ 빈 시간순 칸'}`, 42, y + 20);
+      if (card) {
+        ctx.fillStyle = CANVAS_COLOR.textSecondary;
+        ctx.font = finaleFs(12);
+        ctx.fillText(`의도 ${card.intention} → 결과 ${card.consequence}`, 52, y + 42);
+        if (state.feedback && campaign.finalTimelineWrong >= 3) {
+          ctx.strokeStyle = CANVAS_COLOR.accentWarm;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(63, y + 4, 57, 21);
+        }
+      }
     }
-    utBox(438, 88, 254, 232, 8, color);
+    utBox(448, 82, 244, 240, 8, TIMELINE_CARD_UI);
     ctx.fillStyle = color.primary;
-    ctx.font = fs(16, true);
-    ctx.fillText(`남은 과거 카드 ${remaining.length}개`, 458, 118);
+    ctx.font = finaleFs(14, true);
+    ctx.fillText(`남은 과거 카드 ${remaining.length}개`, 464, 112);
     if (remaining.length) {
       const card = remaining[Math.min(state.cursor, remaining.length - 1)];
       ctx.fillStyle = color.selected;
-      ctx.font = fs(17, true);
-      ctx.fillText(`● D-${card.daysAgo}`, 458, 164);
+      ctx.font = finaleFs(16, true);
+      ctx.fillText(`● D-${card.daysAgo}`, 464, 150);
       ctx.fillStyle = color.primary;
-      ctx.font = fs(15, true);
-      drawQuestionText(card.title, 458, 198, 210, lh(24));
+      ctx.font = finaleFs(14, true);
+      drawQuestionText(card.title, 464, 181, 210, finaleLh(22));
+      ctx.fillStyle = CANVAS_COLOR.textSecondary;
+      ctx.font = finaleFs(12);
+      drawQuestionText(`편리한 의도: ${card.intention}`, 464, 220, 210, finaleLh(20));
+      drawQuestionText(`뒤따른 결과: ${card.consequence}`, 464, 250, 210, finaleLh(20));
       ctx.fillStyle = color.helper;
-      ctx.font = fs(12);
-      ctx.fillText(`${state.cursor + 1}/${remaining.length} · ↑↓ 카드 선택`, 458, 278);
+      ctx.font = finaleFs(11);
+      ctx.fillText(`${state.cursor + 1}/${remaining.length} · ↑↓ 선택`, 464, 302);
     } else {
       ctx.fillStyle = color.success;
-      ctx.font = fs(15, true);
-      ctx.fillText('◆ 다섯 과거 배치 완료', 458, 166);
+      ctx.font = finaleFs(14, true);
+      ctx.fillText('◆ 다섯 과거 배치 완료', 464, 150);
       ctx.fillStyle = color.body;
-      ctx.font = fs(13);
-      ctx.fillText('결정 버튼으로 이어진 시간을 확인하자.', 458, 204);
+      ctx.font = finaleFs(12);
+      drawQuestionText('결정 버튼으로 이어진 시간을 확인하자.', 464, 190, 210, finaleLh(22));
     }
     if (state.feedback) {
-      utBox(28, 408, 664, 60, 6, color);
+      utBox(28, 396, 664, 72, 6, TIMELINE_CARD_UI);
       ctx.fillStyle = badColor();
-      ctx.font = fs(14, true);
-      ctx.fillText(`△ ${state.feedback}`, 46, 443);
+      ctx.font = finaleFs(13, true);
+      drawQuestionText(`△ ${state.feedback}`, 46, 425, 628, finaleLh(22));
     }
     ctx.fillStyle = color.helper;
-    ctx.font = fs(12);
+    ctx.font = finaleFs(11);
     ctx.textAlign = 'center';
     ctx.fillText(isTouchDevice ? 'Ⓐ 놓기·확인 · [한 칸] 되돌리기 · [메뉴] 저장 후 나가기' :
       'Z 놓기·확인 · X·Esc 되돌리기 · C 저장 후 나가기', LW / 2, 504);
@@ -8700,13 +8850,13 @@
     if (!state) return;
     const pairId = CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER[state.index];
     const config = consequencePairConfig(pairId);
-    ctx.fillStyle = '#102027';
+    ctx.fillStyle = CANVAS_COLOR.surfaceSecondary;
     ctx.fillRect(0, 0, LW, LH);
     ctx.fillStyle = CANVAS_COLOR.restoredCyan;
-    ctx.font = fs(22, true);
+    ctx.font = finaleFs(20, true);
     ctx.fillText('[복원된 시간순 → 컬러]', 30, 42);
     ctx.fillStyle = CANVAS_COLOR.textSecondary;
-    ctx.font = fs(13);
+    ctx.font = finaleFs(13);
     ctx.fillText('과거의 선택과 현재의 결과가 한 줄로 이어진다.', 30, 67);
     for (let i = 0; i < CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER.length; i++) {
       const item = consequencePairConfig(CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER[i]);
@@ -8714,25 +8864,25 @@
       ctx.strokeStyle = i <= state.index ? CANVAS_COLOR.restoredCyan : CANVAS_COLOR.borderSubtle;
       ctx.lineWidth = i === state.index ? 4 : 2;
       ctx.strokeRect(x, 96, 116, 60);
-      ctx.fillStyle = i <= state.index ? CANVAS_COLOR.textPrimary : CANVAS_COLOR.textTertiary;
-      ctx.font = fs(13, true);
+      ctx.fillStyle = i <= state.index ? CANVAS_COLOR.textPrimary : CANVAS_COLOR.textMuted;
+      ctx.font = finaleFs(12, true);
       ctx.fillText(`D-${item.daysAgo}`, x + 10, 120);
-      ctx.font = fs(11);
-      ctx.fillText(i < state.index ? '복원됨 ✓' : i === state.index ? '지금' : '다음', x + 10, 143);
+      ctx.font = finaleFs(10);
+      ctx.fillText(i < state.index ? '복원됨 ✓' : i === state.index ? '보고 있음' : '다음', x + 10, 143);
     }
-    utBox(46, 196, 628, 214, 10);
+    utBox(46, 196, 628, 214, 10, RESTORED_PANEL_UI);
     ctx.fillStyle = CANVAS_COLOR.accentWarm;
-    ctx.font = fs(18, true);
+    ctx.font = finaleFs(17, true);
     ctx.fillText(`현재보다 ${config.daysAgo}일 전 · ${config.pairUi.displayLabel}`, 70, 232);
     ctx.fillStyle = CANVAS_COLOR.textPrimary;
-    ctx.font = fs(16, true);
-    drawQuestionText(config.pairUi.result.copy, 70, 276, 576, lh(28));
+    ctx.font = finaleFs(15, true);
+    drawQuestionText(config.pairUi.result.copy, 70, 276, 576, finaleLh(26));
     ctx.fillStyle = CANVAS_COLOR.textSecondary;
-    ctx.font = fs(14);
-    drawQuestionText('쉬운 길로 남긴 빈칸은 현재에서 저절로 사라지지 않았다. ' +
-      '확인하고 고친 행동까지 함께 기록에 남는다.', 70, 348, 576, lh(24));
+    ctx.font = finaleFs(13);
+    ctx.fillText('쉬운 길의 빈칸은 저절로 사라지지 않았다.', 70, 348);
+    ctx.fillText('확인한 사실과 고친 행동을 함께 남긴다.', 70, 376);
     ctx.fillStyle = CANVAS_COLOR.textMuted;
-    ctx.font = fs(12);
+    ctx.font = finaleFs(11);
     ctx.textAlign = 'center';
     ctx.fillText(`Z 다음 · X 전체 요약 건너뛰기 · ${state.index + 1}/5`, LW / 2, 488);
     ctx.textAlign = 'left';
@@ -8758,22 +8908,24 @@
     ctx.fillStyle = CANVAS_COLOR.surfacePrimary;
     ctx.fillRect(0, 0, LW, LH);
     ctx.fillStyle = CANVAS_COLOR.restoredCyan;
-    ctx.font = fs(22, true);
+    ctx.font = finaleFs(20, true);
     ctx.fillText('[현재 → 기록을 본 뒤의 선택]', 34, 46);
     ctx.fillStyle = CANVAS_COLOR.textSecondary;
-    ctx.font = fs(14);
+    ctx.font = finaleFs(13);
     ctx.fillText('앞선 다섯 여정과 이 선택을 함께 보고 결말이 정해진다.', 34, 74);
     CONSEQUENCE_FINAL_CHOICES.forEach((choice, index) => {
       const y = 102 + index * 82;
       utBox(50, y, 620, 62, 7);
       ctx.fillStyle = index === state.cursor ? CANVAS_COLOR.accentWarm : CANVAS_COLOR.textPrimary;
-      ctx.font = fs(16, index === state.cursor);
+      ctx.font = finaleFs(15, index === state.cursor);
       ctx.fillText(`${index === state.cursor ? '▶' : ' '} ${choice.label}`, 72, y + 38);
     });
     ctx.fillStyle = CANVAS_COLOR.textMuted;
-    ctx.font = fs(12);
+    ctx.font = finaleFs(isConsequencePortrait() ? 9 : 11);
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ 선택 · Z 결정 · 마지막 한 번만이 아니라 지금까지의 행동도 함께 반영됩니다', LW / 2, 478);
+    ctx.fillText(isConsequencePortrait()
+      ? '↑↓ 선택 · Ⓐ 결정 · 앞선 행동도 함께 반영'
+      : '↑↓ 선택 · Z 결정 · 마지막 한 번만이 아니라 지금까지의 행동도 함께 반영됩니다', LW / 2, 478);
     ctx.textAlign = 'left';
   }
 
@@ -14672,8 +14824,8 @@
       ctx.fillText(`맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ♥${game.flags.mercy}`, LW / 2, ty + 10);
       // 다회차 동기 — 발견한 결말 수 (타이틀에도 기록이 남는다)
       const seenCount = Object.keys(getEndingsSeen()).filter((k) => TRUE_ENDINGS[k]).length;
-      ctx.fillStyle = '#666a8c';
-      ctx.font = fs(13);
+      ctx.fillStyle = CANVAS_COLOR.textMuted;
+      ctx.font = recordFs(14);
       ctx.fillText(`발견한 결말 ${seenCount}/${Object.keys(TRUE_ENDINGS).length}` +
         (seenCount < Object.keys(TRUE_ENDINGS).length ? ' — 다른 작별도, 있었을지 모른다' : ' — 모든 작별을 만났다'), LW / 2, ty + 32);
       if (e.yeongi) {
@@ -15217,7 +15369,7 @@
       route: Object.assign({}, ROUTE_CHOICE_UI),
       order: Object.assign({}, TIMELINE_ORDER_UI),
     }),
-    clampedCanvasLabelX, consequenceUiProfile,
+    clampedCanvasLabelX, consequenceUiProfile, finaleScale,
     startNewGameForRoute, continueGame,
     consequenceRuntime, consequenceRepairIds, consequenceEffortProjection,
     startConsequencePair, revealConsequenceIdentity,
@@ -15226,6 +15378,7 @@
     creationJournalRows, consequenceHubProjection, resumeConsequenceCampaign, interactConsequenceProp,
     startConsequenceTimeline, placeConsequenceTimelineCard, undoConsequenceTimelineCard,
     submitConsequenceTimeline, advanceConsequenceRestoration, chooseConsequenceEnding,
+    consequenceFinalChoices: () => CONSEQUENCE_FINAL_CHOICES.map((choice) => Object.assign({}, choice)),
     openTimelineLab, setTimelineLabJourney, setTimelineLabFinalChoice,
     previewTimelineLabEnding, closeTimelineLab,
     restartConsequenceStage: startConsequenceStageBattle, retreatPersuasion: persuadeExhaust,
