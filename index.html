@@ -249,7 +249,10 @@
     animation: loadpulse 1.4s ease-in-out infinite;
   }
   @keyframes loadpulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { #loading .load-sub { animation: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    #loading .load-sub,
+    #rotate-hint .ico { animation: none; }
+  }
 
   /* ---- 첫 로딩 실패 안내 (스크립트가 안 받아졌을 때) ---- */
   #boot-error {

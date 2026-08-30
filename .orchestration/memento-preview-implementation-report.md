@@ -253,3 +253,89 @@ ef615b5 docs(memento): define interactive timeline loop
 
 본 보고서는 기능 코드를 바꾸지 않는 별도 문서 PR로 게시한다. 게시 전
 `git diff --check`와 문서 계약을 다시 검사한다.
+
+## 23. 과거·현재 캠페인 후속 완결 (2026-08-30)
+
+### 구현 기준
+
+- 구현 브랜치: `feat/consequence-pairs-campaign`
+- 파이널 기능 커밋: `c9c785b21acab2c6d22fdfed2a3d6ed51e86eeda`
+- 대상 경험: `experienceKind: consequence-pairs`만
+- 원래 모험의 `computeEnding()`과 기존 메멘토 기록 경로는 변경하지 않았다.
+
+### 완성된 플레이 순서
+
+`D-1 공동 창작관 → D-3 합성 방송실 → D-5 추천 골목 → D-7 대문짝 신문사 →
+D-10 포근한 관제실 → 다섯 카드를 D-10→D-7→D-5→D-3→D-1로 직접 배치 →
+컬러 실제 시간순 복원 → 네 파이널 선택 → 기존 네 엔딩 장면 → 시간선 실험실`
+순서로 이어진다.
+
+각 pair는 회색 과거에서 편리한 선택을 실제 작업 단계로 수행하고, 같은 좌표의
+컬러 현재에서 그 선택이 남긴 기본·추가 수리를 직접 마친다. 장소형 마음 조각
+배틀은 사람을 공격하지 않고 복원할 장소를 설득한다.
+
+### 추가·정규화한 상태
+
+| 키 | 의미 |
+|---|---|
+| `consequenceCampaign.finalTimelineDraft` | 수동 배치 중인 pair ID 초안 |
+| `consequenceCampaign.finalTimelineWrong` | 비처벌 오답 횟수와 단계형 힌트 |
+| `consequenceCampaign.timelineRestored` | 정답 제출 뒤 원자 복원 완료 |
+| `consequenceCampaign.finalChoiceId` | 네 고정 파이널 선택 중 하나 |
+| `consequenceCampaign.canonicalEndingId` | 최초 한 번만 저장하는 기존 엔딩 ID |
+| `consequenceCampaign.canonicalEndingBasis` | rule version·다섯 profile·pair facts·동률 근거의 동결 스냅샷 |
+| `consequenceCampaign.timelineLabUnlocked` | 첫 결말 뒤 무저장 실험실 해금 |
+
+V11 로더는 알려진 pair ID만 중복 없이 보존하고 오답 횟수·불리언을 정규화한다.
+알 수 없는 파이널 선택·엔딩·비객체 basis는 `null`로 안전하게 내리며, 알려지지 않은
+미래 필드는 그대로 왕복시킨다. `original`, `legacy-records`, 미래 experience 종류에는
+캠페인 상태를 새로 만들지 않는다.
+
+### 엔딩과 시간선 실험실
+
+다섯 pair 실제 상태가 모두 `complete`이고 시간선 복원이 끝난 경우에만
+`ending-rule-v1`을 계산한다. 다섯 여정 profile과 마지막 선택을 합산해 기존
+`home | silent | dawn | farewell` 장면 중 하나로 들어가며, 첫 canonical 결과는
+재현 플레이나 두 번째 선택으로 덮어쓰지 않는다.
+
+시간선 실험실은 canonical basis를 메모리에만 투영한다. 여정 profile과 파이널
+선택을 바꾸어 가능한 기존 엔딩을 볼 수 있지만 `save`, `writeSlot`, 백업, 학습 기록,
+발견 엔딩, PWA cache를 호출하지 않는다. 자동·실제 브라우저 검증에서 진입 전후
+전체 localStorage 키/값과 canonical·pair·지도·좌표가 동일함을 확인했다.
+
+### 수정 파일과 이유
+
+- `src/memento.js`: 고정 시간순, 실제 pair 완료 투영, 최초 엔딩 계산 가드.
+- `src/data.js`: 허브의 `다섯 시간을 잇는 문`과 `시간선 실험실` 실제 조사 오브젝트.
+- `src/game.js`: 카드 배치·오답·복원·네 선택·엔딩 handoff·실험실·V11 정규화·재개·입력·TTS.
+- `tools/consequencetest.js`: 파이널 happy/edge/freeze/no-write와 허브 실제 Z 조사.
+- `tools/slottest.js`: V11 파이널 손상 상태와 미래 필드 왕복.
+- `tools/browsertest.js`: 데스크톱·모바일 세로·모바일 가로 Canvas, 터치 이름, localStorage 불변.
+- `DESIGN.md`, `README.md`, `CHANGELOG.md`, 통합 설계·출시 체크리스트: 플레이·상태·출시 계약.
+- `sw.js`: 최종 자산 집합에 맞춘 preview 전용 캐시 버전.
+
+### 현재 검증 결과
+
+- `npm run validate`: 모든 검사 통과.
+- `npm test`: smoke 1223, slot 295, memento 121, consequence runtime 180,
+  service worker 6 통과.
+- `npm run playtest`: 프롤로그→다섯 장→고요→코어→`home` 완주.
+- `node tools/consequencetest.js`: 180 통과.
+- `node tools/slottest.js`: 295 통과.
+- `npm run test:browser`: Chromium 377 통과 / 0 실패, WebKit 선택 설치 생략.
+- `npm run pack`과 `unzip -tq`: 오프라인 ZIP 생성·무결성 통과, 산출물은 작업
+  트리 밖 `/tmp/ai-ethics-adventure-offline-consequence-final-162c2b16.zip`으로 이동했다.
+- 1280×800, 390×844(세로 계속하기), 844×390의 파이널·복원·선택·실험실 캡처를
+  `.omo/evidence/consequence-finale-browser/screenshots/`에서 확인했다.
+- 모바일 모드 전환 직후 터치 접근성 이름이 한 프레임 늦던 결함을 실제 브라우저
+  RED로 확인하고 각 모드 경계의 즉시 동기화로 고쳤다.
+- 독립 시각 검토에서 발견한 모바일 축소 글자, 카드 인과 정보 누락, 의미 토큰 밖
+  배경색, 오답 3회차 힌트, `수첩` 버튼 의미 불일치를 수정했다. 세로 화면은 카드
+  선택 정보와 실험 결과를 전체 폭 하단 패널로 바꾸고, 세로 1.5배·가로 1.15배
+  파이널 글자 배율을 적용했다. 모바일 엔딩 복귀와 실험실 나가기는 실제 터치로,
+  동작 줄이기 회전 아이콘 정지는 브라우저 선호 설정으로 확인했다.
+- 현재 미리보기 캐시는 `npm run bump`가 계산한
+  `fabletest2-memento-preview-162c2b16`이며 현재 자산 해시와 일치한다.
+
+최종 CI·PR·merge SHA·Pages URL과 전체 검증 결과는 이번 후속 기능을 미리보기
+main에 병합한 뒤 이 절에 이어 기록한다.

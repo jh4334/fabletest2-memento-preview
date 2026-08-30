@@ -49,6 +49,10 @@
     worldMortar: '#586b96', worldWall: '#1a2028', worldWood: '#8a603b',
     worldLavender: '#66617d', worldTeal: '#287b78', figureOutline: '#0a0d12',
     guardianTeal: '#2b8790', guardianStripe: '#9bd6cf',
+    consequenceVisual: '#8f78b8', consequenceStage: '#4e9f98', consequenceAudio: '#c58a5a',
+    consequenceText: '#a86a74', consequenceLedger: '#647fb0', consequenceSurface: '#11151d',
+    consequenceStageSurface: '#10151e', consequenceStageRecess: '#171d28',
+    consequenceStageRail: '#59677a', consequenceStageCurtain: '#32445f', consequenceStageFloor: '#27303d',
   };
 
   const REVERSE_TONES = {
@@ -106,8 +110,37 @@
     page: CANVAS_COLOR.surfacePrimary, border: CANVAS_COLOR.borderDefault,
     title: CANVAS_COLOR.restoredCyan,
     body: CANVAS_COLOR.textSecondary, primary: CANVAS_COLOR.textPrimary,
-    empty: CANVAS_COLOR.textTertiary, selected: CANVAS_COLOR.accentWarm,
+    empty: CANVAS_COLOR.textMuted, selected: CANVAS_COLOR.accentWarm,
     success: CANVAS_COLOR.statusSuccess, helper: CANVAS_COLOR.textMuted,
+  };
+
+  const TIMELINE_CARD_UI = {
+    page: CANVAS_COLOR.surfaceSecondary,
+    border: CANVAS_COLOR.borderSubtle,
+  };
+
+  const RESTORED_PANEL_UI = {
+    page: CANVAS_COLOR.surfaceSecondary,
+    border: CANVAS_COLOR.restoredCyan,
+  };
+
+  const CONSEQUENCE_UI = {
+    zones: {
+      visual: CANVAS_COLOR.consequenceVisual, stage: CANVAS_COLOR.consequenceStage,
+      audio: CANVAS_COLOR.consequenceAudio, text: CANVAS_COLOR.consequenceText,
+      ledger: CANVAS_COLOR.consequenceLedger,
+    },
+    prop: {
+      surface: CANVAS_COLOR.consequenceSurface, unavailable: CANVAS_COLOR.textTertiary,
+      complete: CANVAS_COLOR.statusSuccess, past: CANVAS_COLOR.reverseLight,
+      present: CANVAS_COLOR.restoredCyan, label: CANVAS_COLOR.textPrimary,
+    },
+    stage: {
+      surface: CANVAS_COLOR.consequenceStageSurface, recess: CANVAS_COLOR.consequenceStageRecess,
+      rail: CANVAS_COLOR.consequenceStageRail, curtain: CANVAS_COLOR.consequenceStageCurtain,
+      floor: CANVAS_COLOR.consequenceStageFloor,
+      cards: [CANVAS_COLOR.restoredCyan, CANVAS_COLOR.consequenceVisual, CANVAS_COLOR.accentWarm],
+    },
   };
 
   const WORLD_FIGURE = {
@@ -185,6 +218,7 @@
     titleScreen: 'routechoice',
     routeCursor: 0,
     newGameRoute: null,
+    experienceKind: 'original',
     slotCursor: 0,
     currentSlot: 0,
     playerName: '수호자',
@@ -213,6 +247,7 @@
     hint: null,          // 퍼즐 힌트 오버레이 { step, level, hints }
     hintRet: 'world',
     introDim: null,      // 새 게임 인트로 암전 { fadeFrame } — startNewGame에서 세팅
+    consequenceTransition: null,
     warpCooldownFrames: 0, // 맵 전환 직후 즉시 되돌아가는 auto-bounce 방지
     lastWarp: null,        // { fromMap, toMap, exitDir, arrivedAt } — UX 검증/테스트용
   };
@@ -463,10 +498,53 @@
     return data;
   }
 
+  function migrateSlotV11(data) {
+    if (!data || !data.flags) return data;
+    const fromVersion = Number(data.v) || 0;
+    if (fromVersion < 11) {
+      data.experienceKind = data.flags.storyRoute === 'memento' ? 'legacy-records' : 'original';
+      data.v = 11;
+    }
+    if (data.experienceKind === 'consequence-pairs' && data.flags.consequenceCampaign &&
+        typeof data.flags.consequenceCampaign === 'object' && !Array.isArray(data.flags.consequenceCampaign)) {
+      const incoming = data.flags.consequenceCampaign;
+      const knownPairs = new Set(CONSEQUENCE_PAIR_ORDER);
+      const uniquePairs = (value) => {
+        if (!Array.isArray(value)) return [];
+        const seen = new Set();
+        return value.filter((pairId) => {
+          if (!knownPairs.has(pairId) || seen.has(pairId)) return false;
+          seen.add(pairId);
+          return true;
+        });
+      };
+      const knownChoices = new Set(Object.keys(CONSEQUENCE_FINAL_ENDINGS));
+      const knownEndings = new Set(Object.values(CONSEQUENCE_FINAL_ENDINGS));
+      const wrong = Number(incoming.finalTimelineWrong);
+      const finalChoiceId = knownChoices.has(incoming.finalChoiceId) ? incoming.finalChoiceId : null;
+      const canonicalEndingId = knownEndings.has(incoming.canonicalEndingId) ? incoming.canonicalEndingId : null;
+      const canonicalEndingBasis = canonicalEndingId && incoming.canonicalEndingBasis &&
+        typeof incoming.canonicalEndingBasis === 'object' && !Array.isArray(incoming.canonicalEndingBasis)
+        ? incoming.canonicalEndingBasis : null;
+      data.flags.consequenceCampaign = Object.assign(createConsequenceCampaignState(), incoming, {
+        activePairId: knownPairs.has(incoming.activePairId) ? incoming.activePairId : null,
+        completedPairIds: uniquePairs(incoming.completedPairIds),
+        finalTimelineDraft: uniquePairs(incoming.finalTimelineDraft),
+        finalTimelineWrong: Number.isFinite(wrong) ? Math.max(0, Math.floor(wrong)) : 0,
+        timelineRestored: !!incoming.timelineRestored,
+        finalChoiceId,
+        canonicalEndingId,
+        canonicalEndingBasis,
+        timelineLabUnlocked: !!incoming.timelineLabUnlocked,
+      });
+    }
+    return data;
+  }
+
   function loadSlot(i) {
     try {
       const raw = localStorage.getItem(slotKey(i));
-      return raw ? migrateSlotV10(migrateSlotV9(migrateSlotV8(migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw))))))))) : null;
+      return raw ? migrateSlotV11(migrateSlotV10(migrateSlotV9(migrateSlotV8(migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw)))))))))) : null;
     } catch (e) { return null; }
   }
 
@@ -542,10 +620,11 @@
     }
   }
 
-  const SAVE_VERSION = 10;
+  const SAVE_VERSION = 11;
   function save() {
     writeSlot(game.currentSlot, {
       v: SAVE_VERSION,
+      experienceKind: game.experienceKind,
       name: game.playerName,
       map: game.map,
       x: game.player.x, y: game.player.y,
@@ -567,6 +646,42 @@
   }
 
   // 슬롯 요약 (타이틀 표시용). 없으면 null.
+  const EXPERIENCE_KIND_LABELS = Object.freeze({
+    original: '원래 모험',
+    'legacy-records': '기존 손상 기록',
+    'consequence-pairs': '과거·현재 캠페인',
+  });
+  function expectedExperienceKindForRoute(route) {
+    if (route === 'original') return 'original';
+    if (route === 'memento') return 'legacy-records';
+    if (route === 'consequence-pairs') return 'consequence-pairs';
+    return null;
+  }
+  function experienceKindLabel(kind) {
+    return EXPERIENCE_KIND_LABELS[kind] || '다른 경험';
+  }
+  function selectedNewGameRoute() {
+    return expectedExperienceKindForRoute(game.newGameRoute) ? game.newGameRoute : 'original';
+  }
+  function slotRouteStatus(route, summary) {
+    const expectedExperienceKind = expectedExperienceKindForRoute(route);
+    if (!expectedExperienceKind || !summary) {
+      return { kind: summary ? 'mismatch' : 'empty', expectedExperienceKind,
+        actualExperienceKind: summary ? summary.experienceKind : null };
+    }
+    return {
+      kind: summary.experienceKind === expectedExperienceKind ? 'matching' : 'mismatch',
+      expectedExperienceKind,
+      actualExperienceKind: summary.experienceKind,
+    };
+  }
+  const SLOT_ROUTE_MISMATCH_NOTICE = '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.';
+  const TITLE_SLOT_NOTICE_LAYOUT = Object.freeze({ x: 48, y: 426, w: 624, h: 56, pad: 18, lineH: 18 });
+  function titleSlotNotice() {
+    const notice = game.notice;
+    return game.mode === 'title' && game.titleScreen === 'slots' && notice && notice.t > 0 &&
+      notice.text === SLOT_ROUTE_MISMATCH_NOTICE ? notice.text : null;
+  }
   function slotSummary(i) {
     const s = loadSlot(i);
     if (!s || !s.flags) return null;
@@ -577,6 +692,7 @@
       done: !!(s.flags.defeated && s.flags.defeated.yeongi),
       endingId: s.flags.endingId || null,
       storyRoute: s.flags.storyRoute === 'memento' ? 'memento' : 'original',
+      experienceKind: s.experienceKind,
     };
   }
 
@@ -724,8 +840,24 @@
   function recordScale() {
     return isTouchDevice && typeof window !== 'undefined' && window.innerHeight > window.innerWidth ? 1.4 : 1;
   }
+  function consequenceUiProfile(portrait) {
+    return portrait
+      ? { hudFont: 20, hudHeight: 100, hudLines: [33, 64, 95], focusFont: 20, focusHeight: 58,
+        focusFullWidth: true, staticLabels: false }
+      : { hudFont: 14, hudHeight: 74, hudLines: [26, 47, 68], focusFont: 14, focusHeight: 42,
+        focusFullWidth: false, staticLabels: true };
+  }
+  function isConsequencePortrait() {
+    return isTouchDevice && typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+  }
   function recordFs(px, bold) { return fs(Math.round(px * recordScale()), bold); }
   function recordLh(px) { return lh(Math.round(px * recordScale())); }
+  function finaleScale() {
+    if (!isTouchDevice) return 1;
+    return isConsequencePortrait() ? 1.5 : 1.15;
+  }
+  function finaleFs(px, bold) { return fs(Math.round(px * finaleScale()), bold); }
+  function finaleLh(px) { return lh(Math.round(px * finaleScale())); }
   // 의미 색상 — 색약 모드에서는 빨강/초록 대신 구분이 쉬운 파랑/주황(Okabe-Ito 계열)
   function monName(id) { const m = MONSTERS[id]; return (m && m.name) || id; }
   function okColor() { return game.colorBlind ? '#3b8ed0' : '#5cb85c'; }   // 정답·높음
@@ -1497,9 +1629,24 @@
     if (!isTouchDevice) return;
     const action = document.getElementById('t-a');
     const cancel = document.getElementById('t-pause');
-    if (!action || !cancel) return;
+    const menu = document.getElementById('t-menu');
+    if (!action || !cancel || !menu) return;
     const actionSub = action.querySelector('.sub');
     const setActionSub = (text) => { if (actionSub) actionSub.textContent = text; };
+    const setCancelVisible = (visible) => {
+      cancel.setAttribute('aria-hidden', visible ? 'false' : 'true');
+      cancel.style.visibility = visible ? '' : 'hidden';
+      cancel.disabled = !visible;
+    };
+    const setMenu = (label, ariaLabel, visible) => {
+      menu.textContent = label;
+      menu.setAttribute('aria-label', ariaLabel);
+      menu.setAttribute('aria-hidden', visible ? 'false' : 'true');
+      menu.style.visibility = visible ? '' : 'hidden';
+      menu.disabled = !visible;
+    };
+    setCancelVisible(true);
+    setMenu('수첩', '친구 수첩 열기', true);
     if (game.mode === 'title' && game.titleScreen === 'routechoice') {
       action.setAttribute('aria-label', '선택한 시간선 결정');
       setActionSub('시간선 선택');
@@ -1509,10 +1656,43 @@
     }
     if (game.mode === 'timelineorder') {
       const remaining = timelineOrderRemaining();
+      setMenu('나가기', '시간순 저장 후 나가기', true);
       action.setAttribute('aria-label', remaining.length ? '선택한 시간 카드 놓기' : '시간순 확인');
       setActionSub(remaining.length ? '카드 놓기' : '순서 확인');
       cancel.setAttribute('aria-label', '마지막 카드 되돌리기');
       cancel.textContent = '한 칸';
+      return;
+    }
+    if (game.mode === 'consequenceorder') {
+      const remaining = consequenceTimelineRemaining();
+      setMenu('나가기', '과거 시간순 저장 후 나가기', true);
+      action.setAttribute('aria-label', remaining.length ? '선택한 과거 카드 놓기' : '과거 시간순 확인');
+      setActionSub(remaining.length ? '카드 놓기' : '순서 확인');
+      cancel.setAttribute('aria-label', '마지막 과거 카드 되돌리기');
+      cancel.textContent = '한 칸';
+      return;
+    }
+    if (game.mode === 'consequencerestore') {
+      setMenu('', '복원 중에는 사용할 수 없는 버튼', false);
+      action.setAttribute('aria-label', '복원된 다음 시간 보기');
+      setActionSub('다음 시간');
+      cancel.setAttribute('aria-label', '복원 요약 건너뛰기');
+      cancel.textContent = '건너뜀';
+      return;
+    }
+    if (game.mode === 'consequencechoice') {
+      setMenu('', '선택 중에는 사용할 수 없는 버튼', false);
+      setCancelVisible(false);
+      action.setAttribute('aria-label', '현재 선택 결정');
+      setActionSub('결정');
+      return;
+    }
+    if (game.mode === 'timelinelab') {
+      setMenu('나가기', '시간선 실험실 닫기', true);
+      action.setAttribute('aria-label', '가정한 시간선 결과 보기');
+      setActionSub('결과 보기');
+      cancel.setAttribute('aria-label', '시간선 실험 처음으로');
+      cancel.textContent = '처음';
       return;
     }
     if (game.mode === 'report') {
@@ -1523,11 +1703,11 @@
       return;
     }
     if (game.mode === 'ending') {
+      setMenu('', '엔딩 중에는 사용할 수 없는 버튼', false);
+      setCancelVisible(false);
       const ready = endingContinueReady();
       action.setAttribute('aria-label', ready ? '마을로 돌아가기' : '엔딩이 끝날 때까지 잠시 기다리기');
       setActionSub(ready ? '마을로' : '잠시만');
-      cancel.setAttribute('aria-label', '엔딩에서는 A 버튼으로 계속합니다');
-      cancel.textContent = '안내';
       return;
     }
     if (game.mode === 'record') {
@@ -4091,9 +4271,871 @@
     { x: 22, y: 4, name: '문구점' },
     { x: 4, y: 15, name: '사진관' },
   ];
+
+  function isConsequenceCampaign() {
+    return game.experienceKind === 'consequence-pairs' && !!(game.flags && game.flags.consequenceCampaign);
+  }
+
+  function consequenceActive() {
+    if (!isConsequenceCampaign()) return null;
+    const campaign = game.flags.consequenceCampaign;
+    const pairId = campaign.activePairId || 'd1_copyright';
+    const config = consequencePairConfig(pairId);
+    const state = config && game.flags[config.stateKey];
+    return config && state ? { campaign, config, state } : null;
+  }
+
+  function consequenceRuntime() {
+    const active = consequenceActive();
+    if (!active) return null;
+    const facts = projectPairFacts(active.config, active.state.pastChoices);
+    return {
+      pairId: active.config.id,
+      phase: active.state.phase,
+      checkpoint: active.state.checkpoint,
+      pastChoices: Object.assign({}, active.state.pastChoices),
+      requiredRepairIds: requiredRepairIds(active.config, active.state.pastChoices),
+      addedRepairIds: facts.addedRepairIds.slice(),
+      finale: Object.assign({}, active.state.finale),
+      stageRestored: !!active.state.stageRestored,
+      complete: !!active.state.complete,
+    };
+  }
+
+  function consequenceRepairIds(pastChoices, pairId) {
+    const active = consequenceActive();
+    const config = consequencePairConfig(pairId || (active && active.config.id) || 'd1_copyright');
+    return requiredRepairIds(config, pastChoices || {});
+  }
+
+  function consequenceEffortProjection(choiceId, pairId) {
+    const active = consequenceActive();
+    const config = consequencePairConfig(pairId || (active && active.config.id) || 'd1_copyright');
+    let mode = null;
+    for (const room of config.rooms) {
+      if (room.choiceModes[choiceId]) { mode = room.choiceModes[choiceId]; break; }
+    }
+    if (!mode && config.disclosureChoiceIds.includes(choiceId)) {
+      const disclosure = config.disclosureModeByChoice[choiceId];
+      mode = disclosure === 'complete' ? 'manual' : disclosure === 'partial' ? 'assisted' : 'instant';
+    }
+    const labels = mode === 'manual'
+      ? ['원래 자료를 직접 살핀다', '조건과 다른 자료를 나란히 본다', '확인한 내용과 빈칸을 남긴다']
+      : mode === 'assisted'
+        ? ['도움 후보를 원래 자료와 비교한다', '도움받은 부분과 빈칸을 남긴다']
+        : mode === 'instant' ? ['즉시 채우기를 실행한다'] : [];
+    return { choiceId, mode, steps: labels.length, labels };
+  }
+
+  function recordConsequencePastChoice(station, choiceId) {
+    const active = consequenceActive();
+    if (!active || active.state.phase !== 'past') return false;
+    const { config, state } = active;
+    if (station === config.disclosureKey) {
+      const roomsDone = config.rooms.every((room) => consequenceRoomChoice(config, room, state.pastChoices));
+      if (!roomsDone || state.pastChoices[station] || !config.disclosureChoiceIds.includes(choiceId)) return false;
+      state.pastChoices[station] = choiceId;
+      state.checkpoint = 'past_done';
+    } else {
+      const room = config.rooms.find((item) => item.choiceKey === station);
+      if (!room || state.pastChoices[station] || !room.choiceIds.includes(choiceId)) return false;
+      state.pastChoices[station] = choiceId;
+      state.checkpoint = 'past_rooms';
+    }
+    save();
+    return true;
+  }
+
+  function startConsequenceEffort(prop, picked) {
+    const effort = consequenceEffortProjection(picked.id);
+    if (!effort.steps) return false;
+    const advance = (step) => {
+      startChoice(`${picked.label}\n작업 ${step + 1}/${effort.steps} · 마지막 단계 전에는 돌아갈 수 있다.`,
+        [effort.labels[step]], (idx) => {
+          if (idx < 0) {
+            game.notice = { text: '아직 선택을 저장하지 않았다.', t: 180 };
+            return;
+          }
+          if (step + 1 < effort.steps) { advance(step + 1); return; }
+          recordConsequencePastChoice(prop.station, picked.id);
+          startDialog([`${picked.label}.\n${effort.steps}단계 작업을 마쳤고, 이 선택이 기록에 남았다.`], prop.label, () => {
+            if (consequencePropRole(prop) === 'disclosure') beginConsequencePresent();
+          });
+        });
+    };
+    advance(0);
+    return true;
+  }
+
+  function beginConsequencePresent() {
+    const active = consequenceActive();
+    if (!active || active.state.phase !== 'past' || active.state.checkpoint !== 'past_done') return false;
+    const { config, state } = active;
+    state.phase = 'present';
+    state.checkpoint = 'present_start';
+    state.addedRepairs = {};
+    deriveAddedRepairIds(config, state.pastChoices).forEach((id) => { state.addedRepairs[id] = false; });
+    game.map = config.mapId;
+    game.player.px = game.player.x * TS;
+    game.player.py = game.player.y * TS;
+    save();
+    const duration = game.reduceFx ? 2 : 27;
+    game.consequenceTransition = { frame: 0, duration, midpoint: Math.ceil(duration / 2), announcedCurrent: false };
+    const msg = '[과거 종료] 선택은 같은 자리에 기록으로 남았다.';
+    game.notice = { text: msg, t: 240 };
+    Speech.speak(`${msg} [현재 시작] 같은 자리에서, 남겨 둔 빈칸을 마주한다.`);
+    return true;
+  }
+
+  function updateConsequenceTransition() {
+    const transition = game.consequenceTransition;
+    if (!transition) return false;
+    transition.frame += 1;
+    if (!transition.announcedCurrent && transition.frame >= transition.midpoint) {
+      transition.announcedCurrent = true;
+      const msg = '[현재 시작] 같은 자리에서, 남겨 둔 빈칸을 마주한다.';
+      game.notice = { text: msg, t: 240 };
+    }
+    if (transition.frame >= transition.duration) {
+      game.consequenceTransition = null;
+      const active = consequenceActive();
+      if (active) setScreenReaderLive(`[현재 →] ${active.config.pairUi.displayLabel}. ${consequenceObjectiveText()}`);
+    }
+    return true;
+  }
+
+  function completeConsequenceRepair(repairId) {
+    const active = consequenceActive();
+    if (!active || active.state.phase !== 'present') return false;
+    const { config, state } = active;
+    const base = config.baseRepairIds.includes(repairId);
+    const added = deriveAddedRepairIds(config, state.pastChoices).includes(repairId);
+    if (!base && !added) return false;
+    const target = base ? state.baseRepairs : state.addedRepairs;
+    if (target[repairId]) return false;
+    target[repairId] = true;
+    if (isPairFinaleReady(config, state)) state.checkpoint = 'repairs_done';
+    save();
+    return true;
+  }
+
+  function consequenceRepairLabel(config, id) {
+    return config && config.repairLabels && config.repairLabels[id] || id;
+  }
+
+  function creationJournalRows(pairId) {
+    const active = pairId && isConsequenceCampaign()
+      ? (() => {
+        const config = consequencePairConfig(pairId);
+        const state = config && game.flags[config.stateKey];
+        return config && state ? { campaign: game.flags.consequenceCampaign, config, state } : null;
+      })()
+      : consequenceActive();
+    if (!active) return [];
+    const facts = projectPairFacts(active.config, active.state.pastChoices);
+    const rows = [];
+    active.config.rooms.forEach((room) => {
+      const id = facts.choices[room.choiceKey];
+      const prop = (MAP_PROPS[active.config.mapId] || []).find((item) => item.station === room.choiceKey);
+      const choice = prop && Array.isArray(prop.pastChoices) && prop.pastChoices.find((item) => item.id === id);
+      if (id) rows.push({ kind: 'past-choice', station: room.choiceKey, id,
+        label: choice ? choice.label : id, mode: facts.roomModes[room.choiceKey] });
+    });
+    if (facts.disclosureChoice) {
+      const prop = (MAP_PROPS[active.config.mapId] || []).find((item) => item.station === active.config.disclosureKey);
+      const choice = prop && Array.isArray(prop.pastChoices) && prop.pastChoices.find((item) => item.id === facts.disclosureChoice);
+      rows.push({ kind: 'past-choice', station: active.config.disclosureKey,
+        id: facts.disclosureChoice, label: choice ? choice.label : facts.disclosureChoice, mode: facts.disclosure });
+    }
+    for (const id of requiredRepairIds(active.config, active.state.pastChoices)) {
+      const done = active.state.baseRepairs[id] === true || active.state.addedRepairs[id] === true;
+      rows.push({ kind: 'repair', id, label: consequenceRepairLabel(active.config, id), done });
+    }
+    return rows;
+  }
+
+  function completeStagePersuasion() {
+    const active = consequenceActive();
+    if (!active || active.state.phase !== 'finale') return false;
+    const { campaign, config, state } = active;
+    state.finale.segment = Math.max(3, state.finale.segment || 0);
+    state.stageRestored = true;
+    state.complete = true;
+    state.phase = 'result';
+    state.checkpoint = 'complete';
+    if (!campaign.completedPairIds.includes(config.id)) campaign.completedPairIds.push(config.id);
+    campaign.activePairId = null;
+    campaign.hubCheckpoint = 'pair_select';
+    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[config.finaleId];
+    game.battle = null;
+    game.consequenceTransition = null;
+    game.mode = 'world';
+    game.map = 'timelinehub';
+    game.notice = { text: '', t: 0 };
+    const start = MAPS.timelinehub.start;
+    Object.assign(game.player, { x: start.x, y: start.y, px: start.x * TS, py: start.y * TS,
+      moving: false, dir: 'up' });
+    save();
+    Sound.badge();
+    Sound.playMapBgm(MAPS.timelinehub.song);
+    const result = config.pairUi && config.pairUi.result;
+    startDialog([
+      result && result.copy || `${config.pairUi.displayLabel}의 빈칸이 사실로 바뀌었다.`,
+      '잊지 않는 건 벌이 아니었다.\n다음 선택을 바꾸기 위한 작은 약속이었다.',
+    ], result && result.label || '복원 결과', () => Sound.playMapBgm(MAPS.timelinehub.song));
+    return true;
+  }
+
+  function startConsequenceStageBattle() {
+    const active = consequenceActive();
+    if (!active) return false;
+    if (active.config.id === 'd1_copyright') {
+      if (!game.flags.evCards) game.flags.evCards = [];
+      for (const id of ['ev_maker', 'ev_source']) {
+        if (!game.flags.evCards.includes(id)) game.flags.evCards.push(id);
+      }
+    }
+    startPersuadeBattle('bekkyeomon', active.config.finaleId);
+    game.battle.consequenceStage = true;
+    game.battle.mon = Object.assign({}, game.battle.mon, { name: active.config.pairUi.finaleLabel });
+    const segment = Math.max(0, Math.min(3, active.state.finale.segment || 0));
+    game.battle.claimIdx = segment;
+    if (segment > 0) {
+      game.battle.fragmentTotal = Math.max(game.battle.fragmentTotal, game.battle.p.closedThreshold || 1);
+      game.battle.gauge = Math.max(game.battle.gauge,
+        segment >= 3 ? game.battle.gaugeMax : Math.round(game.battle.gaugeMax * segment / 3));
+      persuadeGaugeSync(game.battle);
+      if (game.battle.gauge >= game.battle.gaugeMax) enterMenuPhase(game.battle);
+    }
+    return true;
+  }
+
+  function beginConsequenceFinale(options) {
+    const active = consequenceActive();
+    if (!active || active.state.phase !== 'present' || !isPairFinaleReady(active.config, active.state)) return false;
+    const identity = active.config.pairUi && active.config.pairUi.identityReveal;
+    if (identity && active.state.checkpoint !== identity.checkpoint) return false;
+    active.state.phase = 'finale';
+    active.state.checkpoint = 'finale_start';
+    active.state.finale.segment = 0;
+    save();
+    if (options && options.skipIntro) return startConsequenceStageBattle();
+    startDialog([getPersuade(active.config.finaleId).intro], '반디', startConsequenceStageBattle);
+    return true;
+  }
+
+  function consequenceHubProjection() {
+    const campaign = game.flags && game.flags.consequenceCampaign;
+    const completed = new Set(campaign && campaign.completedPairIds || []);
+    return CONSEQUENCE_PAIR_ORDER.map((pairId, index) => {
+      const complete = completed.has(pairId);
+      const priorComplete = CONSEQUENCE_PAIR_ORDER.slice(0, index).every((id) => completed.has(id));
+      return { pairId, complete, replay: complete, locked: !complete && !priorComplete };
+    });
+  }
+
+  function consequenceHubStatusText() {
+    return consequenceHubProjection().map((item) => {
+      const days = consequencePairConfig(item.pairId).daysAgo;
+      return `D-${days} ${item.complete ? '✓' : item.locked ? '□' : '열림'}`;
+    }).join(' · ');
+  }
+
+  const CONSEQUENCE_FINAL_CHOICES = [
+    { id: 'restore_together', label: '함께 기록을 복원한다', endingId: 'home' },
+    { id: 'reset_again', label: '기억을 다시 잠근다', endingId: 'silent' },
+    { id: 'delegate_all', label: '앞으로의 결정을 AI에 맡긴다', endingId: 'dawn' },
+    { id: 'disconnect_all', label: 'AI 연결을 모두 끊는다', endingId: 'farewell' },
+  ];
+
+  const CONSEQUENCE_TIMELINE_SUMMARY = {
+    d10_judgment: { intention: '대신 결정', consequence: '사람 확인 약화' },
+    d7_misinformation: { intention: '빠른 전달', consequence: '출처 확인 약화' },
+    d5_recommendation: { intention: '오래 보기', consequence: '다른 관점 축소' },
+    d3_consent: { intention: '빠른 합성', consequence: '동의 확인 누락' },
+    d1_copyright: { intention: '빠른 완성', consequence: '창작 출처 누락' },
+  };
+
+  function consequenceTimelineCards() {
+    return CONSEQUENCE_PAIR_ORDER.map((pairId) => {
+      const config = consequencePairConfig(pairId);
+      const summary = CONSEQUENCE_TIMELINE_SUMMARY[pairId];
+      return {
+        id: pairId,
+        daysAgo: config.daysAgo,
+        title: config.pairUi.displayLabel,
+        intention: summary.intention,
+        consequence: summary.consequence,
+      };
+    });
+  }
+
+  function consequenceTimelineRemaining() {
+    const state = game.consequenceTimeline;
+    const campaign = game.flags && game.flags.consequenceCampaign;
+    if (!state || !campaign) return [];
+    return state.cards.filter((card) => !campaign.finalTimelineDraft.includes(card.id));
+  }
+
+  function consequenceTimelineAnnouncement() {
+    const state = game.consequenceTimeline;
+    const campaign = game.flags && game.flags.consequenceCampaign;
+    if (!state || !campaign) return '';
+    if (state.feedback) return state.feedback;
+    const remaining = consequenceTimelineRemaining();
+    if (!remaining.length) return '과거 카드 다섯 장을 놓았습니다. 결정 버튼으로 시간순을 확인하세요.';
+    const card = remaining[Math.min(state.cursor, remaining.length - 1)];
+    return `실제 시간순 복원. ${campaign.finalTimelineDraft.length}/5 배치. ` +
+      `선택: 현재보다 ${card.daysAgo}일 전, ${card.title}.`;
+  }
+
+  function announceConsequenceTimeline() {
+    const text = consequenceTimelineAnnouncement();
+    setScreenReaderLive(text);
+    if (game.tts) Speech.speak(text);
+  }
+
+  function startConsequenceTimeline() {
+    const campaign = game.flags && game.flags.consequenceCampaign;
+    if (!isConsequenceCampaign() || !consequenceCampaignJourneys(game.flags) ||
+        campaign.timelineRestored || campaign.canonicalEndingId) return false;
+    game.consequenceTimeline = { cards: consequenceTimelineCards(), cursor: 0, feedback: null };
+    game.mode = 'consequenceorder';
+    campaign.hubCheckpoint = 'final_timeline';
+    syncTouchControlLabels();
+    announceConsequenceTimeline();
+    return true;
+  }
+
+  function placeConsequenceTimelineCard(pairId) {
+    const campaign = game.flags && game.flags.consequenceCampaign;
+    const state = game.consequenceTimeline;
+    if (!state || !campaign || state.feedback) return false;
+    const remaining = consequenceTimelineRemaining();
+    if (!remaining.length) return false;
+    const card = pairId
+      ? remaining.find((item) => item.id === pairId)
+      : remaining[Math.min(state.cursor, remaining.length - 1)];
+    if (!card) return false;
+    campaign.finalTimelineDraft.push(card.id);
+    state.cursor = Math.min(state.cursor, Math.max(0, remaining.length - 2));
+    save();
+    Sound.blip(820);
+    announceConsequenceTimeline();
+    return true;
+  }
+
+  function undoConsequenceTimelineCard() {
+    const campaign = game.flags && game.flags.consequenceCampaign;
+    const state = game.consequenceTimeline;
+    if (!state || !campaign) return false;
+    state.feedback = null;
+    if (!campaign.finalTimelineDraft.length) {
+      announceConsequenceTimeline();
+      return false;
+    }
+    campaign.finalTimelineDraft.pop();
+    save();
+    Sound.blip(540);
+    announceConsequenceTimeline();
+    return true;
+  }
+
+  function startConsequenceRestoration() {
+    game.consequenceTimeline = null;
+    game.consequenceRestoration = { index: 0 };
+    game.mode = 'consequencerestore';
+    syncTouchControlLabels();
+    const first = consequencePairConfig(CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER[0]);
+    const text = `복원된 시간순. 현재보다 ${first.daysAgo}일 전, ${first.pairUi.displayLabel}.`;
+    setScreenReaderLive(text);
+    if (game.tts) Speech.speak(text);
+  }
+
+  function submitConsequenceTimeline() {
+    const campaign = game.flags && game.flags.consequenceCampaign;
+    const state = game.consequenceTimeline;
+    if (!state || !campaign || state.feedback || campaign.finalTimelineDraft.length !== 5) return false;
+    if (!isConsequenceChronologicalOrder(campaign.finalTimelineDraft)) {
+      campaign.finalTimelineWrong += 1;
+      state.feedback = campaign.finalTimelineWrong >= 3
+        ? '날짜 테두리를 보자. D-10에서 D-1 쪽으로 이어진다.'
+        : campaign.finalTimelineWrong >= 2
+          ? '어떤 편리한 의도가 다음 결과를 만들었는지 이어 보자.'
+          : '순서가 이어지지 않는다. 더 먼 과거부터 살펴보자.';
+      save();
+      Sound.wrong();
+      announceConsequenceTimeline();
+      return false;
+    }
+    campaign.timelineRestored = true;
+    campaign.finalTimelineDraft = [];
+    campaign.hubCheckpoint = 'timeline_restored';
+    save();
+    Sound.correct();
+    startConsequenceRestoration();
+    return true;
+  }
+
+  function openConsequenceFinalChoice() {
+    game.consequenceRestoration = null;
+    game.consequenceChoice = { cursor: 0 };
+    game.mode = 'consequencechoice';
+    syncTouchControlLabels();
+    const text = '복원된 기록 앞에서 앞으로 무엇을 약속할까? 네 선택 중 하나를 고르세요.';
+    setScreenReaderLive(text);
+    if (game.tts) Speech.speak(text);
+  }
+
+  function advanceConsequenceRestoration(skip) {
+    const state = game.consequenceRestoration;
+    if (!state || game.mode !== 'consequencerestore') return false;
+    if (skip || state.index >= CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER.length - 1) {
+      openConsequenceFinalChoice();
+      return true;
+    }
+    state.index += 1;
+    const config = consequencePairConfig(CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER[state.index]);
+    const text = `현재보다 ${config.daysAgo}일 전, ${config.pairUi.displayLabel}. ${config.pairUi.result.copy}`;
+    setScreenReaderLive(text);
+    if (game.tts) Speech.speak(text);
+    Sound.blip(760);
+    return true;
+  }
+
+  function chooseConsequenceEnding(finalChoiceId) {
+    const result = prepareConsequenceFinalization(game.flags, finalChoiceId);
+    if (!result) return false;
+    const campaign = game.flags.consequenceCampaign;
+    campaign.finalChoiceId = finalChoiceId;
+    campaign.canonicalEndingId = result.endingId;
+    campaign.canonicalEndingBasis = result.basis;
+    campaign.timelineLabUnlocked = true;
+    campaign.hubCheckpoint = 'canonical_complete';
+    game.flags.endingId = result.endingId;
+    game.flags.trueEnding = result.endingId === 'home';
+    recordEndingSeen(result.endingId);
+    save();
+    game.consequenceChoice = null;
+    game.mode = 'ending';
+    game.endingType = 'true';
+    game.endingT = 0;
+    syncTouchControlLabels();
+    announceEnding(result.endingId);
+    Sound.playMapBgm('ending');
+    return true;
+  }
+
+  const TIMELINE_LAB_PROFILES = ['restore', 'repeat', 'depend', 'mixed'];
+  const TIMELINE_LAB_PROFILE_LABELS = {
+    restore: '확인하고 함께 복원', repeat: '책임을 피하고 반복', depend: '판단을 AI에 의존', mixed: '서로 다른 선택',
+  };
+
+  function timelineLabAnnouncement() {
+    const lab = game.timelineLab;
+    if (!lab) return '';
+    const row = lab.cursor < lab.journeys.length
+      ? (() => {
+        const journey = lab.journeys[lab.cursor];
+        const config = consequencePairConfig(journey.pairId);
+        return `${lab.cursor + 1}/6. D-${config.daysAgo} ${config.pairUi.displayLabel}, ${TIMELINE_LAB_PROFILE_LABELS[journey.profile]}.`;
+      })()
+      : `6/6. 마지막 선택, ${CONSEQUENCE_FINAL_CHOICES.find((choice) => choice.id === lab.finalChoiceId).label}.`;
+    const result = lab.result ? ` 실험 결과: ${endingScene(lab.result.endingId).title}.` : '';
+    return `시간선 실험실. 첫 시간선은 바뀌지 않습니다. ${row}${result}`;
+  }
+
+  function announceTimelineLab() {
+    const text = timelineLabAnnouncement();
+    setScreenReaderLive(text);
+    if (game.tts) Speech.speak(text);
+  }
+
+  function canonicalTimelineLabState() {
+    const campaign = game.flags && game.flags.consequenceCampaign;
+    if (!campaign || !campaign.canonicalEndingBasis) return null;
+    const profiles = Array.isArray(campaign.canonicalEndingBasis.profiles)
+      ? campaign.canonicalEndingBasis.profiles : [];
+    return {
+      cursor: 0,
+      journeys: CONSEQUENCE_PAIR_ORDER.map((pairId) => {
+        const found = profiles.find((item) => item && item.pairId === pairId);
+        return { pairId, profile: found && TIMELINE_LAB_PROFILES.includes(found.profile) ? found.profile : 'mixed' };
+      }),
+      finalChoiceId: Object.prototype.hasOwnProperty.call(CONSEQUENCE_FINAL_ENDINGS, campaign.finalChoiceId)
+        ? campaign.finalChoiceId : 'restore_together',
+      result: null,
+    };
+  }
+
+  function openTimelineLab() {
+    const campaign = game.flags && game.flags.consequenceCampaign;
+    if (!isConsequenceCampaign() || !campaign || !campaign.timelineLabUnlocked ||
+        !campaign.canonicalEndingId || !campaign.canonicalEndingBasis) return false;
+    game.timelineLab = canonicalTimelineLabState();
+    game.mode = 'timelinelab';
+    syncTouchControlLabels();
+    announceTimelineLab();
+    return true;
+  }
+
+  function resetTimelineLab() {
+    if (!game.timelineLab || game.mode !== 'timelinelab') return false;
+    const initial = canonicalTimelineLabState();
+    if (!initial) return false;
+    game.timelineLab = initial;
+    syncTouchControlLabels();
+    announceTimelineLab();
+    return true;
+  }
+
+  function setTimelineLabJourney(pairId, profile) {
+    const lab = game.timelineLab;
+    const journey = lab && lab.journeys.find((item) => item.pairId === pairId);
+    if (!journey || !TIMELINE_LAB_PROFILES.includes(profile)) return false;
+    journey.profile = profile;
+    lab.result = null;
+    announceTimelineLab();
+    return true;
+  }
+
+  function setTimelineLabFinalChoice(finalChoiceId) {
+    const lab = game.timelineLab;
+    if (!lab || !Object.prototype.hasOwnProperty.call(CONSEQUENCE_FINAL_ENDINGS, finalChoiceId)) return false;
+    lab.finalChoiceId = finalChoiceId;
+    lab.result = null;
+    announceTimelineLab();
+    return true;
+  }
+
+  function previewTimelineLabEnding() {
+    const lab = game.timelineLab;
+    if (!lab) return null;
+    lab.result = computeConsequenceEnding(lab.journeys, lab.finalChoiceId);
+    announceTimelineLab();
+    return { endingId: lab.result.endingId, basis: lab.result.basis };
+  }
+
+  function closeTimelineLab() {
+    if (!game.timelineLab || game.mode !== 'timelinelab') return false;
+    game.timelineLab = null;
+    game.mode = 'world';
+    game.map = 'timelinehub';
+    syncTouchControlLabels();
+    Speech.stop();
+    setScreenReaderLive('시간선 실험실을 닫았습니다. 첫 시간선과 저장은 그대로입니다.');
+    return true;
+  }
+
+  function updateTimelineLab() {
+    const lab = game.timelineLab;
+    if (!lab) { game.mode = 'world'; return; }
+    if (justPressed('cancel')) { resetTimelineLab(); Sound.blip(540); return; }
+    if (justPressed('menu')) { closeTimelineLab(); return; }
+    if (justPressed('up') || justPressed('down')) {
+      lab.cursor = justPressed('up') ? (lab.cursor + 5) % 6 : (lab.cursor + 1) % 6;
+      Sound.blip();
+      announceTimelineLab();
+      return;
+    }
+    if (justPressed('left') || justPressed('right')) {
+      const direction = justPressed('left') ? -1 : 1;
+      if (lab.cursor < lab.journeys.length) {
+        const journey = lab.journeys[lab.cursor];
+        const index = TIMELINE_LAB_PROFILES.indexOf(journey.profile);
+        setTimelineLabJourney(journey.pairId,
+          TIMELINE_LAB_PROFILES[(index + direction + TIMELINE_LAB_PROFILES.length) % TIMELINE_LAB_PROFILES.length]);
+      } else {
+        const index = CONSEQUENCE_FINAL_CHOICES.findIndex((choice) => choice.id === lab.finalChoiceId);
+        setTimelineLabFinalChoice(CONSEQUENCE_FINAL_CHOICES[
+          (index + direction + CONSEQUENCE_FINAL_CHOICES.length) % CONSEQUENCE_FINAL_CHOICES.length].id);
+      }
+      Sound.blip();
+      return;
+    }
+    if (justPressed('action')) {
+      previewTimelineLabEnding();
+      Sound.correct();
+    }
+  }
+
+  function drawTimelineLab() {
+    const lab = game.timelineLab;
+    if (!lab) return;
+    ctx.fillStyle = CANVAS_COLOR.surfaceSecondary;
+    ctx.fillRect(0, 0, LW, LH);
+    ctx.fillStyle = CANVAS_COLOR.restoredCyan;
+    ctx.font = finaleFs(18, true);
+    ctx.fillText('[시간선 실험실 · 저장하지 않는 가정]', 28, 40);
+    ctx.fillStyle = CANVAS_COLOR.accentWarm;
+    ctx.font = finaleFs(11, true);
+    ctx.fillText('첫 시간선은 바뀌지 않습니다. 여기서 바꾼 값은 나가면 사라집니다.', 28, 66);
+    if (isConsequencePortrait()) {
+      lab.journeys.forEach((journey, index) => {
+        const config = consequencePairConfig(journey.pairId);
+        const y = 82 + index * 43;
+        utBox(28, y, 664, 36, 5, TIMELINE_CARD_UI);
+        ctx.fillStyle = index === lab.cursor ? CANVAS_COLOR.accentWarm : CANVAS_COLOR.textPrimary;
+        ctx.font = finaleFs(12, index === lab.cursor);
+        ctx.fillText(`${index === lab.cursor ? '▶' : ' '} D-${config.daysAgo} ${config.pairUi.displayLabel} · ` +
+          TIMELINE_LAB_PROFILE_LABELS[journey.profile], 42, y + 24);
+      });
+      const finalChoice = CONSEQUENCE_FINAL_CHOICES.find((choice) => choice.id === lab.finalChoiceId);
+      utBox(28, 297, 664, 38, 5, TIMELINE_CARD_UI);
+      ctx.fillStyle = lab.cursor === 5 ? CANVAS_COLOR.accentWarm : CANVAS_COLOR.textPrimary;
+      ctx.font = finaleFs(12, lab.cursor === 5);
+      ctx.fillText(`${lab.cursor === 5 ? '▶' : ' '} 마지막 선택 · ${finalChoice.label}`, 42, 322);
+      utBox(28, 347, 664, 104, 7, RESTORED_PANEL_UI);
+      ctx.fillStyle = CANVAS_COLOR.textSecondary;
+      ctx.font = finaleFs(11, true);
+      ctx.fillText('가정 결과', 46, 372);
+      if (lab.result) {
+        const scene = endingScene(lab.result.endingId);
+        ctx.fillStyle = scene.color;
+        ctx.font = finaleFs(14, true);
+        ctx.fillText(scene.title, 164, 372);
+        ctx.fillStyle = CANVAS_COLOR.textPrimary;
+        ctx.font = finaleFs(11);
+        ctx.fillText('여섯 선택을 다시 비교해 보자.', 46, 408);
+        ctx.fillText('첫 시간선과 저장은 바뀌지 않는다.', 358, 408);
+      } else {
+        ctx.fillStyle = CANVAS_COLOR.textMuted;
+        ctx.font = finaleFs(11);
+        ctx.fillText('값을 바꾼 뒤 결정 버튼으로 가능한 결말을 미리 봅니다.', 46, 414);
+      }
+      ctx.fillStyle = CANVAS_COLOR.textMuted;
+      ctx.font = finaleFs(9);
+      ctx.textAlign = 'center';
+      ctx.fillText('↑↓ 항목 · ←→ 변경 · Ⓐ 결과 · [처음] 초기화 · [나가기] 닫기', LW / 2, 496);
+      ctx.textAlign = 'left';
+      return;
+    }
+    lab.journeys.forEach((journey, index) => {
+      const config = consequencePairConfig(journey.pairId);
+      const y = 88 + index * 58;
+      utBox(28, y, 430, 46, 6, TIMELINE_CARD_UI);
+      ctx.fillStyle = index === lab.cursor ? CANVAS_COLOR.accentWarm : CANVAS_COLOR.textPrimary;
+      ctx.font = finaleFs(11, index === lab.cursor);
+      ctx.fillText(`${index === lab.cursor ? '▶' : ' '} D-${config.daysAgo} ${config.pairUi.displayLabel}`, 42, y + 19);
+      ctx.fillStyle = CANVAS_COLOR.textSecondary;
+      ctx.font = finaleFs(10);
+      ctx.fillText(`‹ ${TIMELINE_LAB_PROFILE_LABELS[journey.profile]} ›`, 56, y + 38);
+    });
+    const finalY = 378;
+    utBox(28, finalY, 430, 50, 6, TIMELINE_CARD_UI);
+    const finalChoice = CONSEQUENCE_FINAL_CHOICES.find((choice) => choice.id === lab.finalChoiceId);
+    ctx.fillStyle = lab.cursor === 5 ? CANVAS_COLOR.accentWarm : CANVAS_COLOR.textPrimary;
+    ctx.font = finaleFs(11, lab.cursor === 5);
+    ctx.fillText(`${lab.cursor === 5 ? '▶' : ' '} 마지막 선택`, 42, finalY + 20);
+    ctx.fillStyle = CANVAS_COLOR.textSecondary;
+    ctx.font = finaleFs(10);
+    ctx.fillText(`‹ ${finalChoice.label} ›`, 56, finalY + 41);
+    utBox(478, 88, 214, 340, 8, RESTORED_PANEL_UI);
+    ctx.fillStyle = CANVAS_COLOR.textSecondary;
+    ctx.font = finaleFs(12, true);
+    ctx.fillText('가정 결과', 496, 118);
+    if (lab.result) {
+      const scene = endingScene(lab.result.endingId);
+      ctx.fillStyle = scene.color;
+      ctx.font = finaleFs(17, true);
+      drawQuestionText(scene.title, 496, 162, 178, finaleLh(25));
+      ctx.fillStyle = CANVAS_COLOR.textPrimary;
+      ctx.font = finaleFs(11);
+      drawQuestionText('여섯 선택을 다시 비교해 보자.', 496, 224, 178, finaleLh(22));
+      drawQuestionText('첫 시간선과 저장은 바뀌지 않는다.', 496, 286, 178, finaleLh(22));
+    } else {
+      ctx.fillStyle = CANVAS_COLOR.textMuted;
+      ctx.font = finaleFs(11);
+      drawQuestionText('값을 바꾼 뒤 결정 버튼을 누르면 가능한 결말을 미리 봅니다.',
+        496, 162, 178, finaleLh(22));
+    }
+    ctx.fillStyle = CANVAS_COLOR.textMuted;
+    ctx.font = finaleFs(10);
+    ctx.textAlign = 'center';
+    ctx.fillText(isTouchDevice
+      ? '↑↓ 항목 · ←→ 변경 · Ⓐ 결과 · [처음] 초기화 · [나가기] 닫기'
+      : '↑↓ 항목 · ←→ 변경 · Z 결과 · X 처음으로 · C 나가기', LW / 2, 488);
+    ctx.textAlign = 'left';
+  }
+
+  function startConsequencePair(pairId) {
+    if (!isConsequenceCampaign()) return false;
+    const config = consequencePairConfig(pairId);
+    let state = config && game.flags[config.stateKey];
+    const projection = consequenceHubProjection().find((item) => item.pairId === pairId);
+    if (!config || !state || !projection || projection.locked) return false;
+    if (state.complete) {
+      state = createConsequencePairState(config.id);
+      game.flags[config.stateKey] = state;
+    }
+    game.flags.consequenceCampaign.activePairId = config.id;
+    resumeConsequenceCampaign(config.id, state.checkpoint || 'past_start');
+    save();
+    const direction = state.phase === 'past'
+      ? `[과거 ←] 현재보다 ${config.daysAgo}일 전`
+      : `[현재 →] ${config.pairUi.displayLabel}`;
+    game.notice = { text: `${direction} · ${config.pairUi.objectiveLabel}`, t: 260 };
+    setScreenReaderLive(`${direction}. ${config.pairUi.objectiveLabel}`);
+    Speech.speak(`${direction}. ${config.pairUi.objectiveLabel}`);
+    Sound.playMapBgm(MAPS[config.mapId].song);
+    return true;
+  }
+
+  function resumeConsequenceCampaign(pairId, checkpointOverride) {
+    if (!isConsequenceCampaign()) return null;
+    const config = consequencePairConfig(pairId || game.flags.consequenceCampaign.activePairId || 'd1_copyright');
+    if (!config) return null;
+    const state = game.flags[config.stateKey];
+    if (!state) return null;
+    game.flags.consequenceCampaign.activePairId = state.complete ? null : config.id;
+    if (checkpointOverride) state.checkpoint = checkpointOverride;
+    const cp = state.checkpoint;
+    game.battle = null;
+    game.dialog = null;
+    game.choice = null;
+    game.consequenceTransition = null;
+    if (cp === 'complete') {
+      state.phase = 'result'; game.map = 'timelinehub'; game.mode = 'world';
+    } else {
+      game.map = config.mapId; game.mode = 'world';
+      state.phase = cp === 'finale_start' ? 'finale'
+        : (cp === 'present_start' || cp === 'repairs_done' || cp === 'identity_revealed') ? 'present' : 'past';
+    }
+    if (checkpointOverride) {
+      const start = MAPS[game.map].start;
+      Object.assign(game.player, { x: start.x, y: start.y, px: start.x * TS, py: start.y * TS,
+        moving: false, dir: 'up' });
+    }
+    if (!checkpointOverride && cp === 'finale_start') startConsequenceStageBattle();
+    return consequenceRuntime() || { pairId: config.id, phase: state.phase, checkpoint: cp, complete: state.complete };
+  }
+
+  function consequencePropRole(prop) {
+    const roles = {
+      d1_station: 'station', consequence_station: 'station',
+      d1_ledger: 'disclosure', consequence_disclosure: 'disclosure',
+      d1_public_terminal: 'terminal', consequence_terminal: 'terminal',
+      d1_stage: 'finale', consequence_finale: 'finale',
+      d1_exit: 'exit', consequence_exit: 'exit',
+    };
+    return prop && roles[prop.kind] || null;
+  }
+
+  function consequenceStationRepairIds(prop, active) {
+    const ids = [];
+    const roomIndex = active.config.rooms.findIndex((room) => room.choiceKey === prop.station);
+    if (roomIndex >= 0) ids.push(active.config.baseRepairIds[roomIndex]);
+    const choice = active.state.pastChoices[prop.station];
+    const derived = roomIndex >= 0
+      ? active.config.instantRepairByChoice[choice]
+      : active.config.disclosureRepairByChoice[choice];
+    if (derived && deriveAddedRepairIds(active.config, active.state.pastChoices).includes(derived)) ids.push(derived);
+    return ids.filter((id) => !(active.state.baseRepairs[id] || active.state.addedRepairs[id]));
+  }
+
+  function revealConsequenceIdentity() {
+    const active = consequenceActive();
+    const identity = active && active.config.pairUi && active.config.pairUi.identityReveal;
+    if (!active || !identity || active.state.phase !== 'present' ||
+        active.state.checkpoint !== 'repairs_done' || !isPairFinaleReady(active.config, active.state)) return false;
+    active.state.checkpoint = identity.checkpoint;
+    save();
+    const signature = identity.signatureCopy.replace('{playerName}', game.playerName);
+    startDialog([signature, identity.factCopy], active.config.pairUi.terminal.label);
+    return true;
+  }
+
+  function interactConsequenceProp(prop) {
+    if (!prop) return false;
+    if (game.map === 'timelinehub') {
+      const projection = prop.kind === 'timelinehub_pair' &&
+        consequenceHubProjection().find((item) => item.pairId === prop.pairId);
+      if (projection && projection.locked) {
+        startDialog([`[잠김] ${prop.text}`], prop.label);
+      } else if (projection) startConsequencePair(prop.pairId);
+      else if (prop.kind === 'timelinehub_final') {
+        const campaign = game.flags.consequenceCampaign;
+        if (campaign.canonicalEndingId) {
+          startDialog(['첫 시간선의 결말은 이미 기록되었다.\n옆의 실험실에서는 저장하지 않는 가정을 볼 수 있다.'], prop.label);
+        } else if (!consequenceCampaignJourneys(game.flags)) {
+          startDialog(['[잠김] 다섯 시간선의 과거와 현재를 모두 마쳐야 한다.'], prop.label);
+        } else startConsequenceTimeline();
+      } else if (prop.kind === 'timelinehub_lab') {
+        if (!openTimelineLab()) startDialog(['[잠김] 첫 시간선의 결말을 본 뒤 열린다.'], prop.label);
+      }
+      else startDialog([prop.text], prop.label);
+      return true;
+    }
+    const active = consequenceActive();
+    if (!active || game.map !== active.config.mapId) return false;
+    const role = consequencePropRole(prop);
+    if (role === 'terminal') {
+      if (active.config.pairUi.identityReveal && active.state.checkpoint === 'repairs_done') {
+        return revealConsequenceIdentity();
+      }
+      const lines = creationJournalRows().map((row) => row.kind === 'past-choice'
+        ? `과거 기록 · ${row.label}` : `현재 수리 · ${row.done ? '✓' : '○'} ${row.label}`);
+      const terminal = active.config.pairUi.terminal;
+      startDialog(lines.length ? lines : [prop.text], terminal.label);
+      return true;
+    }
+    if (role === 'finale') {
+      if (active.state.phase === 'past') startDialog(['마지막 장소는 아직 회색 문 뒤에 있다.\n먼저 세 방과 기록을 살펴보자.'], prop.label);
+      else if (active.state.phase === 'finale') startConsequenceStageBattle();
+      else if (!isPairFinaleReady(active.config, active.state)) startDialog(['아직 돌아오지 않은 사실이 있다.\n현재의 수리를 먼저 마치자.'], prop.label);
+      else if (active.config.pairUi.identityReveal && active.state.checkpoint !== 'identity_revealed') {
+        startDialog([active.config.pairUi.terminal.readyCopy], active.config.pairUi.terminal.label);
+      }
+      else beginConsequenceFinale();
+      return true;
+    }
+    if (active.state.phase === 'past' && (role === 'station' || role === 'disclosure')) {
+      if (role === 'disclosure' && active.config.rooms.some((room) => !active.state.pastChoices[room.choiceKey])) {
+        startDialog(['기록함은 아직 잠겨 있다.\n세 방의 선택부터 남겨야 한다.'], prop.label);
+        return true;
+      }
+      if (role === 'disclosure' && active.state.checkpoint === 'past_done' &&
+          active.state.pastChoices[prop.station]) {
+        startDialog(['공개 기록까지 남아 있다.\n같은 자리에서 현재의 결과를 확인하자.'], prop.label,
+          beginConsequencePresent);
+        return true;
+      }
+      if (active.state.pastChoices[prop.station]) {
+        startDialog([`이미 남긴 선택: ${active.state.pastChoices[prop.station]}\n기록은 몰래 바꿀 수 없다.`], prop.label);
+        return true;
+      }
+      startChoice(`${prop.label}\n시간은 적지만, 무엇을 남길지는 정할 수 있다.`,
+        prop.pastChoices.map((choice) => `${choice.label} · ${choice.minutes}`), (idx) => {
+          if (idx < 0) return;
+          const picked = prop.pastChoices[idx];
+          startConsequenceEffort(prop, picked);
+        });
+      return true;
+    }
+    if (active.state.phase === 'present' && (role === 'station' || role === 'disclosure')) {
+      const ids = consequenceStationRepairIds(prop, active);
+      if (!ids.length) startDialog(['이 자리의 사실은 이미 제자리를 찾았다.'], prop.label);
+      else startChoice(`${prop.label}\n과거의 결과를 현재에서 고친다.`,
+        ids.map((id) => consequenceRepairLabel(active.config, id)), (idx) => {
+          if (idx < 0) return;
+          const id = ids[idx];
+          completeConsequenceRepair(id);
+          startDialog([`${consequenceRepairLabel(active.config, id)}.\n숨겼던 빈칸 하나가 사실로 바뀌었다.`], prop.label);
+        });
+      return true;
+    }
+    if (role === 'exit') {
+      startDialog([active.state.complete ? '마음의 문이 허브로 이어진다.' : prop.text], prop.label);
+      return true;
+    }
+    return false;
+  }
+
   function interact() {
     if (game.puzzleRun && interactPuzzle()) return;
     const f = facingTile();
+    const consequenceProp = getPropAt(game.map, f.x, f.y);
+    if (isConsequenceCampaign() && consequenceProp && interactConsequenceProp(consequenceProp)) return;
     const npc = npcAt(game.map, f.x, f.y);
     if (npc) {
       // 1장 보스(담아) — 아직 설득하지 않았으면 설득 배틀로, 이후엔 되돌린 친구로
@@ -4695,9 +5737,10 @@
   // 발밑 히트박스 — 스프라이트(48px)보다 작아 문틀·모서리에 덜 걸린다
   const HB = { ox: 10, oy: 26, w: 28, h: 20 };
   function tileBlocked(tx, ty) {
+    const consequenceProp = isConsequenceCampaign() && getPropAt(game.map, tx, ty);
     return SOLID(tileAt(game.map, tx, ty)) || !!npcAt(game.map, tx, ty) ||
       !!monsterAt(game.map, tx, ty) || !!friendAt(game.map, tx, ty) ||
-      !!(game.puzzleRun && puzzleObjAt(game.map, tx, ty));
+      !!consequenceProp || !!(game.puzzleRun && puzzleObjAt(game.map, tx, ty));
   }
   function rectBlocked(px, py) {
     const x0 = px + HB.ox, y0 = py + HB.oy, x1 = x0 + HB.w - 1, y1 = y0 + HB.h - 1;
@@ -4793,6 +5836,7 @@
 
   function updateWorld() {
     const p = game.player;
+    if (updateConsequenceTransition()) return;
     // 박사 고백 이벤트 — 조건이 갖춰지면(chapter3Clear && !profConfession) 마을에서 즉시 시작
     if (game.map === 'village' && game.flags.chapter3Clear && !game.flags.profConfession) {
       startProfConfession();
@@ -5053,7 +6097,7 @@
         b.mercyChoiceKind = choice.kind;
         if (choice.kind === 'mercy') {
           // X-6 재대결은 winRematch에서 자비를 상향 판정하므로 여기서 누적하지 않는다(중복 방지).
-          if (!b.rematch) game.flags.mercy += 1;
+          if (!b.rematch && !b.consequenceStage) game.flags.mercy += 1;
           Sound.badge();
         } else {
           Sound.select();
@@ -5296,6 +6340,17 @@
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
+    if (b.consequenceStage) {
+      if (b.mercyChoiceKind === 'mercy') completeStagePersuasion();
+      else {
+        game.battle = null;
+        game.mode = 'world';
+        save();
+        Sound.playMapBgm(MAPS[game.map].song);
+        startDialog(['무대는 아직 겹쳐 있다.\n이름표를 한데 묶지 말고, 각자의 자리로 돌려보내자.'], '반디');
+      }
+      return;
+    }
     // X-6 재대결(기억의 방)은 진행 플래그를 건드리지 않고 별도 처리한다 — 모든 승리 경로보다 앞.
     if (b.rematch) { winRematch(); return; }
     // 챕터 보스 — 별도 진행 플래그(chapterNClear)로 처리한다
@@ -5685,7 +6740,7 @@
       rankWrong: 0,
       rankHits: 0,
     };
-    game.flags.battleCount += 1;
+    if (p.subjectKind !== 'place') game.flags.battleCount += 1;
     enterMenuPhase(game.battle);
     if (game.battle.prologueTutorial) {
       pushFloat('* 먼저 「가만히 듣기」로\n속마음을 들어 보자.');
@@ -5772,7 +6827,9 @@
   // 응답 판정 — 옛 「응답의 문」 판정과 같은 수치 (+26/32 · -6 역효과)
   function resolveResponse(b, correct, viaNote) {
     const claim = currentClaim();
-    const st = pStats();
+    const st = b.consequenceStage
+      ? { gateRight: 0, gateWrong: 0, backfire: 0, verifyWrong: 0 }
+      : pStats();
     const r = b.p.react;
     let text;
     if (correct) {
@@ -5783,7 +6840,7 @@
       st.gateRight += 1;
       const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
       const topic = cardId ? EVIDENCE_CARDS[cardId].topic : monTopic(b);
-      recordTopicResult(game.currentSlot, topic, true);
+      if (!b.consequenceStage) recordTopicResult(game.currentSlot, topic, true);
       text = claim.okLine || r.evidenceRight || '…그랬구나.';
       b.shake = 14; b.flinchT = 40; Sound.correct(); // 흠칫 — 말이 닿았다 (N-1)
       // 연속 정답 콤보(Q-5) — 잘 읽고 연달아 맞히는 것 자체가 보상이 되게.
@@ -5798,13 +6855,20 @@
         Sound.blip(660 + b.combo * 90);
       }
       b.claimIdx += 1; // 다음 주장으로
+      if (b.consequenceStage) {
+        const active = consequenceActive();
+        if (active) {
+          active.state.finale.segment = Math.min(3, Math.max(active.state.finale.segment || 0, b.claimIdx));
+          save();
+        }
+      }
       if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
     } else {
       b.combo = 0; // 콤보(Q-5)는 오답에서 끊긴다 — ×N 카운터(Y-7)도 이 값으로 함께 꺼진다
       b.rankWrong = (b.rankWrong || 0) + 1; // B-2 등급 집계 — 오답 문 카운트
       b.gauge = clamp(b.gauge - 6, 0, b.gaugeMax);
       st.gateWrong += 1; st.backfire += 1;
-      recordTopicResult(game.currentSlot, monTopic(b), false);
+      if (!b.consequenceStage) recordTopicResult(game.currentSlot, monTopic(b), false);
       text = claim.onWrong || '…아니야. 그런 게 아니야.';
       if (viaNote) text += '\n' + viaNote;
       // 읽기 게이트(Q-1): 틀리면 속마음을 한 번 더 비춰 준다 — 읽고 다시 고르는 순환.
@@ -5865,7 +6929,7 @@
       // 마지막 한 걸음은 반드시 마음에 닿는 '대답'(정답 +26/32)이어야 한다.
       const n = b.p.fragmentsPerWave || 3;
       b.fragmentTotal += n;
-      pStats().fragments += n;
+      if (!b.consequenceStage) pStats().fragments += n;
       const listenCap = Math.max(0, b.gaugeMax - 24);
       b.gauge = clamp(Math.min(b.gauge + n * 2, Math.max(b.gauge, listenCap)), 0, b.gaugeMax);
       persuadeGaugeSync(b);
@@ -5989,6 +7053,7 @@
   }
   function persuadeTriumph() {
     const b = game.battle;
+    if (b.consequenceStage) { completeStagePersuasion(); return; }
     if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
     b.arena.carrying = false;
     if (b.mon.mercy && !b.mercyDone) {
@@ -6029,6 +7094,11 @@
     const bulletMul = (typeof b.p.waveBulletMul === 'function') ? b.p.waveBulletMul(game.flags) : b.p.waveBulletMul;
     let sf = dodgeSpeedFactor() * (bulletMul || 1);
     let rateMul = 1;
+    const consequence = consequenceActive();
+    if (b.consequenceStage && consequence && consequence.state.finale.slowWaveEnabled) {
+      sf *= 0.75;
+      rateMul *= 1.25;
+    }
     if (b.pIntense) { sf *= 1.3; rateMul *= 0.75; b.pIntense = false; }
     b.arena.sf = sf; b.arena.rateMul = rateMul; b.arena.bullets = []; b.arena.spiralA = 0; b.arena.inv = 0;
     b.arena.carrying = false;
@@ -6169,7 +7239,8 @@
     // 탄막 턴 종료: 시간 만료 → 내 턴(메뉴)으로
     if (w.t >= w.dur) {
       // 무피해 보너스 — 연습 파도 제외 + gaugeMax-2 상한 (회피만으로는 만충 불가)
-      if (w.hits === 0 && !w.practice) { grantPatternGauge(b, 6); pStats().perfectWaves += 1;
+      if (w.hits === 0 && !w.practice) { grantPatternGauge(b, 6);
+        if (!b.consequenceStage) pStats().perfectWaves += 1;
         pushFloat('* 끝까지 들어 줬다 — 마음 +6'); }
       enterMenuPhase(b);
     }
@@ -6600,6 +7671,25 @@
   // 하트가 다 닳으면 물러난다 — 단, 상대는 이야기를 절반쯤 기억한다
   function persuadeExhaust() {
     const b = game.battle;
+    let stageAssistLine = null;
+    if (b.consequenceStage) {
+      const active = consequenceActive();
+      if (active) {
+        active.state.finale.assistLevel = Math.min(3, (active.state.finale.assistLevel || 0) + 1);
+        active.state.finale.slowWaveEnabled = active.state.finale.assistLevel >= 3;
+        const segment = Math.max(0, Math.min(2, active.state.finale.segment || 0));
+        if (active.state.finale.assistLevel === 2) {
+          const hints = [
+            '첫 이름표부터 다시 본다. 「가만히 듣기」로 그림의 출처 단서를 먼저 찾자.',
+            '두 번째 이름표가 남았다. 음악의 허용 조건을 먼저 듣고 답하자.',
+            '마지막 이름표가 남았다. 글의 원문과 도움 표시를 차례로 확인하자.',
+          ];
+          stageAssistLine = `[구간 도움] 되돌린 이름표 ${segment}/3은 그대로 남는다.\n${hints[segment]}`;
+        } else if (active.state.finale.assistLevel >= 3) {
+          stageAssistLine = '[도움 켜짐] 다음 파도는 25% 느리게 흐른다.\n되돌린 이름표도 그대로 남는다.';
+        }
+      }
+    }
     if (!game.flags.persuadeMemory) game.flags.persuadeMemory = {};
     // 저학년(easy)은 게이지를 그대로 기억한다 — 탈진해도 진행이 깎이지 않아
     // 재도전 의욕이 꺾이지 않는다 (기본/고학년은 절반)
@@ -6620,10 +7710,12 @@
     game.battle = null;
     game.mode = 'world';
     Sound.playMapBgm(MAPS[game.map].song);
-    startDialog([
+    const retreatLines = [
       '마음이 지쳐서, 한 발 물러났다…',
       `괜찮아. ${nm}는 네 이야기를\n조금은 기억하고 있을 거야.\n숨을 고르고 다시 가 보자.`,
-    ]);
+    ];
+    if (stageAssistLine) retreatLines.push(stageAssistLine);
+    startDialog(retreatLines);
   }
 
   function updatePersuadeBattle() {
@@ -7613,6 +8705,257 @@
     ctx.font = fs(12);
     ctx.textAlign = 'center';
     ctx.fillText(isTouchDevice ? 'Ⓐ 놓기·확인 · [되돌리기] · [메뉴] 저장 후 나가기' : 'Z 놓기·확인 · X·Esc 되돌리기 · C 저장 후 나가기', LW / 2, 504);
+    ctx.textAlign = 'left';
+  }
+
+  function updateConsequenceTimeline() {
+    const state = game.consequenceTimeline;
+    if (!state || !game.flags) { game.mode = 'world'; return; }
+    if (justPressed('menu')) {
+      save();
+      game.consequenceTimeline = null;
+      game.mode = 'world';
+      Speech.stop();
+      return;
+    }
+    if (justPressed('cancel')) { undoConsequenceTimelineCard(); return; }
+    if (state.feedback) {
+      if (justPressed('action')) {
+        state.feedback = null;
+        Sound.blip();
+        announceConsequenceTimeline();
+      }
+      return;
+    }
+    const remaining = consequenceTimelineRemaining();
+    if (remaining.length && (justPressed('up') || justPressed('down'))) {
+      state.cursor = justPressed('up')
+        ? (state.cursor + remaining.length - 1) % remaining.length
+        : (state.cursor + 1) % remaining.length;
+      Sound.blip();
+      announceConsequenceTimeline();
+      return;
+    }
+    if (justPressed('action')) {
+      if (remaining.length) placeConsequenceTimelineCard();
+      else submitConsequenceTimeline();
+    }
+  }
+
+  function drawConsequenceTimeline() {
+    const state = game.consequenceTimeline;
+    const campaign = game.flags && game.flags.consequenceCampaign;
+    if (!state || !campaign) return;
+    const color = TIMELINE_ORDER_UI;
+    const remaining = consequenceTimelineRemaining();
+    ctx.fillStyle = color.page;
+    ctx.fillRect(0, 0, LW, LH);
+    ctx.fillStyle = CANVAS_COLOR.reverseLight;
+    ctx.font = finaleFs(isConsequencePortrait() ? 16 : 19, true);
+    ctx.fillText('[과거 ← 현재 · 다섯 선택의 시간선]', 28, 40);
+    ctx.fillStyle = color.body;
+    ctx.font = finaleFs(isConsequencePortrait() ? 11 : 13);
+    ctx.fillText('가장 먼 과거 D-10부터 현재와 가까운 D-1까지 직접 잇자.', 28, 64);
+    if (isConsequencePortrait()) {
+      for (let i = 0; i < 5; i++) {
+        const y = 76 + i * 52;
+        const id = campaign.finalTimelineDraft[i];
+        const card = state.cards.find((item) => item.id === id);
+        utBox(28, y, 664, 46, 5, TIMELINE_CARD_UI);
+        ctx.fillStyle = card ? CANVAS_COLOR.reverseLight : color.empty;
+        ctx.font = finaleFs(11, true);
+        ctx.fillText(`${i + 1}. ${card ? `D-${card.daysAgo} · ${card.title}` : '○ 빈 시간순 칸'}`, 42, y + 19);
+        if (card) {
+          ctx.fillStyle = CANVAS_COLOR.textSecondary;
+          ctx.font = finaleFs(10);
+          ctx.fillText(`의도 ${card.intention} → 결과 ${card.consequence}`, 54, y + 39);
+        }
+        if (card && state.feedback && campaign.finalTimelineWrong >= 3) {
+          ctx.strokeStyle = CANVAS_COLOR.accentWarm;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(66, y + 3, 68, 22);
+        }
+      }
+      utBox(28, 340, 664, 116, 7, TIMELINE_CARD_UI);
+      if (state.feedback) {
+        ctx.fillStyle = badColor();
+        ctx.font = finaleFs(13, true);
+        drawQuestionText(`△ ${state.feedback}`, 46, 372, 628, finaleLh(24));
+      } else if (remaining.length) {
+        const card = remaining[Math.min(state.cursor, remaining.length - 1)];
+        ctx.fillStyle = color.selected;
+        ctx.font = finaleFs(13, true);
+        ctx.fillText(`● D-${card.daysAgo} · ${card.title}`, 46, 368);
+        ctx.fillStyle = CANVAS_COLOR.textSecondary;
+        ctx.font = finaleFs(12);
+        ctx.fillText(`편리한 의도: ${card.intention}`, 46, 402);
+        ctx.fillText(`뒤따른 결과: ${card.consequence}`, 354, 402);
+        ctx.fillStyle = color.helper;
+        ctx.font = finaleFs(10);
+        ctx.fillText(`${state.cursor + 1}/${remaining.length} · ↑↓ 카드 선택`, 46, 438);
+      } else {
+        ctx.fillStyle = color.success;
+        ctx.font = finaleFs(13, true);
+        ctx.fillText('◆ 다섯 과거 배치 완료', 46, 378);
+        ctx.fillStyle = color.body;
+        ctx.font = finaleFs(12);
+        ctx.fillText('결정 버튼으로 이어진 시간을 확인하자.', 46, 420);
+      }
+      ctx.fillStyle = color.helper;
+      ctx.font = finaleFs(9);
+      ctx.textAlign = 'center';
+      ctx.fillText('Ⓐ 놓기·확인 · [한 칸] 되돌리기 · [나가기] 저장 후 닫기', LW / 2, 500);
+      ctx.textAlign = 'left';
+      return;
+    }
+    for (let i = 0; i < 5; i++) {
+      const y = 82 + i * 60;
+      const id = campaign.finalTimelineDraft[i];
+      const card = state.cards.find((item) => item.id === id);
+      utBox(28, y, 402, 51, 6, TIMELINE_CARD_UI);
+      ctx.fillStyle = card ? CANVAS_COLOR.reverseLight : color.empty;
+      ctx.font = finaleFs(13, true);
+      ctx.fillText(`${i + 1}. ${card ? `D-${card.daysAgo} · ${card.title}` : '○ 빈 시간순 칸'}`, 42, y + 20);
+      if (card) {
+        ctx.fillStyle = CANVAS_COLOR.textSecondary;
+        ctx.font = finaleFs(12);
+        ctx.fillText(`의도 ${card.intention} → 결과 ${card.consequence}`, 52, y + 42);
+        if (state.feedback && campaign.finalTimelineWrong >= 3) {
+          ctx.strokeStyle = CANVAS_COLOR.accentWarm;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(63, y + 4, 57, 21);
+        }
+      }
+    }
+    utBox(448, 82, 244, 240, 8, TIMELINE_CARD_UI);
+    ctx.fillStyle = color.primary;
+    ctx.font = finaleFs(14, true);
+    ctx.fillText(`남은 과거 카드 ${remaining.length}개`, 464, 112);
+    if (remaining.length) {
+      const card = remaining[Math.min(state.cursor, remaining.length - 1)];
+      ctx.fillStyle = color.selected;
+      ctx.font = finaleFs(16, true);
+      ctx.fillText(`● D-${card.daysAgo}`, 464, 150);
+      ctx.fillStyle = color.primary;
+      ctx.font = finaleFs(14, true);
+      drawQuestionText(card.title, 464, 181, 210, finaleLh(22));
+      ctx.fillStyle = CANVAS_COLOR.textSecondary;
+      ctx.font = finaleFs(12);
+      drawQuestionText(`편리한 의도: ${card.intention}`, 464, 220, 210, finaleLh(20));
+      drawQuestionText(`뒤따른 결과: ${card.consequence}`, 464, 250, 210, finaleLh(20));
+      ctx.fillStyle = color.helper;
+      ctx.font = finaleFs(11);
+      ctx.fillText(`${state.cursor + 1}/${remaining.length} · ↑↓ 선택`, 464, 302);
+    } else {
+      ctx.fillStyle = color.success;
+      ctx.font = finaleFs(14, true);
+      ctx.fillText('◆ 다섯 과거 배치 완료', 464, 150);
+      ctx.fillStyle = color.body;
+      ctx.font = finaleFs(12);
+      drawQuestionText('결정 버튼으로 이어진 시간을 확인하자.', 464, 190, 210, finaleLh(22));
+    }
+    if (state.feedback) {
+      utBox(28, 396, 664, 72, 6, TIMELINE_CARD_UI);
+      ctx.fillStyle = badColor();
+      ctx.font = finaleFs(13, true);
+      drawQuestionText(`△ ${state.feedback}`, 46, 425, 628, finaleLh(22));
+    }
+    ctx.fillStyle = color.helper;
+    ctx.font = finaleFs(11);
+    ctx.textAlign = 'center';
+    ctx.fillText(isTouchDevice ? 'Ⓐ 놓기·확인 · [한 칸] 되돌리기 · [나가기] 저장 후 닫기' :
+      'Z 놓기·확인 · X·Esc 되돌리기 · C 저장 후 나가기', LW / 2, 504);
+    ctx.textAlign = 'left';
+  }
+
+  function updateConsequenceRestoration() {
+    if (justPressed('cancel')) { advanceConsequenceRestoration(true); return; }
+    if (justPressed('action')) advanceConsequenceRestoration(false);
+  }
+
+  function drawConsequenceRestoration() {
+    const state = game.consequenceRestoration;
+    if (!state) return;
+    const pairId = CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER[state.index];
+    const config = consequencePairConfig(pairId);
+    ctx.fillStyle = CANVAS_COLOR.surfaceSecondary;
+    ctx.fillRect(0, 0, LW, LH);
+    ctx.fillStyle = CANVAS_COLOR.restoredCyan;
+    ctx.font = finaleFs(isConsequencePortrait() ? 17 : 20, true);
+    ctx.fillText('[복원된 시간순 → 컬러]', 30, 42);
+    ctx.fillStyle = CANVAS_COLOR.textSecondary;
+    ctx.font = finaleFs(isConsequencePortrait() ? 11 : 13);
+    ctx.fillText('과거의 선택과 현재의 결과가 한 줄로 이어진다.', 30, 67);
+    for (let i = 0; i < CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER.length; i++) {
+      const item = consequencePairConfig(CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER[i]);
+      const x = 30 + i * 134;
+      ctx.strokeStyle = i <= state.index ? CANVAS_COLOR.restoredCyan : CANVAS_COLOR.borderSubtle;
+      ctx.lineWidth = i === state.index ? 4 : 2;
+      ctx.strokeRect(x, 96, 116, 60);
+      ctx.fillStyle = i <= state.index ? CANVAS_COLOR.textPrimary : CANVAS_COLOR.textMuted;
+      ctx.font = finaleFs(12, true);
+      ctx.fillText(`D-${item.daysAgo}`, x + 10, 120);
+      ctx.font = finaleFs(10);
+      ctx.fillText(i < state.index ? '복원됨 ✓' : i === state.index ? '보고 있음' : '다음', x + 10, 143);
+    }
+    utBox(46, 196, 628, 214, 10, RESTORED_PANEL_UI);
+    ctx.fillStyle = CANVAS_COLOR.accentWarm;
+    ctx.font = finaleFs(17, true);
+    ctx.fillText(`현재보다 ${config.daysAgo}일 전 · ${config.pairUi.displayLabel}`, 70, 232);
+    ctx.fillStyle = CANVAS_COLOR.textPrimary;
+    ctx.font = finaleFs(15, true);
+    drawQuestionText(config.pairUi.result.copy, 70, 276, 576, finaleLh(26));
+    ctx.fillStyle = CANVAS_COLOR.textSecondary;
+    ctx.font = finaleFs(13);
+    ctx.fillText('쉬운 길의 빈칸은 저절로 사라지지 않았다.', 70, 348);
+    ctx.fillText('확인한 사실과 고친 행동을 함께 남긴다.', 70, 376);
+    ctx.fillStyle = CANVAS_COLOR.textMuted;
+    ctx.font = finaleFs(11);
+    ctx.textAlign = 'center';
+    ctx.fillText(isTouchDevice
+      ? `Ⓐ 다음 · [건너뜀] 전체 요약 건너뛰기 · ${state.index + 1}/5`
+      : `Z 다음 · X 전체 요약 건너뛰기 · ${state.index + 1}/5`, LW / 2, 488);
+    ctx.textAlign = 'left';
+  }
+
+  function updateConsequenceChoice() {
+    const state = game.consequenceChoice;
+    if (!state) return;
+    if (justPressed('up')) {
+      state.cursor = (state.cursor + CONSEQUENCE_FINAL_CHOICES.length - 1) % CONSEQUENCE_FINAL_CHOICES.length;
+      Sound.blip();
+    } else if (justPressed('down')) {
+      state.cursor = (state.cursor + 1) % CONSEQUENCE_FINAL_CHOICES.length;
+      Sound.blip();
+    } else if (justPressed('action')) {
+      chooseConsequenceEnding(CONSEQUENCE_FINAL_CHOICES[state.cursor].id);
+    }
+  }
+
+  function drawConsequenceChoice() {
+    const state = game.consequenceChoice;
+    if (!state) return;
+    ctx.fillStyle = CANVAS_COLOR.surfacePrimary;
+    ctx.fillRect(0, 0, LW, LH);
+    ctx.fillStyle = CANVAS_COLOR.restoredCyan;
+    ctx.font = finaleFs(isConsequencePortrait() ? 17 : 20, true);
+    ctx.fillText('[현재 → 기록을 본 뒤의 선택]', 34, 46);
+    ctx.fillStyle = CANVAS_COLOR.textSecondary;
+    ctx.font = finaleFs(isConsequencePortrait() ? 11 : 13);
+    ctx.fillText('앞선 다섯 여정과 이 선택을 함께 보고 결말이 정해진다.', 34, 74);
+    CONSEQUENCE_FINAL_CHOICES.forEach((choice, index) => {
+      const y = 102 + index * 82;
+      utBox(50, y, 620, 62, 7);
+      ctx.fillStyle = index === state.cursor ? CANVAS_COLOR.accentWarm : CANVAS_COLOR.textPrimary;
+      ctx.font = finaleFs(15, index === state.cursor);
+      ctx.fillText(`${index === state.cursor ? '▶' : ' '} ${choice.label}`, 72, y + 38);
+    });
+    ctx.fillStyle = CANVAS_COLOR.textMuted;
+    ctx.font = finaleFs(isConsequencePortrait() ? 9 : 11);
+    ctx.textAlign = 'center';
+    ctx.fillText(isTouchDevice
+      ? '↑↓ 선택 · Ⓐ 결정 · 앞선 행동도 함께 반영'
+      : '↑↓ 선택 · Z 결정 · 마지막 한 번만이 아니라 지금까지의 행동도 함께 반영됩니다', LW / 2, 478);
     ctx.textAlign = 'left';
   }
 
@@ -11169,10 +12512,337 @@
     ctx.restore();
   }
 
+  function drawConsequenceDecorItem(decor, cx, cy) {
+    const dx = Math.round(decor.x * TS - cx), dy = Math.round(decor.y * TS - cy);
+    const color = CONSEQUENCE_UI.zones[decor.palette] || CANVAS_COLOR.borderSubtle;
+    const width = (decor.w || 1) * TS, height = (decor.h || 1) * TS;
+    if (dx < -TS * 8 || dy < -TS * 4 || dx > LW + TS || dy > LH + TS) return;
+    const panel = (x, y, w, h) => {
+      ctx.fillStyle = CONSEQUENCE_UI.stage.surface;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = color;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    };
+    ctx.globalAlpha = 0.84;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+
+    if (decor.kind === 'threshold') {
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + 6, dy + TS - 7, width - 12, 5);
+    } else if (decor.kind === 'wall-panel') {
+      panel(dx + 8, dy + 8, width - 16, 18);
+    } else if (decor.kind === 'workbench') {
+      panel(dx + 8, dy + 13, width - 16, 24);
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + 14, dy + 19, width - 28, 4);
+    } else if (decor.kind === 'cabinet') {
+      panel(dx + 8, dy + 5, width - 16, TS - 10);
+      ctx.beginPath();
+      ctx.moveTo(dx + 12, dy + TS / 2);
+      ctx.lineTo(dx + width - 12, dy + TS / 2);
+      ctx.stroke();
+    } else if (decor.kind === 'platform') {
+      ctx.globalAlpha = 0.48;
+      ctx.fillStyle = CONSEQUENCE_UI.stage.floor;
+      ctx.fillRect(dx, dy, width, height);
+      ctx.strokeStyle = CONSEQUENCE_UI.stage.rail;
+      ctx.strokeRect(dx + 3, dy + 3, width - 6, height - 6);
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + width / 2 - TS / 2, dy + height - 6, TS, 6);
+    } else if (decor.kind === 'camera-rig') {
+      panel(dx + 8, dy + 7, width - 28, 28);
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + width - 22, dy + 14, 14, 14);
+      ctx.beginPath();
+      ctx.moveTo(dx + width / 2, dy + 35);
+      ctx.lineTo(dx + 18, dy + TS - 5);
+      ctx.moveTo(dx + width / 2, dy + 35);
+      ctx.lineTo(dx + width - 22, dy + TS - 5);
+      ctx.stroke();
+    } else if (decor.kind === 'broadcast-screen') {
+      panel(dx + 6, dy + 5, width - 12, Math.max(42, height - 18));
+      ctx.strokeStyle = color;
+      for (let y = dy + 17; y < dy + Math.max(42, height - 18); y += 12) {
+        ctx.beginPath(); ctx.moveTo(dx + 16, y); ctx.lineTo(dx + width - 16, y); ctx.stroke();
+      }
+    } else if (decor.kind === 'mix-console') {
+      panel(dx + 6, dy + 13, width - 12, 28);
+      for (let x = dx + 18; x < dx + width - 12; x += 18) {
+        ctx.fillStyle = color; ctx.fillRect(x, dy + 19, 3, 14);
+        ctx.fillStyle = CANVAS_COLOR.textPrimary; ctx.fillRect(x - 3, dy + 25, 9, 3);
+      }
+    } else if (decor.kind === 'caption-strip') {
+      for (let i = 0; i < 3; i++) panel(dx + 6 + i * ((width - 16) / 3), dy + 14, (width - 24) / 3, 24);
+    } else if (decor.kind === 'consent-lockers' || decor.kind === 'authority-shelf') {
+      panel(dx + 6, dy + 5, width - 12, TS - 10);
+      for (let x = dx + 18; x < dx + width - 10; x += 24) {
+        ctx.strokeStyle = color; ctx.strokeRect(x, dy + 10, 16, 30);
+      }
+    } else if (decor.kind === 'studio-light' || decor.kind === 'street-lamp' || decor.kind === 'warm-lamp') {
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + TS / 2 - 2, dy + 12, 4, 30);
+      ctx.beginPath(); ctx.arc(dx + TS / 2, dy + 10, decor.kind === 'warm-lamp' ? 9 : 7, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(dx + TS / 2, dy + 39); ctx.lineTo(dx + 13, dy + TS - 3);
+      ctx.moveTo(dx + TS / 2, dy + 39); ctx.lineTo(dx + TS - 13, dy + TS - 3); ctx.stroke();
+    } else if (decor.kind === 'echo-posts') {
+      for (let i = 0; i < 4; i++) {
+        const x = dx + 12 + i * Math.max(18, (width - 24) / 3);
+        ctx.fillStyle = color; ctx.fillRect(x, dy + 14, 5, 25);
+        ctx.strokeStyle = color; ctx.strokeRect(x - 5, dy + 8, 15, 12);
+      }
+    } else if (decor.kind === 'way-sign') {
+      ctx.fillStyle = color; ctx.fillRect(dx + width / 2 - 2, dy + 8, 4, 38);
+      panel(dx + 8, dy + 6, width - 16, 12);
+      panel(dx + width / 2, dy + 23, width / 2 - 8, 12);
+    } else if (decor.kind === 'hedge') {
+      for (let x = dx + 4; x < dx + width - 8; x += 22) {
+        ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x + 10, dy + 27, 12, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (decor.kind === 'path-arrows') {
+      ctx.fillStyle = color;
+      for (let i = 0; i < 3; i++) {
+        const x = dx + 18 + i * Math.max(34, (width - 36) / 3);
+        ctx.beginPath(); ctx.moveTo(x, dy + 12); ctx.lineTo(x + 18, dy + 24); ctx.lineTo(x, dy + 36); ctx.closePath(); ctx.fill();
+      }
+    } else if (decor.kind === 'choice-kiosk') {
+      panel(dx + 8, dy + 6, width - 16, 34);
+      ctx.fillStyle = color;
+      ctx.fillRect(dx + 18, dy + 14, width - 36, 4);
+      ctx.fillRect(dx + 18, dy + 25, width - 52, 4);
+    } else if (decor.kind === 'headline-wall') {
+      panel(dx + 6, dy + 5, width - 12, 36);
+      ctx.fillStyle = color; ctx.fillRect(dx + 14, dy + 12, width - 28, 7);
+      ctx.fillRect(dx + 14, dy + 25, Math.round((width - 28) * 0.64), 4);
+    } else if (decor.kind === 'tower-antenna') {
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.moveTo(dx + width / 2, dy + 8); ctx.lineTo(dx + width / 2, dy + height - 6);
+      ctx.moveTo(dx + width / 2, dy + 15); ctx.lineTo(dx + 9, dy + 42);
+      ctx.moveTo(dx + width / 2, dy + 15); ctx.lineTo(dx + width - 9, dy + 42); ctx.stroke();
+      for (let y = dy + 54; y < dy + height - 8; y += 28) {
+        ctx.fillStyle = color; ctx.fillRect(dx + 8, y, width - 16, 4);
+      }
+    } else if (decor.kind === 'editor-desk') {
+      panel(dx + 6, dy + 12, width - 12, 28);
+      for (let i = 0; i < 3; i++) {
+        ctx.strokeStyle = color; ctx.strokeRect(dx + 15 + i * 24, dy + 18, 18, 13);
+      }
+    } else if (decor.kind === 'printing-press') {
+      panel(dx + 6, dy + 5, width - 12, Math.max(48, height - 10));
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.arc(dx + 30, dy + 35, 17, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(dx + width - 30, dy + 35, 17, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = color; ctx.fillRect(dx + 28, dy + 52, width - 56, 5);
+    } else if (decor.kind === 'paper-stacks') {
+      for (let i = 0; i < 4; i++) panel(dx + 8 + i * 24, dy + 30 - i * 5, 30, 12);
+    } else if (decor.kind === 'source-shelf') {
+      panel(dx + 6, dy + 6, width - 12, 34);
+      for (let x = dx + 15; x < dx + width - 10; x += 14) {
+        ctx.fillStyle = color; ctx.fillRect(x, dy + 12, 8, 21);
+      }
+    } else if (decor.kind === 'phone') {
+      panel(dx + 8, dy + 13, TS - 16, 26);
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.arc(dx + TS / 2, dy + 23, 10, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    } else if (decor.kind === 'control-panel') {
+      panel(dx + 6, dy + 8, width - 12, 32);
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = i % 2 ? CANVAS_COLOR.textPrimary : color;
+        ctx.fillRect(dx + 17 + i * Math.max(17, (width - 38) / 5), dy + 17, 6, 6);
+      }
+    } else if (decor.kind === 'locked-door') {
+      panel(dx + 10, dy + 3, width - 20, TS - 6);
+      ctx.strokeStyle = color; ctx.beginPath(); ctx.arc(dx + width / 2, dy + 20, 8, Math.PI, 0); ctx.stroke();
+      ctx.fillStyle = color; ctx.fillRect(dx + width / 2 - 7, dy + 20, 14, 13);
+    } else if (decor.kind === 'sofa') {
+      panel(dx + 6, dy + 18, width - 12, 23);
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.moveTo(dx + 14, dy + 18); ctx.lineTo(dx + 14, dy + 8);
+      ctx.lineTo(dx + width - 14, dy + 8); ctx.lineTo(dx + width - 14, dy + 18); ctx.stroke();
+      ctx.fillStyle = color; ctx.fillRect(dx + 11, dy + 40, 8, 6); ctx.fillRect(dx + width - 19, dy + 40, 8, 6);
+    } else if (decor.kind === 'round-table') {
+      ctx.fillStyle = CONSEQUENCE_UI.stage.surface;
+      ctx.beginPath(); ctx.ellipse(dx + width / 2, dy + 24, width / 2 - 8, 15, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = color; ctx.stroke();
+      ctx.fillStyle = color; ctx.fillRect(dx + width / 2 - 3, dy + 36, 6, 10);
+    }
+  }
+
+  function consequenceFocusInfo() {
+    const active = consequenceActive();
+    if (!active || game.map !== active.config.mapId) return null;
+    const facing = facingTile();
+    const prop = getPropAt(game.map, facing.x, facing.y);
+    if (prop) return { title: prop.shortLabel || prop.label, action: isTouchDevice ? 'Ⓐ 조사' : 'Z 조사' };
+    const map = MAPS[game.map];
+    const zone = (map.timelineZones || []).find((item) => game.player.x >= item.x && game.player.x < item.x + item.w &&
+      game.player.y >= item.y && game.player.y < item.y + item.h);
+    return { title: zone ? zone.label : map.name, action: isTouchDevice ? '스틱으로 이동' : '방향키로 이동' };
+  }
+
+  function drawConsequenceFocusBanner() {
+    const info = consequenceFocusInfo();
+    if (!info) return;
+    const profile = consequenceUiProfile(isConsequencePortrait());
+    const w = profile.focusFullWidth ? LW - 32
+      : Math.min(LW - 32, Math.max(250, (info.title.length + info.action.length + 5) * profile.focusFont));
+    const x = Math.round((LW - w) / 2), y = LH - profile.focusHeight - 12;
+    utBox(x, y, w, profile.focusHeight, 5);
+    ctx.fillStyle = consequenceActive().state.phase === 'past' ? CANVAS_COLOR.reverseLight : CANVAS_COLOR.restoredCyan;
+    ctx.font = fs(profile.focusFont, true);
+    ctx.textAlign = 'center';
+    ctx.fillText(`${info.title}  ·  ${info.action}`, LW / 2, y + profile.focusHeight / 2 + 6);
+    ctx.textAlign = 'left';
+  }
+
+  function drawConsequenceObjects(cx, cy) {
+    if (!isConsequenceCampaign()) return;
+    const active = consequenceActive();
+    const onPairMap = active && game.map === active.config.mapId;
+    if (!onPairMap && game.map !== 'timelinehub') return;
+    const props = MAP_PROPS[game.map] || [];
+    const icons = { visual: '✦', audio: '♪', text: '가', ledger: '▤' };
+    if (onPairMap) {
+      const map = MAPS[active.config.mapId];
+      ctx.save();
+      const uiProfile = consequenceUiProfile(isConsequencePortrait());
+      for (const zone of map.timelineZones || []) {
+        const color = CONSEQUENCE_UI.zones[zone.palette] || CANVAS_COLOR.borderSubtle;
+        const zx = Math.round(zone.x * TS - cx), zy = Math.round(zone.y * TS - cy);
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = color;
+        ctx.fillRect(Math.round(zone.x * TS - cx), Math.round(zone.y * TS - cy), zone.w * TS, zone.h * TS);
+        ctx.globalAlpha = 0.58;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(zx + 3, zy + 3, zone.w * TS - 6, zone.h * TS - 6);
+        if (uiProfile.staticLabels) {
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = CANVAS_COLOR.textPrimary;
+          ctx.font = fs(12, true);
+          const textWidth = ctx.measureText(zone.label).width;
+          const labelX = zx + zone.w * TS / 2;
+          const labelY = Math.max(18, zy + 20);
+          if (labelY >= uiProfile.hudHeight + 16 && labelX >= textWidth / 2 + 8 && labelX <= LW - textWidth / 2 - 8) {
+            ctx.textAlign = 'center';
+            ctx.fillText(zone.label, labelX, labelY);
+            ctx.textAlign = 'left';
+          }
+        }
+      }
+      for (const decor of map.timelineDecor || []) {
+        drawConsequenceDecorItem(decor, cx, cy);
+      }
+      ctx.restore();
+    }
+    for (const prop of props) {
+      const sx = Math.round(prop.x * TS - cx), sy = Math.round(prop.y * TS - cy);
+      if (sx < -TS || sy < -TS || sx > LW || sy > LH) continue;
+      let done = false;
+      let available = !prop.locked;
+      const role = consequencePropRole(prop);
+      if (prop.kind === 'timelinehub_pair') {
+        const projected = consequenceHubProjection().find((item) => item.pairId === prop.pairId);
+        done = !!(projected && projected.complete);
+        available = !!(projected && !projected.locked);
+      } else if (prop.kind === 'timelinehub_final') {
+        const campaign = game.flags.consequenceCampaign;
+        done = !!campaign.canonicalEndingId;
+        available = done || !!consequenceCampaignJourneys(game.flags);
+      } else if (prop.kind === 'timelinehub_lab') {
+        done = false;
+        available = !!game.flags.consequenceCampaign.timelineLabUnlocked;
+      } else if (onPairMap) {
+        if (active.state.phase === 'past') {
+          done = !!active.state.pastChoices[prop.station];
+          if (role === 'disclosure') available = active.config.rooms.every((room) => active.state.pastChoices[room.choiceKey]);
+        } else if (role === 'station' || role === 'disclosure') {
+          done = consequenceStationRepairIds(prop, active).length === 0;
+        } else if (role === 'finale') {
+          available = isPairFinaleReady(active.config, active.state) &&
+            (!active.config.pairUi.identityReveal || active.state.checkpoint === 'identity_revealed');
+        } else if (role === 'terminal' && active.config.pairUi.identityReveal) {
+          done = active.state.checkpoint === 'identity_revealed' || active.state.phase === 'finale';
+          available = active.state.checkpoint === 'repairs_done' || done;
+        }
+      }
+      const color = !available ? CONSEQUENCE_UI.prop.unavailable : done ? CONSEQUENCE_UI.prop.complete
+        : active && active.state.phase === 'past' ? CONSEQUENCE_UI.prop.past : CONSEQUENCE_UI.prop.present;
+      ctx.fillStyle = CONSEQUENCE_UI.prop.surface;
+      ctx.fillRect(sx + 7, sy + 7, TS - 14, TS - 14);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = done ? 3 : 2;
+      ctx.strokeRect(sx + 7, sy + 7, TS - 14, TS - 14);
+      ctx.fillStyle = color;
+      ctx.font = fs(18, true);
+      ctx.textAlign = 'center';
+      const mark = done ? '✓' : role === 'finale' ? '▰'
+        : role === 'terminal' ? '▣'
+          : prop.kind === 'timelinehub_pair' ? (available ? '◆' : '□')
+            : prop.kind === 'timelinehub_final' ? (available ? '⇥' : '□')
+              : prop.kind === 'timelinehub_lab' ? (available ? '⌁' : '□')
+            : prop.kind === 'timelinehub_exit' || role === 'exit' ? '↥'
+              : (prop.icon || icons[prop.station] || '·');
+      ctx.fillText(mark, sx + TS / 2, sy + TS / 2 + 7);
+      if (prop.kind === 'timelinehub_pair' || prop.kind === 'timelinehub_final' ||
+          prop.kind === 'timelinehub_lab' || (role && !onPairMap)) {
+        ctx.fillStyle = CONSEQUENCE_UI.prop.label;
+        ctx.font = fs(12, true);
+        const label = prop.kind === 'timelinehub_pair' || prop.kind === 'timelinehub_final' ||
+          prop.kind === 'timelinehub_lab' ? prop.label
+          : prop.shortLabel || (role === 'station' && active.config.pairUi.roomLabels[prop.station])
+            || (role === 'disclosure' && active.config.pairUi.disclosure.label)
+            || (role === 'finale' && active.config.pairUi.finaleLabel)
+            || (role === 'terminal' && active.config.pairUi.terminal.label)
+            || prop.label;
+        const textWidth = ctx.measureText(label).width;
+        const labelX = sx + TS / 2;
+        if (labelX >= textWidth / 2 + 8 && labelX <= LW - textWidth / 2 - 8) {
+          ctx.fillText(label, labelX, Math.max(16, sy - 3));
+        }
+      }
+      ctx.textAlign = 'left';
+    }
+  }
+
+  function consequenceObjectiveText() {
+    const active = consequenceActive();
+    if (game.map === 'timelinehub') {
+      const projection = consequenceHubProjection();
+      const next = projection.find((item) => !item.complete && !item.locked);
+      return next ? `${consequencePairConfig(next.pairId).pairUi.displayLabel} 시간선이 열렸다`
+        : game.flags.consequenceCampaign.canonicalEndingId
+          ? '첫 시간선은 기록되었다 · 시간선 실험실이 열렸다'
+          : 'D-10부터 D-1까지 다섯 카드를 시간순으로 잇자';
+    }
+    if (!active) return '시간선 기록을 확인하자';
+    if (active.state.phase === 'past') {
+      const rooms = active.config.rooms.filter((room) => active.state.pastChoices[room.choiceKey]).length;
+      return rooms < active.config.rooms.length
+        ? `${active.config.pairUi.objectiveLabel} ${rooms}/${active.config.rooms.length}`
+        : active.state.pastChoices[active.config.disclosureKey] ? '현재로 돌아갈 준비'
+          : `${active.config.pairUi.disclosure.label}을 정하자`;
+    }
+    if (active.state.phase === 'present') {
+      const ids = requiredRepairIds(active.config, active.state.pastChoices);
+      const done = ids.filter((id) => active.state.baseRepairs[id] || active.state.addedRepairs[id]).length;
+      if (done < ids.length) return `과거가 남긴 결과를 수리하자 ${done}/${ids.length}`;
+      if (active.config.pairUi.identityReveal && active.state.checkpoint !== 'identity_revealed') {
+        return `${active.config.pairUi.terminal.label}에서 관리자 서명을 확인하자`;
+      }
+      return `${active.config.pairUi.finaleLabel}을 설득하자`;
+    }
+    if (active.state.phase === 'finale') return active.config.pairUi.objectiveLabel;
+    return `${active.config.pairUi.displayLabel} 기록이 복원되었다`;
+  }
+
   function drawWorld() {
     const m = MAPS[game.map];
     const { cx, cy } = camera();
     const frame = Math.floor(game.time / 30) % 2;
+    const activeConsequence = consequenceActive();
+    const grayTimeline = activeConsequence && game.map === activeConsequence.config.mapId &&
+      activeConsequence.state.phase === 'past';
 
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
@@ -11208,6 +12878,7 @@
     // 4·5장 허브 — 새 NPC를 늘리지 않고 넓은 공간의 목적지 표식만 띄운다.
     drawChapter4HubMarks(cx, cy);
     drawChapter5HubMarks(cx, cy);
+    drawConsequenceObjects(cx, cy);
     // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
     if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
 
@@ -11289,10 +12960,44 @@
     // 동행자 반디 — 어스름 위에 그려, 황혼 속에서 홀로 빛나는 광원이 된다
     drawCompanion(cx, cy);
 
+    const transition = game.consequenceTransition;
+    const transitionGray = transition
+      ? (game.reduceFx ? (transition.frame < transition.midpoint ? 1 : 0)
+        : Math.max(0, 1 - transition.frame / transition.duration)) : 0;
+    const grayAmount = grayTimeline ? 1 : transitionGray;
+    if (grayAmount > 0) {
+      ctx.save();
+      ctx.globalAlpha = grayAmount;
+      ctx.globalCompositeOperation = 'saturation';
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, LW, LH);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = `rgba(18,22,30,${(0.24 * grayAmount).toFixed(3)})`;
+      ctx.fillRect(0, 0, LW, LH);
+      ctx.restore();
+    }
+
     drawHud();
-    if (!game.puzzleRun) drawObjectiveArrow();
+    if (!game.puzzleRun && !isConsequenceCampaign()) drawObjectiveArrow();
     drawControlHint();
     drawNotice();
+    if (transition) {
+      const pastHalf = transition.frame < transition.midpoint;
+      ctx.save();
+      ctx.globalAlpha = game.reduceFx ? 0.94 : 0.78;
+      ctx.fillStyle = CANVAS_COLOR.surfaceSecondary;
+      ctx.fillRect(196, 214, 328, 62);
+      ctx.strokeStyle = pastHalf ? CANVAS_COLOR.reverseLight : CANVAS_COLOR.restoredCyan;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(196, 214, 328, 62);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = pastHalf ? CANVAS_COLOR.reverseLight : CANVAS_COLOR.restoredCyan;
+      ctx.font = fs(18, true);
+      ctx.textAlign = 'center';
+      ctx.fillText(pastHalf ? '[과거 종료] 선택이 기록에 남는다' : '[현재 시작] 결과를 마주한다', LW / 2, 250);
+      ctx.textAlign = 'left';
+      ctx.restore();
+    }
     if (game.puzzleRun) {
       drawPuzzleHud();
       // 접촉 화면 플래시 (모션 민감 배려로 reduceFx면 생략)
@@ -11443,18 +13148,20 @@
   function drawNotice() {
     if (!game.notice || game.notice.t <= 0) return;
     const txt = game.notice.text;
-    ctx.font = fs(13, true);
+    const consequencePortrait = isConsequenceCampaign() && isConsequencePortrait();
+    ctx.font = fs(consequencePortrait ? 18 : 13, true);
     const tw = ctx.measureText(txt).width;
-    const bw = tw + 28, bh = game.largeText ? 32 : 28;
+    const bw = Math.min(LW - 32, tw + 28), bh = consequencePortrait ? 36 : (game.largeText ? 32 : 28);
     // 퍼즐 HUD(drawPuzzleHud, by=8~최대 74px 높이)와 세로로 겹치지 않도록,
     // 방탈출 중에는 그 아래로 내려서 그린다.
-    const bx = Math.round(LW / 2 - bw / 2), by = game.puzzleRun ? 108 : 90;
+    const bx = Math.round(LW / 2 - bw / 2);
+    const by = game.puzzleRun ? 108 : consequencePortrait ? 116 : 90;
     const fade = Math.min(1, game.notice.t / 40);
     ctx.globalAlpha = fade;
     utBox(bx, by, bw, bh, 6);
     ctx.fillStyle = themeAccent();
     ctx.textAlign = 'center';
-    ctx.fillText(txt, LW / 2, by + bh / 2 + 4);
+    ctx.fillText(txt, LW / 2, by + bh / 2 + 4, bw - 20);
     ctx.textAlign = 'left';
     ctx.globalAlpha = 1;
   }
@@ -11485,7 +13192,7 @@
 
   // 게임을 처음 시작했을 때(박사님과 대화 전)만 보이는 조작 안내
   function drawControlHint() {
-    if (game.flags.talkedProf) return;
+    if (game.flags.talkedProf || isConsequenceCampaign()) return;
     const txt = isTouchDevice ? '스틱으로 이동 · Ⓐ 버튼으로 말 걸기' : '방향키로 이동 · Z(또는 A 버튼)로 말 걸기';
     ctx.font = fs(12, true);
     const tw = ctx.measureText(txt).width;
@@ -11660,11 +13367,20 @@
   function drawHud() {
     // 스테이지 + 지역 이름 + 목표
     const m = MAPS[game.map];
-    ctx.font = fs(14, true);
-    const title = `${hudBadgeText(game.map, game.flags)} · ${m.name}`;
+    const activeConsequence = consequenceActive();
+    const consequenceProfile = consequenceUiProfile(isConsequenceCampaign() && isConsequencePortrait());
+    ctx.font = fs(consequenceProfile.hudFont, true);
+    const title = isConsequenceCampaign()
+      ? game.map === 'timelinehub' ? '[시간선 허브] 마음의 문'
+        : activeConsequence && activeConsequence.state.phase === 'past'
+          ? `[과거 ←] 현재보다 ${activeConsequence.config.daysAgo}일 전`
+          : `[현재 →] ${activeConsequence ? activeConsequence.config.pairUi.displayLabel : m.name}`
+      : `${hudBadgeText(game.map, game.flags)} · ${m.name}`;
     // 방탈출 중에는 본편 퀘스트 대신 방 맥락 목표를 보여 준다 (클리어 후엔 보스방 안내)
     let objText;
-    if (game.puzzleRun) {
+    if (isConsequenceCampaign()) {
+      objText = consequenceObjectiveText();
+    } else if (game.puzzleRun) {
       const puz = game.puzzleRun.puzzle;
       objText = game.flags.privacyRecoveryActive
         ? `노출도 MAX — 정보 조각 회수 ${game.flags.privacyRecovery || 0}/${PRIVACY_RECOVERY_NEED}`
@@ -11705,15 +13421,23 @@
     }
     // X-8 수업 모드 — 목표 배너에 "이번 시간" 접두를 붙여 차시 목표임을 보여 준다.
     const obj = objectiveBannerPrefix() + objText;
-    const recordText = recordHudText(game.flags, isTouchDevice);
-    const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width, ctx.measureText(recordText).width) + 20;
-    utBox(8, 8, w, 74, 4);
-    ctx.fillStyle = '#ffd644';
-    ctx.fillText(title, 18, 26);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(obj, 18, 47);
-    ctx.fillStyle = '#8ea8d8';
-    ctx.fillText(recordText, 18, 68);
+    const recordText = isConsequenceCampaign()
+      ? (game.map === 'timelinehub' ? consequenceHubStatusText()
+        : activeConsequence && activeConsequence.state.phase === 'past'
+          ? (isConsequencePortrait() ? '선택은 저장되고, 현재에서 결과가 돌아옵니다' : '선택은 한 번 저장되며, 현재에서 결과가 돌아옵니다')
+          : (isConsequencePortrait() ? '기록 단말: 과거 선택 · 현재 수리 다시보기' : '기록 단말에서 과거 선택과 현재 수리를 다시 볼 수 있습니다'))
+      : recordHudText(game.flags, isTouchDevice);
+    const measuredW = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width, ctx.measureText(recordText).width) + 20;
+    const w = isConsequenceCampaign()
+      ? (isConsequencePortrait() ? LW - 16 : Math.min(LW - 16, measuredW))
+      : measuredW;
+    utBox(8, 8, w, consequenceProfile.hudHeight, 4);
+    ctx.fillStyle = CANVAS_COLOR.accentWarm;
+    ctx.fillText(title, 18, consequenceProfile.hudLines[0]);
+    ctx.fillStyle = CANVAS_COLOR.textPrimary;
+    ctx.fillText(obj, 18, consequenceProfile.hudLines[1], w - 20);
+    ctx.fillStyle = CANVAS_COLOR.consequenceLedger;
+    ctx.fillText(recordText, 18, consequenceProfile.hudLines[2], w - 20);
 
     // 안아 준 마음 (자비)
     if (game.flags.mercy > 0) {
@@ -11737,6 +13461,7 @@
       ctx.font = fs(12);
       ctx.fillText('♪ 꺼짐(M)', LW - 110, 56);
     }
+    drawConsequenceFocusBanner();
   }
 
   // 언더테일풍 — 모서리가 살짝 깎인 픽셀 상자 (r은 모서리 컷 크기로 사용)
@@ -11866,7 +13591,44 @@
       ? (b.flinchT > 0 ? 'flinch'
         : (b.phase === 'mercy' || b.phase === 'mercyReply') ? 'mercy' : b.pState)
       : null;
-    drawMon(ctx, b.monId, mx, my, monScale, false, mood, game.time);
+    if (b.consequenceStage) {
+      ctx.save();
+      ctx.translate(mcx, my + 72);
+      ctx.fillStyle = CONSEQUENCE_UI.stage.recess;
+      ctx.fillRect(-154, -82, 308, 162);
+      ctx.strokeStyle = CONSEQUENCE_UI.stage.rail;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-154, -82, 308, 162);
+      ctx.fillStyle = CONSEQUENCE_UI.stage.curtain;
+      ctx.globalAlpha = 0.72;
+      ctx.fillRect(-150, -78, 34, 136);
+      ctx.fillRect(116, -78, 34, 136);
+      ctx.globalAlpha = 1;
+      for (let y = -70; y < 50; y += 18) {
+        ctx.fillStyle = CONSEQUENCE_UI.stage.rail;
+        ctx.fillRect(-145, y, 24, 2);
+        ctx.fillRect(121, y, 24, 2);
+      }
+      ctx.fillStyle = CONSEQUENCE_UI.stage.floor;
+      ctx.fillRect(-150, 58, 300, 18);
+      ctx.fillStyle = CONSEQUENCE_UI.stage.rail;
+      ctx.fillRect(-126, 72, 252, 5);
+      const colors = CONSEQUENCE_UI.stage.cards;
+      for (let i = 0; i < 3; i++) {
+        const ox = (i - 1) * 34 + (game.reduceFx ? 0 : Math.sin(game.time / 18 + i) * 4);
+        ctx.fillStyle = CONSEQUENCE_UI.stage.surface;
+        ctx.fillRect(ox - 25, i * 16 - 20, 50, 64);
+        ctx.strokeStyle = colors[i];
+        ctx.lineWidth = 3;
+        ctx.strokeRect(ox - 25, i * 16 - 20, 50, 64);
+        ctx.fillStyle = colors[i];
+        ctx.font = fs(14, true);
+        ctx.textAlign = 'center';
+        ctx.fillText(i === 0 ? '✦' : i === 1 ? '♪' : '가', ox, i * 16 + 16);
+      }
+      ctx.textAlign = 'left';
+      ctx.restore();
+    } else drawMon(ctx, b.monId, mx, my, monScale, false, mood, game.time);
     // 인물 이름 + 마음 게이지·상태 — 마음이 활짝 열리면 이름이 노래진다 (안아 줄 수 있다는 신호)
     utBox(24, 24, 240, 64, 6);
     ctx.fillStyle = b.spareReady ? '#ffd644' : '#fff';
@@ -11884,6 +13646,15 @@
       ctx.fillStyle = '#888';
       ctx.font = fs(11);
       ctx.fillText('마음', 244 - 24, 50);
+    }
+    if (b.consequenceStage) {
+      const active = consequenceActive();
+      if (active && active.state.finale.slowWaveEnabled) {
+        utBox(278, 24, 170, 30, 4);
+        ctx.fillStyle = CANVAS_COLOR.statusSuccess;
+        ctx.font = fs(12, true);
+        ctx.fillText('도움 켜짐 · 파도 75%', 292, 44);
+      }
     }
 
     // 플레이어 하트
@@ -12422,6 +14193,21 @@
     ctx.fillText('⚠ 진행이 저장되지 않는 환경이에요 — 메뉴의 데이터 백업을 이용하세요', LW / 2, 520);
   }
 
+  function drawTitleSlotNotice() {
+    const text = titleSlotNotice();
+    if (!text) return false;
+    const box = TITLE_SLOT_NOTICE_LAYOUT;
+    utBox(box.x, box.y, box.w, box.h, 6, {
+      page: CANVAS_COLOR.surfaceSecondary,
+      border: warnColor(),
+    });
+    ctx.fillStyle = warnColor();
+    ctx.font = fs(12, true);
+    ctx.textAlign = 'left';
+    drawQuestionText(text, box.x + box.pad, box.y + 20, box.w - box.pad * 2, lh(box.lineH));
+    return true;
+  }
+
   function drawTitle() {
     ctx.fillStyle = CANVAS_COLOR.surfacePrimary;
     ctx.fillRect(0, 0, LW, LH);
@@ -12454,28 +14240,32 @@
       const color = ROUTE_CHOICE_UI;
       ctx.fillStyle = color.title;
       ctx.font = fs(22, true);
-      ctx.fillText('어떤 시간선으로 시작할까?', LW / 2, 218);
-      const descriptions = ['기존 프롤로그부터 이야기를 이어갑니다', '첫 손상 기록부터 빠르게 체험합니다'];
+      ctx.fillText('어떤 시간선으로 시작할까?', LW / 2, 192);
+      const descriptions = {
+        original: '기존 프롤로그부터 이야기를 이어갑니다',
+        memento: '첫 손상 기록부터 빠르게 체험합니다',
+        'consequence-pairs': '과거의 선택과 현재의 결과를 이어 봅니다',
+      };
       for (let i = 0; i < MEMENTO_ROUTES.length; i++) {
         const route = MEMENTO_ROUTES[i];
         const selected = i === game.routeCursor;
-        const x = 110, y = 250 + i * 106, w = 500, h = 88;
+        const x = 72, y = 210 + i * 76, w = 576, h = 70;
         utBox(x, y, w, h, 8, color);
         ctx.strokeStyle = selected ? color.selected : color.borderIdle;
         ctx.lineWidth = selected ? 4 : 2;
         ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
         ctx.textAlign = 'left';
         ctx.fillStyle = selected ? color.selected : color.unselected;
-        ctx.font = fs(18, true);
-        ctx.fillText(`${selected ? '●' : '○'} ${route.label}`, x + 24, y + 34);
+        ctx.font = fs(16, true);
+        ctx.fillText(`${selected ? '●' : '○'} ${route.label}`, x + 24, y + 29);
         ctx.fillStyle = color.detail;
-        ctx.font = fs(13);
-        ctx.fillText(descriptions[i], x + 52, y + 62);
+        ctx.font = fs(12);
+        ctx.fillText(descriptions[route.id], x + 52, y + 54);
       }
       ctx.textAlign = 'center';
       ctx.fillStyle = color.helper;
       ctx.font = fs(13);
-      ctx.fillText(isTouchDevice ? '스틱으로 선택 · Ⓐ 결정' : '↑↓ 선택 · Z·Enter 결정', LW / 2, 486);
+      ctx.fillText(isTouchDevice ? '스틱으로 선택 · Ⓐ 결정' : '↑↓ 선택 · Z·Enter 결정', LW / 2, 462);
       drawTitleStorageWarning();
       ctx.textAlign = 'left';
       return;
@@ -12486,7 +14276,9 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = CANVAS_COLOR.textMuted;
     ctx.font = fs(12);
-    ctx.fillText('선택한 시간선은 새 모험에 적용 · 저장 슬롯은 표시된 시간선 이어하기', LW / 2, 196);
+    const selectedRoute = selectedNewGameRoute();
+    const selectedRouteLabel = MEMENTO_ROUTES.find((route) => route.id === selectedRoute).label;
+    ctx.fillText(`${selectedRouteLabel} · 같은 진행 또는 빈 슬롯을 고르세요`, LW / 2, 196);
     for (let i = 0; i < SLOT_COUNT; i++) {
       const y = 212 + i * 74, h = 64;
       const sel = i === game.slotCursor && game.titleScreen === 'slots';
@@ -12511,9 +14303,11 @@
         ctx.fillStyle = '#888';
         ctx.font = fs(13);
         const prog = sum.done ? '모험 완료' : sum.stage;
-        const route = sum.storyRoute === 'memento' ? '메멘토 이어하기' : '원래 모험 이어하기';
+        const routeStatus = slotRouteStatus(selectedRoute, sum);
+        const route = `${experienceKindLabel(sum.experienceKind)} 진행`;
         const streak = getMeta(i).streak || 0;
         ctx.textAlign = 'right';
+        ctx.fillStyle = routeStatus.kind === 'matching' ? '#888' : warnColor();
         ctx.fillText(`${route} · ${prog}   ♥ ${sum.mercy}${streak ? '   🔥' + streak : ''}`, boxX + boxW - 18, y + 40);
         ctx.textAlign = 'left';
         // B-3 오늘의 도전 미완료 배지 — 슬롯 화면에서 은은히 알려 준다(벌점·소멸 없음)
@@ -12530,16 +14324,16 @@
       }
     }
 
+    const titleNoticeVisible = drawTitleSlotNotice();
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
-    // 단축키는 핵심만 — 나머지는 I 도움말(또는 메뉴). 벽 같은 키 나열은 초등 첫인상을 해친다.
-    if (isTouchDevice) {
+    if (!titleNoticeVisible && isTouchDevice) {
       ctx.font = fs(14);
       ctx.fillText('스틱으로 슬롯 선택 · Ⓐ로 시작', LW / 2, 456);
       ctx.fillStyle = '#9aa8c8';
       ctx.font = fs(13);
       ctx.fillText('친구수첩·백업 등 → [메뉴]   ·   선생님 → 오른쪽 아래', LW / 2, 476);
-    } else {
+    } else if (!titleNoticeVisible) {
       ctx.font = fs(13);
       ctx.fillText('↑↓ 선택  ·  Z 시작  ·  X 삭제  ·  I 도움말', LW / 2, 456);
       ctx.fillStyle = '#666';
@@ -12559,7 +14353,8 @@
       .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
     ctx.fillStyle = '#e0453a';
     ctx.font = fs(13);
-    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   친구 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 498);
+    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   친구 ${dexSeenCount()}/${DEX_ORDER.length}`,
+      LW / 2, titleNoticeVisible ? 512 : 498);
 
     // 저장 불가 환경 경고 (비공개 모드·저장공간 가득 등)
     drawTitleStorageWarning();
@@ -12613,20 +14408,30 @@
 
   function startNewGame(slot, name, ng, route) {
     game.currentSlot = slot;
+    game.consequenceTransition = null;
     game.playerName = name || '수호자';
-    game.map = 'introlab';
-    game.player.x = 14; game.player.y = 16;
-    game.player.px = 14 * TS; game.player.py = 16 * TS;
-    game.player.dir = 'up';
     game.flags = newFlags();
-    game.flags.storyRoute = route === 'memento' ? 'memento' : 'original';
+    game.experienceKind = expectedExperienceKindForRoute(route) || 'original';
+    game.map = game.experienceKind === 'consequence-pairs' ? 'creationhall' : 'introlab';
+    const start = MAPS[game.map].start || { x: 14, y: 16 };
+    game.player.x = start.x; game.player.y = start.y;
+    game.player.px = start.x * TS; game.player.py = start.y * TS;
+    game.player.dir = 'up';
+    game.flags.storyRoute = game.experienceKind === 'original' ? 'original' : 'memento';
+    if (game.experienceKind === 'consequence-pairs') {
+      game.flags.consequenceCampaign = createConsequenceCampaignState();
+      for (const id of CONSEQUENCE_PAIR_ORDER) {
+        const config = consequencePairConfig(id);
+        game.flags[config.stateKey] = createConsequencePairState(id);
+      }
+    }
     game.newGameRoute = null;
     if (ng) game.flags.ng = true; // U-5 두 번째 모험(NG+) — 세이브 스키마 영향 없이 flags에만
     game.mode = 'world';
     save();
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
-    if (game.flags.storyRoute === 'memento') {
+    if (game.experienceKind === 'legacy-records') {
       game.introDim = null;
       game.flags.bandiJoined = true;
       save();
@@ -12634,6 +14439,17 @@
       if (firstRecord) startDamagedRecord(firstRecord, {
         ret: 'world', onEnd: () => Sound.playMapBgm(MAPS[game.map].song),
       });
+      return;
+    }
+    if (game.experienceKind === 'consequence-pairs') {
+      game.introDim = null;
+      game.flags.talkedProf = true;
+      game.flags.bandiJoined = true;
+      save();
+      startDialog([
+        '[과거 ←] 현재보다 1일 전\n공동 창작관의 전시 마감까지 시간이 얼마 남지 않았다.',
+        '그림·음악·글의 빈칸을 채우자.\n빠른 방법도, 확인하는 방법도 있다. 선택은 기록에 남는다.',
+      ], '반디', () => Sound.playMapBgm(MAPS.creationhall.song));
       return;
     }
     // 인트로 암전 — 첫 3줄(컴퓨터실 장면) 동안 화면을 거의 검게 덮는다.
@@ -12685,6 +14501,7 @@
     if (!s) return;
     game.currentSlot = slot;
     game.newGameRoute = null;
+    game.experienceKind = s.experienceKind;
     game.playerName = s.name || '수호자';
     game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
     let sx = (typeof s.x === 'number') ? s.x : 13;
@@ -12706,6 +14523,15 @@
     //        '이번 시간 목표' 배너/CLASS_END_LINE이 잘못 붙는 것을 막는다.
     game.flags.classSession = false;
     game.mode = 'world';
+    if (game.experienceKind === 'consequence-pairs') {
+      const campaign = game.flags.consequenceCampaign;
+      resumeConsequenceCampaign();
+      if (campaign && campaign.timelineRestored && !campaign.canonicalEndingId) {
+        openConsequenceFinalChoice();
+      } else if (campaign && campaign.finalTimelineDraft.length && consequenceCampaignJourneys(game.flags)) {
+        startConsequenceTimeline();
+      }
+    }
     syncPuzzleRun(); // 방탈출 방 안에서 저장된 세이브면 퍼즐을 새로 시작
     const meta = recordPlayDay(slot);
     checkUnlocks(slot);
@@ -12735,9 +14561,14 @@
   function speakSlotCursor() {
     if (!game.tts) return;
     const sum = slotSummary(game.slotCursor);
-    const route = sum && sum.storyRoute === 'memento' ? '메멘토 시간선' : '원래 모험 시간선';
+    const selectedRoute = selectedNewGameRoute();
+    const selectedRouteLabel = MEMENTO_ROUTES.find((route) => route.id === selectedRoute).label;
+    const status = slotRouteStatus(selectedRoute, sum);
     Speech.speak(`슬롯 ${game.slotCursor + 1}, ` +
-      (sum ? `${sum.name}, ${route} 이어하기` : '비어 있음, 선택한 시간선으로 새 모험'));
+      (sum
+        ? `${sum.name}, ${experienceKindLabel(sum.experienceKind)} 진행. ` +
+          (status.kind === 'matching' ? '이어서 할 수 있어요.' : '다른 경험 진행 중이에요. 빈 슬롯을 골라 주세요.')
+        : `비어 있음, ${selectedRouteLabel} 새 모험`));
   }
 
   function speakRouteCursor() {
@@ -12749,7 +14580,8 @@
   function updateTitle() {
     if (game.titleScreen === 'routechoice') {
       if (justPressed('up') || justPressed('down') || justPressed('left') || justPressed('right')) {
-        game.routeCursor = game.routeCursor ? 0 : 1;
+        const move = justPressed('up') || justPressed('left') ? -1 : 1;
+        game.routeCursor = (game.routeCursor + move + MEMENTO_ROUTES.length) % MEMENTO_ROUTES.length;
         Sound.blip();
         speakRouteCursor();
       } else if (justPressed('action')) {
@@ -12824,6 +14656,7 @@
     // slots 화면
     if (justPressed('menu')) { openDex('title'); return; }
     if (justPressed('up') || justPressed('down')) {
+      if (titleSlotNotice()) game.notice = { text: '', t: 0 };
       game.slotCursor = justPressed('up')
         ? (game.slotCursor + SLOT_COUNT - 1) % SLOT_COUNT
         : (game.slotCursor + 1) % SLOT_COUNT;
@@ -12838,6 +14671,13 @@
     }
     if (justPressed('action')) {
       const sum = slotSummary(game.slotCursor);
+      const routeStatus = slotRouteStatus(selectedNewGameRoute(), sum);
+      if (routeStatus.kind === 'mismatch') {
+        game.notice = { text: SLOT_ROUTE_MISMATCH_NOTICE, t: 300 };
+        if (game.tts) Speech.speak(game.notice.text);
+        Sound.blip();
+        return;
+      }
       // U-5 클리어(endingId 존재) 슬롯이면 "이어서 볼래? / 처음부터(2회차)" 선택을 먼저 연다
       if (sum && sum.endingId) {
         game.titleScreen = 'ngchoice';
@@ -12856,14 +14696,19 @@
     if (game.endingType === 'true') {
       if (endingContinueReady() && justPressed('action')) {
         game.mode = 'world';
-        game.map = 'village';
-        game.player.x = 13; game.player.y = 16;
-        game.player.px = 13 * TS; game.player.py = 16 * TS;
+        const consequenceEnding = isConsequenceCampaign() &&
+          !!game.flags.consequenceCampaign.canonicalEndingId;
+        game.map = consequenceEnding ? 'timelinehub' : 'village';
+        const destination = consequenceEnding ? MAPS.timelinehub.start : { x: 13, y: 16 };
+        game.player.x = destination.x; game.player.y = destination.y;
+        game.player.px = destination.x * TS; game.player.py = destination.y * TS;
         save();
-        Sound.playMapBgm(MAPS.village.song);
+        Sound.playMapBgm(MAPS[game.map].song);
         // 후일담 유도 — 엔딩 분기별 마을 대사(박사님·할머니)가 기다린다.
         // 침묵 엔딩은 마을에 아무도 이사 오지 않았으므로 문구도 조용하게.
-        game.notice = {
+        game.notice = consequenceEnding ? {
+          text: '첫 시간선은 기록되었다 — 시간선 실험실이 열렸다.', t: 320,
+        } : {
           text: game.flags.endingId === 'silent'
             ? '…마을이, 조용하다.'
             : '마을 사람들이 너를 기다린다 — 말을 걸어 보자.',
@@ -12970,9 +14815,10 @@
 
   function endingContinuationAnnouncement() {
     if (endingContinueReady()) {
+      const action = isTouchDevice ? 'A 버튼을' : 'Z 또는 스페이스를';
       return game.endingType === 'true'
-        ? 'A 버튼 또는 Z·스페이스를 누르면 마을로 돌아갑니다.'
-        : 'A 버튼 또는 Z·스페이스를 누르면 모험이 계속됩니다.';
+        ? `${action} 누르면 마을로 돌아갑니다.`
+        : `${action} 누르면 모험이 계속됩니다.`;
     }
     return '엔딩을 보고 있어요. 잠시 후 계속할 수 있어요.';
   }
@@ -12998,36 +14844,43 @@
 
     if (game.endingType === 'true') {
       const e = endingScene(game.flags.endingId);
+      const consequenceEnding = isConsequenceCampaign();
+      const compactTouchEnding = consequenceEnding && isTouchDevice;
+      const endingFont = consequenceEnding ? finaleFs : fs;
       ctx.fillStyle = e.color;
-      ctx.font = fs(34, true);
+      ctx.font = endingFont(consequenceEnding ? 30 : 34, true);
       ctx.fillText(e.title, LW / 2, 110);
-      ctx.font = fs(16);
+      ctx.font = endingFont(compactTouchEnding ? 14 : consequenceEnding ? 15 : 16);
       ctx.fillStyle = '#ccc';
-      let ty = 160;
-      for (const l of e.lines) { ctx.fillText(l, LW / 2, ty); ty += 26; }
+      let ty = compactTouchEnding ? 142 : 160;
+      const endingLineHeight = compactTouchEnding ? finaleLh(18) : consequenceEnding ? finaleLh(22) : 26;
+      for (const l of e.lines) {
+        if (l) ctx.fillText(l, LW / 2, ty);
+        ty += l || !compactTouchEnding ? endingLineHeight : Math.round(endingLineHeight * 0.55);
+      }
       ctx.fillStyle = '#8a94c8';
-      ctx.fillText(`맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ♥${game.flags.mercy}`, LW / 2, ty + 10);
+      ctx.fillText(`맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ♥${game.flags.mercy}`, LW / 2, ty + 8);
       // 다회차 동기 — 발견한 결말 수 (타이틀에도 기록이 남는다)
       const seenCount = Object.keys(getEndingsSeen()).filter((k) => TRUE_ENDINGS[k]).length;
-      ctx.fillStyle = '#666a8c';
-      ctx.font = fs(13);
+      ctx.fillStyle = CANVAS_COLOR.textMuted;
+      ctx.font = consequenceEnding ? finaleFs(13) : recordFs(14);
       ctx.fillText(`발견한 결말 ${seenCount}/${Object.keys(TRUE_ENDINGS).length}` +
-        (seenCount < Object.keys(TRUE_ENDINGS).length ? ' — 다른 작별도, 있었을지 모른다' : ' — 모든 작별을 만났다'), LW / 2, ty + 32);
+        (seenCount < Object.keys(TRUE_ENDINGS).length ? ' — 다른 작별도, 있었을지 모른다' : ' — 모든 작별을 만났다'), LW / 2, ty + 30);
       if (e.yeongi) {
         const bob = game.reduceFx ? 0 : Math.sin(game.time / 18) * 4;
-        drawMon(ctx, 'yeongi', 84, 420 + bob, 4);
+        drawMon(ctx, 'yeongi', 84, (compactTouchEnding ? 454 : 420) + bob, compactTouchEnding ? 3 : 4);
       }
       if (e.bandi) {
         // 영이 곁의 작은 빛 — 여정 내내 함께 걷던 반디의 마지막 인사
         const bob2 = game.reduceFx ? 0 : Math.sin(game.time / 14 + 1.5) * 5;
-        drawMon(ctx, 'bandi', 164, 434 + bob2, 2);
+        drawMon(ctx, 'bandi', 164, (compactTouchEnding ? 462 : 434) + bob2, 2);
       }
       ctx.fillStyle = endingContinueReady()
         ? (game.reduceFx || Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822')
         : '#777788';
-      ctx.font = fs(15);
+      ctx.font = consequenceEnding ? finaleFs(13) : fs(15);
       ctx.fillText(endingContinueReady()
-        ? 'Z·스페이스를 누르면 마을로 돌아갑니다'
+        ? (isTouchDevice ? 'Ⓐ를 누르면 마을로 돌아갑니다' : 'Z·스페이스를 누르면 마을로 돌아갑니다')
         : '잠시 후 마을로 돌아갈 수 있어요', LW / 2, 510);
       ctx.textAlign = 'left';
       return;
@@ -13109,18 +14962,44 @@
   const srLiveEl = (typeof document !== 'undefined' && document.getElementById)
     ? document.getElementById('sr-live') : null;
   let srLastText = '';
+  function setScreenReaderLive(text) {
+    srLastText = text;
+    if (!srLiveEl) return;
+    try { srLiveEl.textContent = text; } catch (e) { /* 테스트 목 등에서는 무시 */ }
+  }
   function syncSrLive() {
     if (!srLiveEl) return;
     let txt = '';
     const storageWarning = game.notice && game.notice.t > 0 &&
       /^⚠ 이 기기에서는 진행이 저장되지 않아요/.test(game.notice.text || '');
-    if (storageWarning) {
-      txt = game.notice.text;
+    const slotNotice = titleSlotNotice();
+    if (storageWarning || slotNotice) {
+      txt = slotNotice || game.notice.text;
     } else if (game.mode === 'title' && game.titleScreen === 'routechoice') {
       const route = MEMENTO_ROUTES[game.routeCursor];
       txt = `시간선 선택. ${game.routeCursor + 1}/${MEMENTO_ROUTES.length}. ${route.label}.`;
+    } else if (game.mode === 'title' && game.titleScreen === 'slots') {
+      const route = selectedNewGameRoute();
+      const routeLabel = MEMENTO_ROUTES.find((item) => item.id === route).label;
+      const summary = slotSummary(game.slotCursor);
+      const status = slotRouteStatus(route, summary);
+      txt = summary
+        ? `저장 슬롯 선택. ${routeLabel}. 슬롯 ${game.slotCursor + 1}. ${summary.name}, ` +
+          `${experienceKindLabel(summary.experienceKind)} 진행. ` +
+          (status.kind === 'matching' ? '이어서 할 수 있어요.' : '다른 경험 진행 중이에요. 빈 슬롯을 골라 주세요.')
+        : `저장 슬롯 선택. ${routeLabel}. 슬롯 ${game.slotCursor + 1}, 비어 있음. 새 모험을 시작할 수 있어요.`;
     } else if (game.mode === 'timelineorder') {
       txt = timelineOrderAnnouncement();
+    } else if (game.mode === 'consequenceorder') {
+      txt = consequenceTimelineAnnouncement();
+    } else if (game.mode === 'consequencerestore' && game.consequenceRestoration) {
+      const config = consequencePairConfig(CONSEQUENCE_CHRONOLOGICAL_PAIR_ORDER[game.consequenceRestoration.index]);
+      txt = `복원된 시간순. 현재보다 ${config.daysAgo}일 전, ${config.pairUi.displayLabel}. ${config.pairUi.result.copy}`;
+    } else if (game.mode === 'consequencechoice' && game.consequenceChoice) {
+      const choice = CONSEQUENCE_FINAL_CHOICES[game.consequenceChoice.cursor];
+      txt = `복원된 기록 앞에서 무엇을 할까요? ${game.consequenceChoice.cursor + 1}/4. ${choice.label}.`;
+    } else if (game.mode === 'timelinelab') {
+      txt = timelineLabAnnouncement();
     } else if (game.mode === 'choice' && game.choice) {
       txt = `${game.choice.prompt}. ${game.choice.cursor + 1}/${game.choice.options.length}. ${game.choice.options[game.choice.cursor]}.`;
     } else if (game.mode === 'record' && game.record) {
@@ -13138,14 +15017,23 @@
       txt = reportPageAnnouncement();
     } else if (game.mode === 'ending' && game.endingType === 'true') {
       txt = endingAnnouncement(game.flags.endingId) + '. ' + endingContinuationAnnouncement();
+    } else if (game.mode === 'world' && game.consequenceTransition) {
+      txt = game.consequenceTransition.frame < game.consequenceTransition.midpoint
+        ? '[과거 종료] 선택은 같은 자리에 기록으로 남았다.'
+        : '[현재 시작] 같은 자리에서, 남겨 둔 빈칸을 마주한다.';
+    } else if (game.mode === 'world' && isConsequenceCampaign()) {
+      const active = consequenceActive();
+      const timeline = game.map === 'timelinehub' ? '시간선 허브'
+        : active && active.state.phase === 'past' ? `[과거 ←] 과거, 현재보다 ${active.config.daysAgo}일 전`
+          : `[현재 →] 현재, ${active ? active.config.pairUi.displayLabel : MAPS[game.map].name}`;
+      txt = `${timeline}. ${consequenceObjectiveText()}`;
     } else if (game.dialog && game.dialog.lines && typeof game.dialog.lines[game.dialog.idx] === 'string') {
       txt = game.dialog.lines[game.dialog.idx];
     } else if (game.notice && game.notice.t > 0 && game.notice.text) {
       txt = game.notice.text;
     }
     if (txt !== srLastText) {
-      srLastText = txt;
-      try { srLiveEl.textContent = txt; } catch (e) { /* 테스트 목 등에서는 무시 */ }
+      setScreenReaderLive(txt);
     }
   }
   // 프레임 속도 제한: 90·120·144Hz 등 고주사율 화면에서 게임 로직(타이머·연출)이
@@ -13266,6 +15154,27 @@
         updateTimelineOrder();
         if (game.mode === 'timelineorder') drawTimelineOrder();
         else if (game.mode === 'record') drawRecord();
+        else drawWorld();
+        break;
+      case 'consequenceorder':
+        updateConsequenceTimeline();
+        if (game.mode === 'consequenceorder') drawConsequenceTimeline();
+        else drawWorld();
+        break;
+      case 'consequencerestore':
+        updateConsequenceRestoration();
+        if (game.mode === 'consequencerestore') drawConsequenceRestoration();
+        else if (game.mode === 'consequencechoice') drawConsequenceChoice();
+        else drawWorld();
+        break;
+      case 'consequencechoice':
+        updateConsequenceChoice();
+        if (game.mode === 'consequencechoice') drawConsequenceChoice();
+        else if (game.mode === 'ending') drawEnding();
+        break;
+      case 'timelinelab':
+        updateTimelineLab();
+        if (game.mode === 'timelinelab') drawTimelineLab();
         else drawWorld();
         break;
       case 'awards':
@@ -13448,8 +15357,9 @@
   window.__game = game; // 디버그/테스트용
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
-    migrateSlotV6, migrateSlotV7, migrateSlotV8, migrateSlotV9, migrateSlotV10,
-    loadSlot, writeSlot, slotSummary, // W-1 골든 세이브 픽스처·roundtrip 검증용
+    migrateSlotV6, migrateSlotV7, migrateSlotV8, migrateSlotV9, migrateSlotV10, migrateSlotV11,
+    loadSlot, writeSlot, slotSummary, expectedExperienceKindForRoute, slotRouteStatus,
+    titleSlotNotice, titleSlotNoticeLayout: () => Object.assign({}, TITLE_SLOT_NOTICE_LAYOUT),
     buildBackupText, applyBackup, undoRestore, hasRestoreUndo,
     cleanStaleUndoSnapshots, noteStorageFail, UNDO_TTL_MS, // Y-17 쿼터·스냅샷 정리 검증용
     checkTextOverflow, // Y-13 큰 글씨 오버플로 실렌더 검사용
@@ -13497,8 +15407,20 @@
       route: Object.assign({}, ROUTE_CHOICE_UI),
       order: Object.assign({}, TIMELINE_ORDER_UI),
     }),
-    clampedCanvasLabelX,
+    clampedCanvasLabelX, consequenceUiProfile, finaleScale,
     startNewGameForRoute, continueGame,
+    consequenceRuntime, consequenceRepairIds, consequenceEffortProjection,
+    startConsequencePair, revealConsequenceIdentity,
+    recordConsequencePastChoice, beginConsequencePresent,
+    completeConsequenceRepair, beginConsequenceFinale, completeStagePersuasion,
+    creationJournalRows, consequenceHubProjection, resumeConsequenceCampaign, interactConsequenceProp,
+    startConsequenceTimeline, placeConsequenceTimelineCard, undoConsequenceTimelineCard,
+    submitConsequenceTimeline, advanceConsequenceRestoration, chooseConsequenceEnding,
+    consequenceFinalChoices: () => CONSEQUENCE_FINAL_CHOICES.map((choice) => Object.assign({}, choice)),
+    openTimelineLab, setTimelineLabJourney, setTimelineLabFinalChoice,
+    previewTimelineLabEnding, resetTimelineLab, closeTimelineLab,
+    restartConsequenceStage: startConsequenceStageBattle, retreatPersuasion: persuadeExhaust,
+    enterBattleWave: enterWave,
     recordForChapter, recordHudText, recordEvidenceStatus, unlockDamagedRecord, startDamagedRecord,
     openAdministratorTerminal, startTimelineRestoration,
     startTimelineOrdering, placeTimelineCard, undoTimelineCard, submitTimelineOrder,

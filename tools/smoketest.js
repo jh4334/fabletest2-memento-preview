@@ -419,7 +419,7 @@ console.log('[22] 저장 데이터 무결성 (v3)');
 g.map = 'village';
 setPos(13, 16, 'up');
 const save = JSON.parse(storage.get('fabletest2-memento-preview-slot-0'));
-check('세이브 버전 10', save.v === 10);
+check('세이브 버전 11', save.v === 11);
 {
   const migratedBeforeTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: false } } });
   const migratedAfterTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: true } } });
@@ -3633,8 +3633,8 @@ console.log('[U-5] NG+ — 두 번째 모험 (대사 스왑 오버레이 + 타�
   check('U-5 클리어 슬롯 Z → 두 번째 모험 선택(ngchoice)', /sum && sum\.endingId[\s\S]*?titleScreen = 'ngchoice'/.test(tsrc));
   check('U-5 처음부터 선택 → 선택한 시간선의 NG+ 새 게임',
     /startNewGame\(slot, sum \? sum\.name : '수호자', true, game\.newGameRoute\)/.test(tsrc));
-  check('U-5 두 번째 모험은 V10 기록 스키마와 별개로 flags.ng에만 반영',
-    /if \(ng\) game\.flags\.ng = true;/.test(tsrc) && /SAVE_VERSION = 10/.test(tsrc));
+  check('U-5 두 번째 모험은 V11 기록 스키마와 별개로 flags.ng에만 반영',
+    /if \(ng\) game\.flags\.ng = true;/.test(tsrc) && /SAVE_VERSION = 11/.test(tsrc));
 }
 
 console.log('[U-5b] NG+ 오버레이 실제 적용 — 워프 시 반디 대사가 NG 버전으로 바뀐다');

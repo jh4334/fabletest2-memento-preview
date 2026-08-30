@@ -91,12 +91,13 @@ check('슬롯 0으로 이전됨', !!slot(0));
 check('이전된 진행도 보존 (스테이지 6)', slot(0).flags.defeated.finalboss === true);
 check('이전된 이름 기본값', slot(0).name === '수호자');
 check('첫 타이틀 표면은 슬롯보다 앞선 시간선 선택', g.mode === 'title' && g.titleScreen === 'routechoice');
-check('시간선 선택지는 정확한 두 ID와 표시 이름', JSON.stringify(storageTest.titleRoutes()) === JSON.stringify([
+check('시간선 선택지는 정확한 세 ID와 표시 이름', JSON.stringify(storageTest.titleRoutes()) === JSON.stringify([
   { id: 'original', label: '원래 모험 시작' },
   { id: 'memento', label: '메멘토 시간선 체험' },
+  { id: 'consequence-pairs', label: '과거·현재 캠페인 시작' },
 ]));
 tap('ArrowUp');
-check('시간선 선택은 위 방향으로 끝에서 감김', g.routeCursor === 1);
+check('시간선 선택은 위 방향으로 끝에서 감김', g.routeCursor === 2);
 tap('ArrowDown');
 check('시간선 선택은 아래 방향으로 처음에 감김', g.routeCursor === 0);
 tap('z');
@@ -191,10 +192,10 @@ check('학급 모드 예외 없이 진입', g.mode !== 'teacher');
 check('flags가 새로 채워짐', !!g.flags && typeof g.flags.defeated === 'object');
 
 // ── W-1 세이브 마이그레이션 골든 픽스처 테스트 ──
-// v3·v5·v8 세대의 "골든 세이브"를 심고, loadSlot의 V10 마이그레이션 사슬이 (a) 필수 플래그를
+// v3·v5·v8 세대의 "골든 세이브"를 심고, loadSlot의 V11 마이그레이션 사슬이 (a) 필수 플래그를
 // 모두 채우고 (b) talkedProf 파생 추론이 정확하며 (c) defeated 승계가 유지되고
-// (d) v10 미래 필드가 roundtrip에서 사라지지 않는지 검사한다.
-console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9→v10·미래필드)');
+// (d) 미래 필드가 roundtrip에서 사라지지 않는지 검사한다.
+console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9→v11·미래필드)');
 {
   const T = windowObj.__test;
   const put = (i, obj) => storage.set('fabletest2-memento-preview-slot-' + i, JSON.stringify(obj));
@@ -203,7 +204,7 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9
   put(0, { v: 3, name: '골든3', map: 'village', x: 13, y: 16,
     flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true }, mercy: 5, visited: {} } });
   const s3 = T.loadSlot(0);
-  check('W-1 v3→최신 버전 상승(v=10)', s3.v === 10);
+  check('W-1 v3→최신 버전 상승(v=11)', s3.v === 11);
   check('W-1 v3 필수 플래그 채워짐(introClue1·prologueClosed·privacyLeak 정의)',
     s3.flags.introClue1 !== undefined && s3.flags.prologueClosed !== undefined && s3.flags.privacyLeak === 0);
   check('W-1 v3 talkedProf 파생 추론 — introClue1 = !!talkedProf = true', s3.flags.introClue1 === true);
@@ -215,7 +216,7 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9
     flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true }, mercy: 8, visited: {},
       introClue1: true, introClue2: true, introClue3: true, introDoorOpen: true, introForestTrace: true } });
   const s5 = T.loadSlot(1);
-  check('W-1 v5→최신 버전 상승(v=10)', s5.v === 10);
+  check('W-1 v5→최신 버전 상승(v=11)', s5.v === 11);
   check('W-1 v5 ttaraFirstEncounter 파생 = !!defeated.bekkyeomon = true', s5.flags.ttaraFirstEncounter === true);
   check('W-1 v5 defeated 3인 승계 유지', s5.flags.defeated.pyeonhyangmon === true);
   check('W-1 v5 privacy 필드 기본값 채워짐', s5.flags.privacyLeak === 0 && s5.flags.privacyRecoveryActive === false);
@@ -228,13 +229,13 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9
       chapter1Clear: true, chapter2Clear: true, chapter3Clear: true, chapter4Clear: true, chapter5Clear: true,
       endingId: 'home' } });
   const s8 = T.loadSlot(2);
-  check('W-1 v8→v10 + endingId 보존', s8.v === 10 && s8.flags.endingId === 'home');
-  check('W-1 v8→v10 완료 장 기록 보충', Array.isArray(s8.flags.damagedRecords) &&
+  check('W-1 v8→v11 + endingId 보존', s8.v === 11 && s8.flags.endingId === 'home');
+  check('W-1 v8→v11 완료 장 기록 보충', Array.isArray(s8.flags.damagedRecords) &&
     s8.flags.damagedRecords.length === 5 && s8.flags.pendingRecord === null &&
     s8.flags.timelineMerged === false && s8.flags.timelineRestored === false);
   check('W-1 v8 클리어 슬롯 요약 — done/endingId 노출', (() => { const sm = T.slotSummary(2); return sm && sm.done === true && sm.endingId === 'home'; })());
 
-  // (v9→v10) — 증거는 열람했고 건너뛰지 않은 기록에서만 파생한다.
+  // (v9→v11) — 증거는 열람했고 건너뛰지 않은 기록에서만 파생한다.
   put(0, { v: 9, name: '미래', map: 'village', x: 13, y: 16, futureTop: 'KEEP_ME',
     flags: { talkedProf: true, defeated: {}, mercy: 0, visited: {},
       introClue1: true, introForestTrace: true, ttaraFirstEncounter: true, privacyLeak: 0, prologueClosed: true,
@@ -244,7 +245,7 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9
       timelineOrderDraft: ['reset_before', 'unknown', 'reset_before', 'reset_after'],
       timelineOrderWrong: -4.5, futureFlag: 42 } });
   const s9 = T.loadSlot(0);
-  check('W-1 v9→v10 증거·경로·단말·정렬 필드 정규화', s9.v === 10 &&
+  check('W-1 v9→v11 증거·경로·단말·정렬 필드 정규화', s9.v === 11 &&
     s9.flags.storyRoute === 'original' && s9.flags.recordEvidence.join(',') === 'reset_after' &&
     s9.flags.administratorTerminalSolved === true &&
     s9.flags.timelineOrderDraft.join(',') === 'reset_before,reset_after' && s9.flags.timelineOrderWrong === 0);
@@ -277,19 +278,280 @@ console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9
       viewedRecords: { reset_after: true }, skippedRecords: {}, pendingRecord: null,
       timelineMerged: true, timelineRestored: false } });
   const interrupted = T.loadSlot(1);
-  check('W-1 V9 복원 중 새로고침 — V10에서도 timelineRestored=false 보존',
-    interrupted.v === 10 && interrupted.flags.timelineMerged === true && interrupted.flags.timelineRestored === false);
-  const completedV9 = T.migrateSlotV10(T.migrateSlotV9({
+  check('W-1 V9 복원 중 새로고침 — V11에서도 timelineRestored=false 보존',
+    interrupted.v === 11 && interrupted.flags.timelineMerged === true && interrupted.flags.timelineRestored === false);
+  const completedV9 = T.migrateSlotV11(T.migrateSlotV10(T.migrateSlotV9({
     v: 9, flags: { shrineDone: true, defeated: { yeongi: true }, timelineMerged: true, timelineRestored: true },
-  }));
-  check('W-1 완료된 V9 shrine는 V10에서도 완료되어 final replay를 요구하지 않음',
-    completedV9.v === 10 && completedV9.flags.shrineDone === true &&
+  })));
+  check('W-1 완료된 V9 shrine는 V11에서도 완료되어 final replay를 요구하지 않음',
+    completedV9.v === 11 && completedV9.flags.shrineDone === true &&
     completedV9.flags.timelineMerged === true && completedV9.flags.timelineRestored === true);
 
   // 정리 — 다음 블록(U-5)이 슬롯을 재사용하므로 비운다
   storage.delete('fabletest2-memento-preview-slot-0');
   storage.delete('fabletest2-memento-preview-slot-1');
   storage.delete('fabletest2-memento-preview-slot-2');
+}
+
+// ── V11 경험 종류 격리 — 기존 모험/기록 시간선은 새 캠페인 상태를 절대 얻지 않는다. ──
+console.log('[V11] 경험 종류 고정·과거 세이브 격리·미래 필드 보존');
+{
+  const T = windowObj.__test;
+  const put = (i, obj) => storage.set('fabletest2-memento-preview-slot-' + i, JSON.stringify(obj));
+  check('V11 migration API exists', typeof T.migrateSlotV11 === 'function');
+
+  put(0, { v: 10, futureTop: 'KEEP_V10_ORIGINAL', flags: { storyRoute: 'original', futureFlag: 'KEEP_FLAG' } });
+  const original = T.loadSlot(0);
+  check('V10 원래 모험은 V11 original로 고정되고 새 캠페인 상태를 얻지 않음',
+    original.v === 11 && original.experienceKind === 'original' &&
+    original.flags.consequenceCampaign === undefined && original.futureTop === 'KEEP_V10_ORIGINAL' &&
+    original.flags.futureFlag === 'KEEP_FLAG');
+
+  put(1, { v: 10, flags: { storyRoute: 'memento' } });
+  const legacy = T.loadSlot(1);
+  check('V10 메멘토 기록 시간선은 V11 legacy-records로 고정되고 새 캠페인 상태를 얻지 않음',
+    legacy.v === 11 && legacy.experienceKind === 'legacy-records' &&
+    legacy.flags.consequenceCampaign === undefined);
+
+  put(2, { v: 11, experienceKind: 'future-experience', futureTop: { keep: true },
+    flags: { storyRoute: 'memento', futureFlag: { keep: true } } });
+  const future = T.loadSlot(2);
+  check('미래 experienceKind와 알 수 없는 필드는 손대지 않고 보존',
+    future.v === 11 && future.experienceKind === 'future-experience' && future.futureTop.keep === true &&
+    future.flags.futureFlag.keep === true);
+  T.writeSlot(2, future);
+  const futureRoundtrip = T.loadSlot(2);
+  check('미래 experienceKind 백업/저장 왕복 보존', futureRoundtrip.experienceKind === 'future-experience' &&
+    futureRoundtrip.futureTop.keep === true && futureRoundtrip.flags.futureFlag.keep === true);
+  const futureBackup = T.buildBackupText();
+  storage.delete('fabletest2-memento-preview-slot-2');
+  const backupResult = T.applyBackup(futureBackup);
+  const futureRestored = T.loadSlot(2);
+  check('미래 experienceKind 전체 백업·복원 왕복 보존', backupResult.ok === true &&
+    futureRestored.experienceKind === 'future-experience' && futureRestored.futureTop.keep === true &&
+    futureRestored.flags.futureFlag.keep === true);
+
+  check('세 타이틀 경로는 각 경험 종류를 정확히 예상한다',
+    typeof T.expectedExperienceKindForRoute === 'function' &&
+    T.expectedExperienceKindForRoute('original') === 'original' &&
+    T.expectedExperienceKindForRoute('memento') === 'legacy-records' &&
+    T.expectedExperienceKindForRoute('consequence-pairs') === 'consequence-pairs' &&
+    T.expectedExperienceKindForRoute('unknown') === null);
+  check('다른 경험과 알 수 없는 경험 슬롯은 안전하게 진입을 막는다',
+    typeof T.slotRouteStatus === 'function' &&
+    T.slotRouteStatus('consequence-pairs', T.slotSummary(0)).kind === 'mismatch' &&
+    T.slotRouteStatus('original', T.slotSummary(1)).kind === 'mismatch' &&
+    T.slotRouteStatus('consequence-pairs', T.slotSummary(2)).kind === 'mismatch');
+  check('슬롯 종류 불일치 확인은 원본 저장 바이트를 바꾸지 않는다', (() => {
+    const before = storage.get('fabletest2-memento-preview-slot-2');
+    const result = T.slotRouteStatus('consequence-pairs', T.slotSummary(2));
+    return result.kind === 'mismatch' && storage.get('fabletest2-memento-preview-slot-2') === before;
+  })());
+  g.mode = 'title'; g.titleScreen = 'slots'; g.newGameRoute = 'consequence-pairs'; g.slotCursor = 0;
+  const originalBytesBeforeMismatch = storage.get('fabletest2-memento-preview-slot-0');
+  tap('z');
+  check('다른 경험 슬롯을 실제로 누르면 원본 바이트를 보존한 채 안내만 표시',
+    g.mode === 'title' && g.titleScreen === 'slots' &&
+    g.notice && g.notice.text === '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.' &&
+    storage.get('fabletest2-memento-preview-slot-0') === originalBytesBeforeMismatch &&
+    T.srLiveText() === '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.' &&
+    T.titleSlotNotice() === '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.' &&
+    (() => { const box = T.titleSlotNoticeLayout(); return box.x === 48 && box.y === 426 && box.w === 624 && box.h === 56 && box.y + box.h < 498; })());
+  tap('ArrowDown');
+  check('슬롯을 옮기면 이전 종류 불일치 안내가 사라짐', g.slotCursor === 1 && T.titleSlotNotice() === null &&
+    T.srLiveText() !== '이 슬롯의 진행은 그대로 남아 있어요. 빈 슬롯을 골라 주세요.');
+
+  g.mode = 'title';
+  T.startNewGameForRoute(2, '과거아이', 'consequence-pairs');
+  const campaignSlot = T.loadSlot(2);
+  check('새 과거·현재 캠페인은 V11 consequence-pairs와 독립 기본 상태로 저장',
+    campaignSlot.v === 11 && campaignSlot.experienceKind === 'consequence-pairs' &&
+    campaignSlot.map === 'creationhall' && campaignSlot.x === 12 && campaignSlot.y === 15 &&
+    campaignSlot.flags.consequenceCampaign && campaignSlot.flags.consequenceCampaign.activePairId === 'd1_copyright' &&
+    Array.isArray(campaignSlot.flags.consequenceCampaign.completedPairIds) &&
+    campaignSlot.flags.consequenceCampaign.completedPairIds.length === 0 &&
+    ['copyrightSlice', 'consentSlice', 'recommendationSlice', 'misinformationSlice', 'judgmentSlice']
+      .every((sliceKey) => campaignSlot.flags[sliceKey] && campaignSlot.flags[sliceKey].phase === 'past'));
+  storage.delete('fabletest2-memento-preview-slot-0');
+  storage.delete('fabletest2-memento-preview-slot-1');
+  storage.delete('fabletest2-memento-preview-slot-2');
+}
+
+console.log('[V11-pairs] 후속 과거·현재 쌍 체크포인트 왕복·이전 상태 격리');
+{
+  const T = windowObj.__test;
+  const put = (i, obj) => storage.set('fabletest2-memento-preview-slot-' + i, JSON.stringify(obj));
+  const laterPairs = [
+    {
+      pairId: 'd3_consent', stateKey: 'consentSlice', mapId: 'synthesis_broadcast_room',
+      choices: [['likeness', 'likeness_manual'], ['voice', 'voice_assisted'], ['scene', 'scene_instant'], ['consent', 'consent_partial']],
+    },
+    {
+      pairId: 'd5_recommendation', stateKey: 'recommendationSlice', mapId: 'recommendation_alley',
+      choices: [['echo', 'echo_manual'], ['sample', 'sample_assisted'], ['route', 'route_instant'], ['recommendationNote', 'recommendation_note_partial']],
+    },
+    {
+      pairId: 'd7_misinformation', stateKey: 'misinformationSlice', mapId: 'newsroom_repair',
+      choices: [['tip', 'tip_manual'], ['context', 'context_assisted'], ['bulletin', 'bulletin_instant'], ['audit', 'audit_partial']],
+    },
+    {
+      pairId: 'd10_judgment', stateKey: 'judgmentSlice', mapId: 'cozy_control_room',
+      choices: [['call', 'call_manual'], ['safety', 'safety_assisted'], ['comfort', 'comfort_instant'], ['authority', 'authority_partial']],
+    },
+  ];
+  const originalSlot = { v: 11, name: '원래아이', experienceKind: 'original', map: 'village', x: 13, y: 16,
+    flags: { storyRoute: 'original', originalOnly: 'leave-me' } };
+  const legacySlot = { v: 11, name: '기록아이', experienceKind: 'legacy-records', map: 'village', x: 13, y: 16,
+    flags: { storyRoute: 'memento', legacyOnly: 'leave-me' } };
+  put(0, originalSlot);
+  put(1, legacySlot);
+  const originalBytes = storage.get('fabletest2-memento-preview-slot-0');
+  const legacyBytes = storage.get('fabletest2-memento-preview-slot-1');
+
+  check('V11 후속 쌍 시작 훅이 존재', typeof T.startConsequencePair === 'function');
+
+  T.startNewGameForRoute(2, '쌍검사', 'consequence-pairs');
+  g.mode = 'world'; g.dialog = null;
+  const seededD1 = g.flags.copyrightSlice;
+  seededD1.phase = 'result';
+  seededD1.checkpoint = 'complete';
+  seededD1.complete = true;
+  g.flags.consequenceCampaign.activePairId = null;
+  g.flags.consequenceCampaign.completedPairIds = ['d1_copyright'];
+  T.writeSlot(2, {
+    v: 11, name: g.playerName, experienceKind: 'consequence-pairs', map: g.map,
+    x: g.player.x, y: g.player.y, flags: g.flags,
+  });
+
+  function assertEarlierPairsAndForeignSlotsUntouched(pair, priorStates) {
+    check(pair.pairId + '는 이전 쌍 슬라이스를 바꾸지 않음', priorStates.every(([stateKey, before]) =>
+      JSON.stringify(g.flags[stateKey]) === before));
+    check(pair.pairId + '는 original/legacy 슬롯 바이트를 바꾸지 않음',
+      storage.get('fabletest2-memento-preview-slot-0') === originalBytes &&
+      storage.get('fabletest2-memento-preview-slot-1') === legacyBytes);
+  }
+
+  function assertCheckpointRoundTrip(pair, checkpoint, priorStates) {
+    const expectedMapId = checkpoint === 'complete' ? 'timelinehub' : pair.mapId;
+    const saved = T.loadSlot(2);
+    const savedSlice = saved && saved.flags && saved.flags[pair.stateKey];
+    check(pair.pairId + ' ' + checkpoint + ' 저장은 V11·고유 지도·슬라이스를 함께 남김',
+      saved && saved.v === 11 && saved.experienceKind === 'consequence-pairs' && saved.map === expectedMapId &&
+      savedSlice && savedSlice.checkpoint === checkpoint);
+    const beforeRoundTrip = JSON.stringify(savedSlice);
+    T.writeSlot(2, saved);
+    const restored = T.loadSlot(2);
+    const restoredSlice = restored && restored.flags && restored.flags[pair.stateKey];
+    check(pair.pairId + ' ' + checkpoint + ' 디스크 왕복은 고유 지도와 전체 슬라이스를 보존',
+      restored && restored.map === expectedMapId && restoredSlice && JSON.stringify(restoredSlice) === beforeRoundTrip);
+    T.continueGame(2);
+    const runtime = T.consequenceRuntime();
+    check(pair.pairId + ' ' + checkpoint + ' 이어하기는 고유 지도·검사점으로 재개',
+      checkpoint === 'complete'
+        ? g.map === 'timelinehub' && g.flags[pair.stateKey].checkpoint === 'complete'
+        : runtime && runtime.pairId === pair.pairId && runtime.checkpoint === checkpoint && g.map === pair.mapId);
+    assertEarlierPairsAndForeignSlotsUntouched(pair, priorStates);
+  }
+
+  for (let index = 0; index < laterPairs.length; index++) {
+    const pair = laterPairs[index];
+    const earlierStates = [['copyrightSlice', JSON.stringify(g.flags.copyrightSlice)]].concat(
+      laterPairs.slice(0, index).map((earlier) => [earlier.stateKey, JSON.stringify(g.flags[earlier.stateKey])]),
+    );
+    check(pair.pairId + '는 순서상 열린 뒤 고유 지도에서 시작',
+      T.startConsequencePair(pair.pairId) === true && g.map === pair.mapId &&
+      T.consequenceRuntime().pairId === pair.pairId && T.consequenceRuntime().checkpoint === 'past_start');
+    for (const [station, choice] of pair.choices.slice(0, 3)) {
+      check(pair.pairId + ' ' + station + ' 과거 선택을 기록',
+        T.recordConsequencePastChoice(station, choice) === true);
+    }
+    assertCheckpointRoundTrip(pair, 'past_rooms', earlierStates);
+    const [disclosureStation, disclosureChoice] = pair.choices[3];
+    check(pair.pairId + ' 공개 선택은 past_done 검사점으로 기록',
+      T.recordConsequencePastChoice(disclosureStation, disclosureChoice) === true);
+    assertCheckpointRoundTrip(pair, 'past_done', earlierStates);
+    check(pair.pairId + ' 현재 전환은 고유 지도에서 시작', T.beginConsequencePresent() === true && g.map === pair.mapId);
+    assertCheckpointRoundTrip(pair, 'present_start', earlierStates);
+    for (const repairId of T.consequenceRuntime().requiredRepairIds.slice()) {
+      check(pair.pairId + ' ' + repairId + ' 수리를 기록', T.completeConsequenceRepair(repairId) === true);
+    }
+    assertCheckpointRoundTrip(pair, 'repairs_done', earlierStates);
+    if (pair.pairId === 'd7_misinformation') {
+      check('D-7은 관리자 서명 확인 전 무대 진입을 거부',
+        T.beginConsequenceFinale({ skipIntro: true }) === false &&
+        T.consequenceRuntime().checkpoint === 'repairs_done');
+      check('D-7 관리자 서명은 identity_revealed를 원자 저장',
+        T.revealConsequenceIdentity() === true &&
+        T.consequenceRuntime().checkpoint === 'identity_revealed');
+      assertCheckpointRoundTrip(pair, 'identity_revealed', earlierStates);
+    } else {
+      check(pair.pairId + '에는 identity_revealed 검사점이 없음',
+        T.revealConsequenceIdentity() === false &&
+        T.consequenceRuntime().checkpoint === 'repairs_done');
+    }
+    check(pair.pairId + ' 장소형 무대를 시작', T.beginConsequenceFinale({ skipIntro: true }) === true && g.mode === 'battle');
+    assertCheckpointRoundTrip(pair, 'finale_start', earlierStates);
+    check(pair.pairId + ' 완료를 기록', T.completeStagePersuasion() === true);
+    assertCheckpointRoundTrip(pair, 'complete', earlierStates);
+  }
+
+  storage.delete('fabletest2-memento-preview-slot-0');
+  storage.delete('fabletest2-memento-preview-slot-1');
+  storage.delete('fabletest2-memento-preview-slot-2');
+}
+
+console.log('[V11-finale] 파이널 초안·canonical 결과 정규화와 왕복');
+{
+  const T = windowObj.__test;
+  const key = 'fabletest2-memento-preview-slot-2';
+  T.startNewGameForRoute(2, '파이널아이', 'consequence-pairs');
+  const malformed = JSON.parse(storage.get(key));
+  Object.assign(malformed.flags.consequenceCampaign, {
+    finalTimelineDraft: ['d10_judgment', 'unknown', 'd10_judgment', 'd7_misinformation'],
+    finalTimelineWrong: -3.7,
+    timelineRestored: 1,
+    finalChoiceId: 'unknown_choice',
+    canonicalEndingId: 'unknown_ending',
+    canonicalEndingBasis: 'not-an-object',
+    timelineLabUnlocked: 1,
+    futureFinaleField: { keep: true },
+  });
+  storage.set(key, JSON.stringify(malformed));
+  const normalized = T.loadSlot(2);
+  check('V11 파이널 초안은 고정 pair ID만 중복 없이 순서를 보존',
+    normalized.flags.consequenceCampaign.finalTimelineDraft.join(',') ===
+      'd10_judgment,d7_misinformation');
+  check('V11 파이널 횟수·불리언은 안전하게 정규화',
+    normalized.flags.consequenceCampaign.finalTimelineWrong === 0 &&
+    normalized.flags.consequenceCampaign.timelineRestored === true &&
+    normalized.flags.consequenceCampaign.timelineLabUnlocked === true);
+  check('V11 알 수 없는 파이널 선택·엔딩·basis는 null로 정규화',
+    normalized.flags.consequenceCampaign.finalChoiceId === null &&
+    normalized.flags.consequenceCampaign.canonicalEndingId === null &&
+    normalized.flags.consequenceCampaign.canonicalEndingBasis === null);
+  check('V11 파이널 미래 필드는 보존', normalized.flags.consequenceCampaign.futureFinaleField.keep === true);
+
+  Object.assign(normalized.flags.consequenceCampaign, {
+    finalTimelineDraft: ['d10_judgment', 'd7_misinformation'],
+    finalTimelineWrong: 2,
+    timelineRestored: true,
+    finalChoiceId: 'delegate_all',
+    canonicalEndingId: 'dawn',
+    canonicalEndingBasis: { ruleVersion: 'ending-rule-v1', frozen: true },
+    timelineLabUnlocked: true,
+  });
+  T.writeSlot(2, normalized);
+  const roundtrip = T.loadSlot(2);
+  check('V11 유효한 파이널 초안·선택·canonical basis 왕복 보존',
+    roundtrip.flags.consequenceCampaign.finalTimelineDraft.join(',') === 'd10_judgment,d7_misinformation' &&
+    roundtrip.flags.consequenceCampaign.finalTimelineWrong === 2 &&
+    roundtrip.flags.consequenceCampaign.timelineRestored === true &&
+    roundtrip.flags.consequenceCampaign.finalChoiceId === 'delegate_all' &&
+    roundtrip.flags.consequenceCampaign.canonicalEndingId === 'dawn' &&
+    roundtrip.flags.consequenceCampaign.canonicalEndingBasis.ruleVersion === 'ending-rule-v1' &&
+    roundtrip.flags.consequenceCampaign.canonicalEndingBasis.frozen === true &&
+    roundtrip.flags.consequenceCampaign.timelineLabUnlocked === true);
+  storage.delete(key);
 }
 
 // ── U-5 NG+ 타이틀 흐름 — 클리어 슬롯에서 두 번째 모험 선택 ──
