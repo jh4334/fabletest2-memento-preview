@@ -258,6 +258,71 @@ function withinViewport(rect, snapshot) {
       await context.close();
     }
 
+    console.log('[mobile-readability] 작은 세로 화면의 핵심 한글 크기');
+    for (const viewport of [
+      { name: 'small-phone', width: 320, height: 568 },
+      { name: 'phone-portrait', width: 390, height: 844 },
+      { name: 'phone-landscape', width: 844, height: 390 },
+    ]) {
+      const context = await browser.newContext({
+        viewport: { width: viewport.width, height: viewport.height }, hasTouch: true, isMobile: true,
+      });
+      await context.addInitScript(() => {
+        window.__mobileTextLog = [];
+        const original = CanvasRenderingContext2D.prototype.fillText;
+        CanvasRenderingContext2D.prototype.fillText = function fillText(text, x, y, maxWidth) {
+          const match = /([0-9.]+)px/.exec(this.font);
+          window.__mobileTextLog.push({
+            text: String(text), x, y, fontPx: match ? Number(match[1]) : 0,
+          });
+          if (arguments.length > 3) return original.call(this, text, x, y, maxWidth);
+          return original.call(this, text, x, y);
+        };
+      });
+      const page = await context.newPage();
+      await load(page, base);
+      const metrics = await page.evaluate(async () => {
+        document.body.classList.add('allow-portrait');
+        const capture = async (setup) => {
+          window.__mobileTextLog = [];
+          setup();
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          return window.__mobileTextLog.slice();
+        };
+        const scale = document.getElementById('game').getBoundingClientRect().width / 720;
+        const route = await capture(() => {
+          window.__game.mode = 'title';
+          window.__game.titleScreen = 'routechoice';
+        });
+        const hof = await capture(() => { window.__game.mode = 'hof'; });
+        const report = await capture(() => { window.__game.mode = 'report'; });
+        const cssPx = (entry) => entry ? entry.fontPx * scale : 0;
+        const routeChoice = route.find((entry) => entry.text.startsWith('● '));
+        const routeDetail = route.find((entry) => entry.text.includes('프롤로그부터'));
+        const routePrompt = route.find((entry) => entry.text === '어떤 시간선으로 시작할까?');
+        const hofLabels = hof.filter((entry) => entry.text === '챌린지 최고점');
+        const reportRows = report.filter((entry) => entry.y >= 80 && entry.y <= 480 && entry.text.trim());
+        return {
+          routeChoice: cssPx(routeChoice),
+          routeDetail: cssPx(routeDetail),
+          routePromptTop: routePrompt ? routePrompt.y - routePrompt.fontPx : 0,
+          hofLabel: Math.min(...hofLabels.map(cssPx)),
+          reportBody: Math.min(...reportRows.map(cssPx)),
+        };
+      });
+      check(`${viewport.name}: 시간선 선택 글자가 CSS 10px 이상`, metrics.routeChoice >= 10,
+        JSON.stringify(metrics));
+      check(`${viewport.name}: 시간선 설명이 CSS 8.5px 이상`, metrics.routeDetail >= 8.5,
+        JSON.stringify(metrics));
+      check(`${viewport.name}: 시간선 질문이 인물 행 아래에서 시작`, metrics.routePromptTop >= 190,
+        JSON.stringify(metrics));
+      check(`${viewport.name}: 명예의 전당 부문명이 CSS 9px 이상`, metrics.hofLabel >= 9,
+        JSON.stringify(metrics));
+      check(`${viewport.name}: 진단 리포트 본문이 CSS 9px 이상`, metrics.reportBody >= 9,
+        JSON.stringify(metrics));
+      await context.close();
+    }
+
     console.log('[responsive] 7개 실사용 화면 크기');
     const viewports = [
       { name: 'desktop', width: 1280, height: 800, mobile: false },
@@ -290,6 +355,11 @@ function withinViewport(rect, snapshot) {
           return rect.display !== 'none' && rect.width >= 44 && rect.height >= 44 && withinViewport(rect, snapshot);
         });
         check(`${viewport.name}: 주요 터치 조작이 44px 이상이며 화면 안에 표시`, allFit);
+        if (viewport.height > viewport.width) {
+          check(`${viewport.name}: 캔버스가 상단 조작 아래 72~104px에서 시작`,
+            snapshot.elements.game.top >= 72 && snapshot.elements.game.top <= 104,
+            `top=${snapshot.elements.game.top}`);
+        }
       }
       check(`${viewport.name}: 콘솔 오류 없음`, errors.length === 0, errors.join(' | '));
       await context.close();
