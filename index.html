@@ -199,6 +199,13 @@
   @media (orientation: portrait) and (pointer: coarse) {
     #rotate-hint { display: flex; }
     body.allow-portrait #rotate-hint { display: none; }
+    body.allow-portrait #wrap {
+      align-items: flex-start;
+      padding-top: calc(80px + env(safe-area-inset-top));
+    }
+    body.allow-portrait canvas {
+      max-height: calc(100vh - 80px - env(safe-area-inset-top));
+    }
   }
 
   /* ---- 이름 입력 오버레이 ---- */

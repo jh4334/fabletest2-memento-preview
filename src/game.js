@@ -857,8 +857,22 @@
     Sound.blip();
   }
   // 큰 글씨 모드 배율 — 읽기 중심 화면(대화·퀴즈)의 글자/줄간격에 적용
-  function TF() { return game.largeText ? 1.25 : 1; }
-  function fs(px, bold) { return (bold ? 'bold ' : '') + Math.round(px * TF()) + 'px monospace'; }
+  function mobileTextScale() {
+    if (!isTouchDevice || typeof window === 'undefined' || window.innerHeight <= window.innerWidth) return 1;
+    const width = window.innerWidth;
+    if (width >= 520) return 1;
+    if (width >= 390) return 1 + (520 - width) * (0.2 / 130);
+    return Math.min(1.42, 1.2 + (390 - width) * (0.22 / 70));
+  }
+  function TF() {
+    const mobile = mobileTextScale();
+    if (mobile > 1) return mobile * (game.largeText ? 1.15 : 1);
+    return game.largeText ? 1.25 : 1;
+  }
+  function scaledFont(px, bold, scale) {
+    return (bold ? 'bold ' : '') + Math.round(px * scale) + 'px monospace';
+  }
+  function fs(px, bold) { return scaledFont(px, bold, TF()); }
   function lh(px) { return Math.round(px * TF()); }
   function recordScale() {
     return isTouchDevice && typeof window !== 'undefined' && window.innerHeight > window.innerWidth ? 1.4 : 1;
@@ -873,14 +887,16 @@
   function isConsequencePortrait() {
     return isTouchDevice && typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
   }
-  function recordFs(px, bold) { return fs(Math.round(px * recordScale()), bold); }
-  function recordLh(px) { return lh(Math.round(px * recordScale())); }
+  function recordTextScale() { return recordScale() * (game.largeText ? 1.25 : 1); }
+  function recordFs(px, bold) { return scaledFont(px, bold, recordTextScale()); }
+  function recordLh(px) { return Math.round(px * recordTextScale()); }
   function finaleScale() {
     if (!isTouchDevice) return 1;
     return isConsequencePortrait() ? 1.5 : 1.15;
   }
-  function finaleFs(px, bold) { return fs(Math.round(px * finaleScale()), bold); }
-  function finaleLh(px) { return lh(Math.round(px * finaleScale())); }
+  function finaleTextScale() { return finaleScale() * (game.largeText ? 1.25 : 1); }
+  function finaleFs(px, bold) { return scaledFont(px, bold, finaleTextScale()); }
+  function finaleLh(px) { return Math.round(px * finaleTextScale()); }
   // 의미 색상 — 색약 모드에서는 빨강/초록 대신 구분이 쉬운 파랑/주황(Okabe-Ito 계열)
   function monName(id) { const m = MONSTERS[id]; return (m && m.name) || id; }
   function okColor() { return game.colorBlind ? '#3b8ed0' : '#5cb85c'; }   // 정답·높음
@@ -10516,6 +10532,8 @@
   function drawHof() {
     const header = ADMIN_HEADER_UI;
     const heading = header.layout.hallOfFame;
+    const portrait = mobileTextScale() > 1;
+    const helperBaseline = portrait ? 68 : heading.helperBaseline;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
@@ -10526,11 +10544,11 @@
     ctx.font = fs(header.type.title, true);
     ctx.fillText('명예의 전당', heading.titleX, heading.baseline);
     ctx.fillStyle = '#888';
-    ctx.font = fs(header.type.helper);
-    ctx.fillText('이 기기에서 함께한 학생들의 최고 기록이에요. ↑↓로 부문 선택.', header.layout.insetX, heading.helperBaseline);
+    ctx.font = fs(portrait ? 14 : header.type.helper);
+    ctx.fillText('이 기기에서 함께한 학생들의 최고 기록이에요. ↑↓로 부문 선택.', header.layout.insetX, helperBaseline);
 
     // 부문 목록(왼쪽) + 순위(오른쪽)
-    const listX = 24, listY = 84, rowH = 60;
+    const listX = 24, listY = portrait ? 100 : 84, rowH = 60;
     for (let i = 0; i < HOF_CATS.length; i++) {
       const cat = HOF_CATS[i];
       const sel = i === game.hof.cat;
@@ -10540,15 +10558,15 @@
       ctx.font = fs(22);
       ctx.fillStyle = sel ? '#fff' : '#666';
       ctx.fillText(cat.icon, listX + 6, y + 8);
-      ctx.font = fs(14, sel);
+      ctx.font = fs(portrait ? 15 : 14, sel);
       ctx.fillStyle = sel ? themeAccent() : '#888';
       ctx.fillText(cat.label, listX + 40, y + 4);
     }
 
     // 선택된 부문의 순위
     const cat = HOF_CATS[game.hof.cat];
-    const panelX = 248, panelY = 84, panelW = LW - panelX - 24;
-    utBox(panelX, panelY, panelW, 380, 8);
+    const panelX = 248, panelY = portrait ? 100 : 84, panelW = LW - panelX - 24;
+    utBox(panelX, panelY, panelW, portrait ? 364 : 380, 8);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = fs(16, true);
@@ -10560,7 +10578,7 @@
       ctx.textAlign = 'center';
       ctx.fillText(cat.fmt(0), panelX + panelW / 2, panelY + 130);
       ctx.fillStyle = '#888';
-      ctx.font = fs(13);
+      ctx.font = fs(portrait ? 15 : 13);
       ctx.fillText('(친구 수첩은 모두가 함께 채우는 공동 기록이에요)', panelX + panelW / 2, panelY + 170);
       ctx.textAlign = 'left';
     } else {
@@ -10596,7 +10614,7 @@
     }
 
     ctx.fillStyle = '#777';
-    ctx.font = fs(13);
+    ctx.font = fs(portrait ? 14 : 13);
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ 부문 · Z 또는 X로 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
@@ -11754,12 +11772,25 @@
   // slot 0..SLOT_COUNT-1 = 학생별, slot === SLOT_COUNT = 반 전체
   function reportView(slot) { return slot >= SLOT_COUNT ? buildClassDiagnostic() : buildDiagnosticReport(slot); }
   const REPORT_PAGE_SIZE = 17;
+  function reportUiProfile() {
+    const portrait = mobileTextScale() > 1;
+    if (!portrait) return { portrait: false, startY: 92, rowHeight: 22, pageSize: REPORT_PAGE_SIZE };
+    const rowHeight = Math.round(15 * TF()) + 5;
+    return {
+      portrait: true,
+      startY: 106,
+      rowHeight,
+      pageSize: Math.max(1, Math.floor((476 - 106) / rowHeight) + 1),
+    };
+  }
   function setReportLineStyle(line) {
-    if (line.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = fs(15, true); }
-    else if (line.startsWith('  · ')) { ctx.fillStyle = warnColor(); ctx.font = fs(13); }
-    else if (line.startsWith('추천 수업') || line.startsWith('우선 추천')) { ctx.fillStyle = okColor(); ctx.font = fs(13, true); }
-    else if (line.startsWith('──')) { ctx.fillStyle = '#444'; ctx.font = fs(13); }
-    else { ctx.fillStyle = '#ddd'; ctx.font = fs(13); }
+    const portrait = reportUiProfile().portrait;
+    const body = portrait ? 15 : 13;
+    if (line.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = fs(portrait ? 16 : 15, true); }
+    else if (line.startsWith('  · ')) { ctx.fillStyle = warnColor(); ctx.font = fs(body); }
+    else if (line.startsWith('추천 수업') || line.startsWith('우선 추천')) { ctx.fillStyle = okColor(); ctx.font = fs(body, true); }
+    else if (line.startsWith('──')) { ctx.fillStyle = '#444'; ctx.font = fs(body); }
+    else { ctx.fillStyle = '#ddd'; ctx.font = fs(body); }
   }
   function reportPageView(slot, page) {
     const rows = [];
@@ -11768,12 +11799,13 @@
       const wrapped = layoutLine(source, LW - 56);
       for (const text of (wrapped.length ? wrapped : [''])) rows.push({ source, text });
     }
-    const pages = Math.max(1, Math.ceil(rows.length / REPORT_PAGE_SIZE));
+    const pageSize = reportUiProfile().pageSize;
+    const pages = Math.max(1, Math.ceil(rows.length / pageSize));
     const current = Math.max(0, Math.min(Number(page) || 0, pages - 1));
     return {
       current,
       pages,
-      rows: rows.slice(current * REPORT_PAGE_SIZE, (current + 1) * REPORT_PAGE_SIZE),
+      rows: rows.slice(current * pageSize, (current + 1) * pageSize),
     };
   }
   function reportPageAnnouncement() {
@@ -11802,6 +11834,8 @@
     const r = game.report;
     const header = ADMIN_HEADER_UI;
     const heading = header.layout.report;
+    const profile = reportUiProfile();
+    const helperBaseline = profile.portrait ? 70 : heading.helperBaseline;
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = themeAccent(); ctx.font = fs(header.type.title, true);
@@ -11809,25 +11843,25 @@
     ctx.fillStyle = '#fff'; ctx.font = fs(header.type.title, true);
     ctx.fillText('학생 진단 리포트', heading.titleX, heading.baseline);
     const isClass = r.slot >= SLOT_COUNT;
-    ctx.fillStyle = '#888'; ctx.font = fs(header.type.helper);
-    ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, header.layout.insetX, heading.helperBaseline);
+    ctx.fillStyle = '#888'; ctx.font = fs(profile.portrait ? 14 : header.type.helper);
+    ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, header.layout.insetX, helperBaseline);
 
     const view = reportPageView(r.slot, r.page);
     r.page = view.current;
-    ctx.textAlign = 'right'; ctx.fillStyle = '#888'; ctx.font = fs(12);
-    ctx.fillText(`페이지 ${view.current + 1} / ${view.pages}`, LW - header.layout.insetX, heading.helperBaseline);
+    ctx.textAlign = 'right'; ctx.fillStyle = '#888'; ctx.font = fs(profile.portrait ? 14 : 12);
+    ctx.fillText(`페이지 ${view.current + 1} / ${view.pages}`, LW - header.layout.insetX, helperBaseline);
     ctx.textAlign = 'left';
-    let y = 92;
+    let y = profile.startY;
     for (const row of view.rows) {
       setReportLineStyle(row.source);
       ctx.fillText(row.text, 28, y);
-      y += 22;
+      y += profile.rowHeight;
     }
 
     ctx.textAlign = 'center';
     if (r.toast > 0) { ctx.fillStyle = okColor(); ctx.font = fs(14, true); ctx.fillText('✓ 진단 리포트를 저장했어요 (인쇄·보관용)', LW / 2, 512); }
     else if (r.toast < 0) { ctx.fillStyle = badColor(); ctx.font = fs(14, true); ctx.fillText('이 환경에서는 내보낼 수 없어요 (브라우저에서 시도)', LW / 2, 512); }
-    else { ctx.fillStyle = '#777'; ctx.font = fs(13); ctx.fillText('↑↓ 페이지 · ◀▶ 학생 전환 · Z 내보내기 · X 닫기', LW / 2, 512); }
+    else { ctx.fillStyle = '#777'; ctx.font = fs(profile.portrait ? 14 : 13); ctx.fillText('↑↓ 페이지 · ◀▶ 학생 전환 · Z 내보내기 · X 닫기', LW / 2, 512); }
     ctx.textAlign = 'left';
   }
 
@@ -14255,6 +14289,8 @@
   }
 
   function drawTitle() {
+    const portrait = isConsequencePortrait();
+    const titleScale = portrait && game.largeText ? 1.15 : 1;
     ctx.fillStyle = CANVAS_COLOR.surfacePrimary;
     ctx.fillRect(0, 0, LW, LH);
 
@@ -14269,10 +14305,10 @@
 
     ctx.textAlign = 'center';
     ctx.fillStyle = CANVAS_COLOR.textPrimary;
-    ctx.font = fs(40, true);
+    ctx.font = portrait ? scaledFont(40, true, titleScale) : fs(40, true);
     ctx.fillText('마음의 문', LW / 2, 86);
     ctx.fillStyle = CANVAS_COLOR.textMuted;
-    ctx.font = fs(15);
+    ctx.font = portrait ? scaledFont(15, false, titleScale) : fs(15);
     ctx.fillText('화면 속에서, 누군가 기다리고 있다', LW / 2, 114);
 
     // 인물들 둥실둥실 (한 줄)
@@ -14284,9 +14320,12 @@
 
     if (game.titleScreen === 'routechoice') {
       const color = ROUTE_CHOICE_UI;
+      const promptY = isTouchDevice ? 216 : 192;
+      const routeStartY = isTouchDevice ? 234 : 210;
+      const helperY = isTouchDevice ? 488 : 462;
       ctx.fillStyle = color.title;
-      ctx.font = fs(22, true);
-      ctx.fillText('어떤 시간선으로 시작할까?', LW / 2, 192);
+      ctx.font = portrait ? scaledFont(22, true, titleScale) : fs(22, true);
+      ctx.fillText('어떤 시간선으로 시작할까?', LW / 2, promptY);
       const descriptions = {
         original: '기존 프롤로그부터 이야기를 이어갑니다',
         memento: '첫 손상 기록부터 빠르게 체험합니다',
@@ -14295,7 +14334,7 @@
       for (let i = 0; i < MEMENTO_ROUTES.length; i++) {
         const route = MEMENTO_ROUTES[i];
         const selected = i === game.routeCursor;
-        const x = 72, y = 210 + i * 76, w = 576, h = 70;
+        const x = 72, y = routeStartY + i * 76, w = 576, h = 70;
         utBox(x, y, w, h, 8, color);
         ctx.strokeStyle = selected ? color.selected : color.borderIdle;
         ctx.lineWidth = selected ? 4 : 2;
@@ -14305,13 +14344,13 @@
         ctx.font = fs(16, true);
         ctx.fillText(`${selected ? '●' : '○'} ${route.label}`, x + 24, y + 29);
         ctx.fillStyle = color.detail;
-        ctx.font = fs(12);
+        ctx.font = fs(isConsequencePortrait() ? 14 : 12);
         ctx.fillText(descriptions[route.id], x + 52, y + 54);
       }
       ctx.textAlign = 'center';
       ctx.fillStyle = color.helper;
       ctx.font = fs(13);
-      ctx.fillText(isTouchDevice ? '스틱으로 선택 · Ⓐ 결정' : '↑↓ 선택 · Z·Enter 결정', LW / 2, 462);
+      ctx.fillText(isTouchDevice ? '스틱으로 선택 · Ⓐ 결정' : '↑↓ 선택 · Z·Enter 결정', LW / 2, helperY);
       drawTitleStorageWarning();
       ctx.textAlign = 'left';
       return;
@@ -15455,7 +15494,7 @@
       route: Object.assign({}, ROUTE_CHOICE_UI),
       order: Object.assign({}, TIMELINE_ORDER_UI),
     }),
-    clampedCanvasLabelX, consequenceUiProfile, finaleScale,
+    clampedCanvasLabelX, consequenceUiProfile, finaleScale, mobileTextScale, reportUiProfile,
     startNewGameForRoute, continueGame,
     consequenceRuntime, consequenceRepairIds, consequenceEffortProjection,
     startConsequencePair, revealConsequenceIdentity,
